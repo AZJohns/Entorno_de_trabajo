@@ -1,0 +1,22 @@
+# Finales de línea: LF en el repositorio y en la copia de trabajo, en todos los sistemas.
+# Sin esto, Git para Windows (core.autocrlf=true por defecto) convierte a CRLF al hacer checkout:
+# el hook de pre-commit y los scripts .sh dejan de funcionar ("/bin/sh^M") y Prettier, que exige LF,
+# falla en todo el repositorio. text=auto deja que Git detecte los binarios; los de abajo se marcan
+# además de forma explícita para que nunca se normalicen.
+* text=auto eol=lf
+
+# Binarios
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.zip binary
+*.gz binary
+*.tgz binary
+*.xlsx binary
+*.xlsm binary
