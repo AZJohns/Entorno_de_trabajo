@@ -7,25 +7,56 @@
  *
  * Se escribe como regla propia porque `no-restricted-imports` compara textos de import y no puede
  * saber, desde una ruta relativa como `../finance/x.ts`, si el destino está en otro módulo.
+ *
+ * Rutas: todas se normalizan a separadores `/` antes de compararlas. En Windows, ESLint puede
+ * entregar el nombre del archivo con `\` o con `/`; si la regla dependiera de un único separador,
+ * no reconocería la carpeta `src/modules` y no detectaría ninguna violación (el lint pasaría sin
+ * comprobar nada).
  */
 import path from 'node:path';
 import type { Rule } from 'eslint';
 
-const MODULES_SEGMENT = `${path.sep}src${path.sep}modules${path.sep}`;
+const MODULES_SEGMENT = '/src/modules/';
 
-/** Devuelve el nombre del módulo al que pertenece una ruta absoluta, o `null` si no es de un módulo. */
-export function moduleOf(absolutePath: string): string | null {
-  const index = absolutePath.indexOf(MODULES_SEGMENT);
-  if (index === -1) return null;
-  const rest = absolutePath.slice(index + MODULES_SEGMENT.length);
-  const [name] = rest.split(path.sep);
-  return name ?? null;
+/** Convierte una ruta a separadores `/` (no cambia nada en Linux ni en macOS). */
+export function toPosixPath(filePath: string): string {
+  return filePath.replaceAll('\\', '/');
 }
 
-function isModuleEntry(absolutePath: string, moduleName: string): boolean {
-  const index = absolutePath.indexOf(MODULES_SEGMENT);
-  const rest = absolutePath.slice(index + MODULES_SEGMENT.length);
-  return rest === `${moduleName}${path.sep}index.ts`;
+/**
+ * Resuelve un import relativo a partir del archivo que lo contiene.
+ *
+ * Usa `path.posix.join` (y no `resolve`) para no depender del directorio de trabajo ni del sistema:
+ * funciona igual con `C:/repo/...` que con `/repo/...`.
+ */
+export function resolveImport(filename: string, source: string): string {
+  return path.posix.join(path.posix.dirname(toPosixPath(filename)), source);
+}
+
+/** Devuelve el nombre del módulo al que pertenece una ruta, o `null` si no es de un módulo. */
+export function moduleOf(filePath: string): string | null {
+  const normalized = toPosixPath(filePath);
+  const index = normalized.indexOf(MODULES_SEGMENT);
+  if (index === -1) return null;
+  const [name] = normalized.slice(index + MODULES_SEGMENT.length).split('/');
+  return name === undefined || name === '' ? null : name;
+}
+
+function isModuleEntry(filePath: string, moduleName: string): boolean {
+  const normalized = toPosixPath(filePath);
+  return normalized.endsWith(`${MODULES_SEGMENT}${moduleName}/index.ts`);
+}
+
+/**
+ * Indica si importar `source` desde `filename` cruza la frontera de un módulo sin pasar por su
+ * `index.ts`. Devuelve el nombre del módulo invadido o `null` si el import está permitido.
+ */
+export function deepImportTarget(filename: string, source: string): string | null {
+  if (!source.startsWith('.')) return null;
+  const target = resolveImport(filename, source);
+  const targetModule = moduleOf(target);
+  if (targetModule === null || targetModule === moduleOf(filename)) return null;
+  return isModuleEntry(target, targetModule) ? null : targetModule;
 }
 
 export const moduleBoundaries: Rule.RuleModule = {
@@ -40,15 +71,11 @@ export const moduleBoundaries: Rule.RuleModule = {
   },
   create(context) {
     const filename = context.filename;
-    const ownModule = moduleOf(filename);
 
     function check(node: Rule.Node, source: unknown): void {
-      if (typeof source !== 'string' || !source.startsWith('.')) return;
-      const target = path.resolve(path.dirname(filename), source);
-      const targetModule = moduleOf(target);
-      if (targetModule === null || targetModule === ownModule) return;
-      if (isModuleEntry(target, targetModule)) return;
-      context.report({ node, messageId: 'deepImport', data: { target: targetModule } });
+      if (typeof source !== 'string') return;
+      const target = deepImportTarget(filename, source);
+      if (target !== null) context.report({ node, messageId: 'deepImport', data: { target } });
     }
 
     return {
