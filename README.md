@@ -28,7 +28,7 @@ docs/            Plan, ADR, seguridad y runbooks
   sh scripts/install-gitleaks.sh
   ```
 
-  Lo instala en `~/.local/bin`, con la versión y el checksum fijados. Ese directorio tiene que estar en tu `PATH`.
+  Lo instala en `~/.local/bin`, con la versión y el checksum fijados. Ese directorio tiene que estar en tu `PATH`. En Windows, ver la sección [Windows (x64)](#windows-x64).
 
 ## Arranque en local
 
@@ -97,6 +97,61 @@ pnpm secrets:scan
 ```
 
 `pnpm test` necesita PostgreSQL arrancado y `TEST_DATABASE_URL` en `.env`: los tests de integración crean una base de datos temporal y la borran al terminar.
+
+## Windows (x64)
+
+El repositorio funciona en Windows con **Git para Windows**. La CI lo comprueba en `windows-latest` (job `windows`): finales de línea, instalación de gitleaks, `pnpm install`, `pnpm lint` y que el hook bloquea un secreto.
+
+### Requisitos
+
+- **[Git para Windows](https://git-scm.com/download/win)**: incluye **Git Bash**. Es obligatorio, porque Git ejecuta el hook de pre-commit (`sh`) con el `sh` que trae.
+- **Node ≥ 24.12**: con el instalador oficial o con nvm-windows. nvm-windows no lee `.nvmrc`; usa `nvm install 24` y `nvm use 24`.
+- **pnpm 10.34.9**: `corepack enable` (si tu Node incluye Corepack) o `npm i -g pnpm@10.34.9`.
+- **Docker Desktop** (con WSL 2) para PostgreSQL.
+
+**Finales de línea:** `.gitattributes` fuerza LF en todos los archivos, sea cual sea tu `core.autocrlf`. Sin LF, el hook no se ejecuta y Prettier falla. Si clonaste el repositorio **antes** de que existiera `.gitattributes`, renormaliza la copia de trabajo una vez, con los cambios guardados antes (reescribe tus archivos locales):
+
+```powershell
+git rm -r --cached -q . ; git reset --hard
+```
+
+### gitleaks
+
+Se instala desde **Git Bash** con el mismo script que en Linux y macOS. Descarga el asset oficial `windows_x64.zip`, comprueba su SHA-256 y deja `gitleaks.exe` en `%USERPROFILE%\.local\bin`:
+
+```bash
+sh scripts/install-gitleaks.sh
+```
+
+Añade esa carpeta al `PATH` de tu usuario (PowerShell) y **abre una terminal nueva**:
+
+```powershell
+[Environment]::SetEnvironmentVariable('Path', "$env:USERPROFILE\.local\bin;" + [Environment]::GetEnvironmentVariable('Path', 'User'), 'User')
+```
+
+Comprueba que se encuentra:
+
+```powershell
+gitleaks version
+```
+
+### Arranque
+
+Los pasos son los mismos que en «Arranque en local». Cambia solo cómo se copia `.env` (PowerShell):
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Contraseña aleatoria para `.env` (PowerShell 7):
+
+```powershell
+[Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(16)).ToLower()
+```
+
+En Git Bash: `openssl rand -hex 16`.
+
+`pnpm install` activa el hook (`core.hooksPath = .githooks`) igual que en Linux. Los comandos `pnpm …` funcionan igual en PowerShell, `cmd` y Git Bash.
 
 ## Sesiones de Claude Code en la nube
 
