@@ -86,7 +86,7 @@ Settings → **Rules → Rulesets → New ruleset → New branch ruleset**:
 | Restrict deletions | ✔ |
 | Block force pushes | ✔ |
 | Require a pull request before merging | ✔. **Required approvals: 0**: GitHub no deja aprobar un PR propio y eres el único desarrollador. El valor está en obligar a pasar por PR y por la CI |
-| Require status checks to pass | ✔. Añade los *jobs* de la CI: `lint`, `typecheck`, `test`, `build` y `gitleaks`. Solo aparecen después de la primera ejecución de la CI, así que este paso se completa en la fase 0, cuando ya exista el workflow |
+| Require status checks to pass | ✔. Añade los *jobs* de la CI: `lint`, `typecheck`, `test (24)`, `test (26)`, `build`, `migrations-immutable`, `gitleaks` y `windows`. Solo aparecen después de la primera ejecución de la CI, así que este paso se completa en la fase 0, cuando ya exista el workflow |
 | Require branches to be up to date before merging | Opcional (recomendado) |
 | Require code scanning results | Opcional: CodeQL sin alertas altas o críticas |
 

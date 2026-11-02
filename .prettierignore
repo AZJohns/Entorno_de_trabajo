@@ -1,0 +1,7 @@
+pnpm-lock.yaml
+node_modules/
+dist/
+coverage/
+# La documentación se escribe a mano: Prettier realinearía todas las tablas de Markdown y
+# produciría diffs enormes sin valor. Se excluye a propósito.
+*.md

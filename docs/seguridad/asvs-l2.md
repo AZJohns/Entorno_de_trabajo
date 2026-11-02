@@ -7,7 +7,8 @@
 - **Fuente:** el texto de los requisitos se ha tomado del [repositorio oficial de ASVS](https://github.com/OWASP/ASVS/tree/master/5.0/en) (carpeta `5.0/en`, consultado el 2026-11-02). Los resúmenes en español son míos: ante cualquier duda manda el texto original en inglés.
 - **Alcance:** los **253 requisitos de nivel 1 y 2** (el nivel 2 incluye el 1). No se ha omitido ninguno: cada requisito está en una tabla de cumplimiento o en la lista «No aplica» de su capítulo. Un script comprobó esa cobertura al generar el documento.
 - **Estado:**
-  - **Planificado:** el diseño lo cumple y la fase indicada lo implementa. Todavía no hay código, así que **ninguna fila está verificada**. Al cerrar cada fase, la columna «Verificación» debe pasar a enlazar el test o la evidencia concreta.
+  - **Planificado:** el diseño lo cumple y la fase indicada lo implementa; todavía no está verificado.
+  - **Verificado (Fn):** implementado en la fase n con la evidencia indicada (test, regla de lint o documento). Al cerrar cada fase, la columna «Verificación» debe pasar a enlazar el test o la evidencia concreta.
   - **Desviación:** no se cumple al pie de la letra; la fila explica el motivo y la mitigación (ASVS permite desviaciones documentadas en varios requisitos).
   - **No aplica:** la funcionalidad no existe en este sistema; se indica el motivo.
 - **‡ Sensible a la exposición:** son las filas que hay que revisar si el despliegue pasa de la opción D (privada, Tailscale) a la A (pública) (`plan.md` §7.3).
@@ -23,7 +24,8 @@
 
 | Estado | Requisitos |
 |---|---|
-| Planificado | 176 |
+| Verificado (fase 0) | 9 |
+| Planificado | 167 |
 | Desviación documentada | 7 |
 | No aplica | 70 |
 | **Total L1 + L2** | **253** |
@@ -51,7 +53,7 @@
 | 1.2.5 | L1 | Sin inyección de comandos del sistema | Planificado | La app no ejecuta comandos; las copias las hace el host con argumentos fijos | F0 · — | Revisión |
 | 1.2.9 | L2 | Escapar los metacaracteres al construir expresiones regulares | Planificado | La búsqueda usa la búsqueda de texto completo de PostgreSQL; si se construye alguna regex con entrada del usuario, se escapa | F5 · notes | Revisión |
 | 1.3.1 | L1 | Sanitizar el HTML de editores WYSIWYG | Planificado | No hay WYSIWYG ni HTML del usuario; Markdown sin HTML crudo | F5 · notes | Test XSS |
-| 1.3.2 | L1 | Sin `eval` ni ejecución dinámica de código | Planificado | Reglas de ESLint `no-eval` y `no-implied-eval`; CSP sin `unsafe-eval` | F0 · todos | Lint + cabeceras |
+| 1.3.2 | L1 | Sin `eval` ni ejecución dinámica de código | **Verificado (F0)** | Reglas de ESLint `no-eval` y `no-implied-eval`; CSP sin `unsafe-eval` | F0 · todos | Lint: `no-eval`, `no-new-func`, `@typescript-eslint/no-implied-eval` (`eslint.config.js`) |
 | 1.3.3 | L2 | Sanitizar los datos que van a contextos peligrosos | Planificado | Nombre de archivo de la exportación generado; textos de push sin HTML | F1–F2 · finance, notifications | Revisión |
 | 1.3.5 | L2 | Sanitizar o desactivar contenido de plantillas o Markdown | Planificado | react-markdown sin `rehype-raw`; solo enlaces `http`, `https` y `mailto` | F5 · notes | Test XSS (`javascript:`, `<img onerror>`) |
 | 1.3.6 | L2 | Protección contra SSRF | Planificado | **Lista de hosts permitidos para los endpoints de push** (servicios de push de Apple, Google y Mozilla) al suscribirse y al enviar; solo `https`. El resto de destinos salientes es fijo | F2 · notifications | Test: suscripción con un endpoint interno → 400 |
@@ -107,7 +109,7 @@
 
 | ID | Nivel | Requisito (resumen) | Estado | Cómo se cumple | Fase · módulo | Verificación |
 |---|---|---|---|---|---|---|
-| 4.1.1 | L1 | `Content-Type` correcto y con charset | Planificado | `application/json` y `application/problem+json` con `charset=utf-8` | F0 · http | Test |
+| 4.1.1 | L1 | `Content-Type` correcto y con charset | **Verificado (F0)** | `application/json` y `application/problem+json` con `charset=utf-8` | F0 · http | Test: `apps/api/test/app.test.ts` (health → `application/json; charset=utf-8`; errores → `application/problem+json`) |
 | 4.1.2 ‡ | L2 | Solo las rutas de usuario redirigen de HTTP a HTTPS | Planificado | En D no hay puerto 80. En A, Caddy redirige la web y responde 400 en `/api/*` por HTTP (sin redirigir) | F2 · deploy | Revisión del Caddyfile + `curl` |
 | 4.1.3 ‡ | L2 | Las cabeceras de intermediarios no las puede sobrescribir el usuario | Planificado | Caddy reescribe `X-Forwarded-For`; Express `trust proxy` = 1 (solo el proxy local) | F2 · http, deploy | Test |
 | 4.2.1 ‡ | L2 | Límites de mensaje HTTP coherentes (*request smuggling*) | Planificado | Caddy y Node actualizados, con la configuración por defecto; sin balanceadores intermedios | F2 · deploy | Revisión |
@@ -224,7 +226,7 @@
 | 11.4.2 | L2 | Contraseñas con una función costosa de derivación | Planificado | Argon2id, con parámetros iguales o superiores a los de OWASP | F1 · auth | Test |
 | 11.4.3 | L2 | Hashes resistentes a colisiones para la integridad | Planificado | SHA-256 (`content_hash`, `file_sha256`) | F3 · imports | Revisión |
 | 11.4.4 | L2 | KDF con estiramiento al derivar claves de contraseñas | Planificado | La app no deriva claves de contraseñas; restic sí, con su KDF | F2 · copias | Revisión |
-| 11.5.1 | L2 | CSPRNG para todo valor no adivinable | Planificado | `crypto.randomBytes` y `randomUUID`; `Math.random` prohibido en la API (lint) | F0 · todos | Lint |
+| 11.5.1 | L2 | CSPRNG para todo valor no adivinable | **Verificado (F0)** | `crypto.randomBytes` y `randomUUID`; `Math.random` prohibido en la API (lint) | F0 · todos | Lint: `no-restricted-properties` prohíbe `Math.random` en `apps/api/src` (`eslint.config.js`) |
 | 11.6.1 | L2 | Algoritmos aprobados para generar claves y firmar | Planificado | VAPID (ECDSA P-256); WebAuthn mediante una librería | F2 · notifications, auth | Revisión |
 
 ## V12 — Comunicación segura
@@ -278,7 +280,7 @@
 
 | ID | Nivel | Requisito (resumen) | Estado | Cómo se cumple | Fase · módulo | Verificación |
 |---|---|---|---|---|---|---|
-| 15.1.1 | L1 | Plazos de corrección de dependencias documentados | Planificado | 7, 30 y 90 días (`plan.md` §6.2) | F0 | Revisión |
+| 15.1.1 | L1 | Plazos de corrección de dependencias documentados | **Verificado (F0)** | 7, 30 y 90 días (`plan.md` §6.2) | F0 | Documento: `docs/dependencias.md` (plazos 7/30/90 días) |
 | 15.1.2 | L2 | Inventario de dependencias (SBOM) | Planificado | Exportación del *dependency graph* de GitHub (SPDX) | F0 | Revisión |
 | 15.1.3 | L2 | Funciones costosas documentadas | Planificado | Importación del Excel, búsqueda e informes, en `docs/seguridad/limites.md` | F1–F3 | Revisión |
 | 15.2.1 | L1 | Componentes dentro de los plazos | Planificado | Dependabot + revisión mensual | F0+ | Revisión |
@@ -288,7 +290,7 @@
 | 15.3.2 | L2 | No seguir redirecciones en las llamadas salientes | Planificado | `fetch(…, { redirect: "error" })` en HIBP; web-push [VERIFICAR] | F1–F2 | Revisión |
 | 15.3.3 | L2 | Protección contra la asignación masiva | Planificado | Zod estricto (rechaza los campos desconocidos) | F1+ · todos | Test |
 | 15.3.4 ‡ | L2 | IP original correcta tras el proxy | Planificado | `trust proxy` = 1 | F2 · http | Test |
-| 15.3.5 | L2 | Tipos estrictos e igualdad estricta | Planificado | TypeScript estricto + `eqeqeq` | F0 · todos | Lint |
+| 15.3.5 | L2 | Tipos estrictos e igualdad estricta | **Verificado (F0)** | TypeScript estricto + `eqeqeq` | F0 · todos | TypeScript `strict` + lint `eqeqeq` |
 | 15.3.6 | L2 | Sin contaminación de prototipos | Planificado | `Map` u `Object.create(null)` para las claves que vienen del usuario; Zod descarta `__proto__` | F1+ · todos | Test con `__proto__` |
 | 15.3.7 | L2 | Sin contaminación de parámetros HTTP | Planificado | Zod espera cadenas: los parámetros repetidos (arrays) se rechazan | F1 · http | Test |
 
@@ -300,16 +302,16 @@
 | 16.2.1 | L2 | Metadatos: cuándo, dónde, quién y qué | Planificado | pino + `requestId` + `audit_events` | F1 · http | Revisión |
 | 16.2.2 | L2 | Relojes sincronizados y marcas de tiempo en UTC | Planificado | NTP en el host; ISO 8601 en UTC | F2 · deploy | Revisión |
 | 16.2.3 | L2 | Solo los destinos de log documentados | Planificado | stdout → logs de Docker → copia diaria | F2 | Revisión |
-| 16.2.4 | L2 | Formato común y legible por máquina | Planificado | JSON | F0 · http | Revisión |
+| 16.2.4 | L2 | Formato común y legible por máquina | **Verificado (F0)** | JSON | F0 · http | Test: `apps/api/test/logger.test.ts` (salida JSON analizada línea a línea) |
 | 16.2.5 | L2 | Registro según el nivel de protección del dato | Planificado | `redact` en pino; sin cuerpos con datos financieros | F0–F1 · http | Test de redacción |
 | 16.3.1 | L2 | Todas las operaciones de autenticación | Planificado | `audit_events` (login, segundo factor, reautenticación y recuperación) | F1 · auth | Test |
 | 16.3.2 | L2 | Autorizaciones fallidas | Planificado | `authz.denied` | F1 · http | Test |
 | 16.3.3 | L2 | Eventos de seguridad e intentos de saltarse los controles | Planificado | Fallos de validación y de CSRF registrados con su código, sin el cuerpo | F1 · http | Test |
-| 16.3.4 | L2 | Errores inesperados y fallos de los controles | Planificado | El gestor de errores registra la traza solo en el servidor | F0 · http | Test |
-| 16.4.1 | L2 | Codificación contra la inyección en logs | Planificado | JSON escapa los saltos de línea | F0 · http | Revisión |
+| 16.3.4 | L2 | Errores inesperados y fallos de los controles | **Verificado (F0)** | El gestor de errores registra la traza solo en el servidor | F0 · http | Test: `apps/api/test/app.test.ts` («un error inesperado … queda registrado») |
+| 16.4.1 | L2 | Codificación contra la inyección en logs | **Verificado (F0)** | JSON escapa los saltos de línea | F0 · http | Test: `apps/api/test/logger.test.ts` (pino serializa en JSON y escapa los saltos de línea) |
 | 16.4.2 | L2 | Logs protegidos y no modificables | Planificado | `audit_events`: el rol de la app solo tiene `INSERT` y `SELECT`; copias de solo añadir | F1–F2 | Test de permisos de la base de datos |
 | 16.4.3 | L2 | Logs enviados a un sistema separado | **Desviación** | Copia diaria al almacén de solo añadir, fuera del servidor. **Desviación**: sin SIEM ni alertas en tiempo real; riesgo aceptado | F2 | Revisión |
-| 16.5.1 | L2 | Mensaje genérico ante errores inesperados | Planificado | RFC 9457 con un 500 genérico y `requestId` | F0 · http | Test |
+| 16.5.1 | L2 | Mensaje genérico ante errores inesperados | **Verificado (F0)** | RFC 9457 con un 500 genérico y `requestId` | F0 · http | Test: `apps/api/test/app.test.ts` (500 genérico sin detalles internos, con `requestId`) |
 | 16.5.2 | L2 | Funcionamiento seguro cuando falla un recurso externo | Planificado | Un fallo del push no afecta a la ingesta; si HIBP falla, se rechaza el cambio de contraseña | F1–F2 | Test |
 | 16.5.3 | L2 | Fallar de forma segura (sin *fail-open*) | Planificado | Transacciones; los errores del middleware de autenticación devuelven 401/500 y nunca dejan pasar | F0–F1 · http | Test |
 

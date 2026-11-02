@@ -1,0 +1,211 @@
+# Integración continua. Cada job es una comprobación que la regla de `main` puede exigir:
+# lint, typecheck, test (24), test (26), build, migrations-immutable, gitleaks y windows.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Permisos mínimos del GITHUB_TOKEN: solo lectura del código (repositorio público).
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+
+  typecheck:
+    name: typecheck
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+
+  test:
+    # Matriz con las dos LTS: Node 24 es la versión fijada; Node 26 detecta pronto incompatibilidades.
+    name: test (${{ matrix.node }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['24', '26']
+    services:
+      postgres:
+        # Misma imagen y digest que compose.yaml. Credenciales desechables, solo para este job.
+        image: postgres:18@sha256:3a4264520e121176619f54ff867d12774bc81e95e7b84db58d63bccdb6144b81
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d ci"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 15
+    env:
+      TEST_DATABASE_URL: postgres://ci:ci@localhost:5432/ci
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+
+  build:
+    name: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+  migrations-immutable:
+    name: migrations-immutable
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      # En un PR se compara con la rama destino; en un push a main, con el commit anterior.
+      - name: Comprobar que no se modifica ninguna migración existente
+        env:
+          BASE_REF: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || github.event.before }}
+        run: |
+          if [ "$BASE_REF" = "0000000000000000000000000000000000000000" ]; then
+            echo "Push sin commit anterior: no hay base con la que comparar."
+            exit 0
+          fi
+          node apps/api/scripts/check-migrations-immutable.ts "$BASE_REF"
+
+  gitleaks:
+    name: gitleaks
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # historial completo: se escanean todos los commits, no solo los nuevos
+          persist-credentials: false
+      # Binario oficial con versión y checksum fijados (el mismo script que en local).
+      - run: sh scripts/install-gitleaks.sh "$RUNNER_TEMP/bin"
+      - run: '"$RUNNER_TEMP/bin/gitleaks" git --redact --verbose --log-opts="--all" .'
+
+  windows:
+    # Comprobación ligera de que el repositorio funciona en Windows x64 con Git para Windows:
+    # finales de línea LF, instalación de gitleaks, pnpm install (activa el hook), lint, TODOS los
+    # tests (con el PostgreSQL del runner), check-migrations-immutable y el hook.
+    name: windows
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash # Git Bash, el mismo sh con el que Git para Windows ejecuta los hooks
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Todos los archivos de texto tienen LF tras el checkout (.gitattributes)
+        run: |
+          if git ls-files --eol | grep -v 'w/lf' | grep -v 'w/-text' | grep -v 'w/ '; then
+            echo "Hay archivos con CRLF en la copia de trabajo"
+            exit 1
+          fi
+      - name: Instalar gitleaks con el script (asset windows_x64 + SHA-256)
+        run: |
+          sh scripts/install-gitleaks.sh "$(cygpath -u "$RUNNER_TEMP")/bin"
+          cygpath -w "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - run: gitleaks version
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      # Todos los tests, también los de integración con PostgreSQL. El runner de Windows trae un
+      # PostgreSQL instalado con el servicio deshabilitado: se habilita y se arranca. Si no existiera,
+      # el job falla (no se degrada en silencio a ejecutar solo una parte de los tests).
+      - name: Arrancar el PostgreSQL preinstalado del runner
+        shell: pwsh
+        run: |
+          $svc = Get-Service -Name 'postgresql*' -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $svc) { throw 'Este runner de Windows no trae PostgreSQL instalado' }
+          Write-Host "Servicio: $($svc.Name) (estado: $($svc.Status), inicio: $($svc.StartType))"
+          Set-Service -Name $svc.Name -StartupType Manual
+          Start-Service -Name $svc.Name
+          $pgbin = if ($env:PGBIN) { $env:PGBIN } else { Split-Path (Get-Command psql).Source }
+          & "$pgbin\postgres.exe" --version
+          for ($i = 0; $i -lt 30; $i++) {
+            & "$pgbin\pg_isready.exe" -h 127.0.0.1 -p 5432
+            if ($LASTEXITCODE -eq 0) { break }
+            Start-Sleep -Seconds 1
+          }
+          if ($LASTEXITCODE -ne 0) { throw 'PostgreSQL no responde' }
+          # Credenciales del PostgreSQL de la imagen del runner (públicas y desechables, no secretos).
+          $user = if ($env:PGUSER) { $env:PGUSER } else { 'postgres' }
+          $pass = if ($env:PGPASSWORD) { $env:PGPASSWORD } else { 'root' }
+          "TEST_DATABASE_URL=postgres://${user}:${pass}@127.0.0.1:5432/postgres" >> $env:GITHUB_ENV
+      - run: pnpm test
+      # El script debe ejecutarse de verdad (import.meta.main) y no terminar en silencio con éxito.
+      - name: check-migrations-immutable se ejecuta en Windows
+        run: |
+          output="$(node apps/api/scripts/check-migrations-immutable.ts HEAD)"
+          echo "$output"
+          echo "$output" | grep -q 'Migraciones inmutables respecto a HEAD: OK'
+      - name: El hook de pre-commit bloquea un secreto falso
+        run: |
+          # core.hooksPath lo fija el script prepare durante pnpm install (scripts/setup-git-hooks.ts).
+          test "$(git config --get core.hooksPath)" = ".githooks"
+          git config user.name "CI"
+          git config user.email "ci@example.invalid"
+          # Token falso generado en tiempo de ejecución: no queda escrito en el repositorio.
+          node -e "const c=require('node:crypto');const a='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';let t='ghp_';for(const b of c.randomBytes(36))t+=a[b%62];require('node:fs').writeFileSync('probe-secret.txt','token = \"'+t+'\"\n')"
+          git add probe-secret.txt
+          before="$(git rev-parse HEAD)"
+          if git commit -m "prueba de secreto"; then
+            echo "ERROR: el hook no ha bloqueado el commit"
+            exit 1
+          fi
+          test "$(git rev-parse HEAD)" = "$before"
+          echo "OK: el hook ha bloqueado el commit con el secreto falso"

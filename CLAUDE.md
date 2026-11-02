@@ -45,11 +45,10 @@ Si alguno de esos documentos contradice el código, avisa antes de cambiar nada.
 - Un cambio de comportamiento lleva su test. Un error corregido lleva un test que lo reproduce.
 
 ## Comprobar antes de dar algo por terminado
-Los comandos los define la fase 0. Hasta entonces son provisionales:
-- `pnpm lint`
-- `pnpm typecheck`
-- `pnpm test`
-- `pnpm build` (si el cambio afecta al build)
+Node ≥ 24.12 y pnpm 10.34.9. `pnpm test` necesita PostgreSQL (`pnpm db:up`) y `TEST_DATABASE_URL` en `.env`.
+- `pnpm lint` (ESLint + Prettier) · `pnpm typecheck` · `pnpm test` · `pnpm build`
+- `pnpm secrets:scan` (gitleaks sobre el historial) · `pnpm check:migrations origin/main`
+- Migraciones: `pnpm db:migrate`. Nuevas en `apps/api/src/db/migrations/NNNN_descripcion.ts`.
 
 Si no puedes ejecutarlos, dilo explícitamente. Nunca desactives, saltes ni borres un test para que la CI pase.
 

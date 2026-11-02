@@ -803,13 +803,13 @@ Licencias y estado de mantenimiento según lo consultado en noviembre de 2026; h
 | **Lint y formato** | **ESLint 9 + typescript-eslint + Prettier** · Biome | **ESLint + typescript-eslint** (reglas con tipos, como `no-floating-promises`, crítica en Express) + Prettier | Estándar y con reglas que necesitan información de tipos | — |
 | **Frontend: datos y rutas** | TanStack Query · SWR; React Router · TanStack Router | **TanStack Query** + **React Router** (modo declarativo, sin el modo *framework*) | Caché e invalidación del estado del servidor; rutas sin SSR | — |
 | **Markdown (notas)** | **react-markdown** · marked + DOMPurify | **react-markdown** + `remark-gfm`, **sin `rehype-raw`** | No renderiza HTML incrustado por defecto → sin XSS | No activar nunca HTML crudo |
-| **Monorepo** | **pnpm workspaces** · npm workspaces · Turborepo/Nx | **pnpm** | `node_modules` estricto: detecta las dependencias no declaradas. Desde la v10 **no ejecuta los scripts `postinstall`** de las dependencias por defecto. **`minimumReleaseAge`** (desde la 10.16; 24 h por defecto en la 11) protege frente a versiones maliciosas recién publicadas | Dónde va la configuración en tu versión (`pnpm-workspace.yaml` frente a `.npmrc`). Instalación de pnpm sin Corepack si tu versión de Node ya no lo incluye |
-| **Ejecutar TypeScript (API)** | `tsc` · tsx · eliminación de tipos nativa de Node | En desarrollo, `node --watch` con eliminación de tipos nativa (exige `erasableSyntaxOnly`: sin `enum` ni *parameter properties*), o tsx si falla. En producción, compilar con `tsc` | Menos dependencias y comportamiento predecible en producción | Que la importación de `packages/shared` funcione con la eliminación de tipos nativa |
+| **Monorepo** | **pnpm workspaces** · npm workspaces · Turborepo/Nx | **pnpm** | `node_modules` estricto: detecta las dependencias no declaradas. Desde la v10 **no ejecuta los scripts `postinstall`** de las dependencias por defecto. **`minimumReleaseAge`** (desde la 10.16; aquí, 3 días, igual que el `cooldown` de Dependabot) protege frente a versiones maliciosas recién publicadas | Dónde va la configuración en tu versión (`pnpm-workspace.yaml` frente a `.npmrc`). Instalación de pnpm sin Corepack si tu versión de Node ya no lo incluye |
+| **Ejecutar TypeScript (API)** | `tsc` · tsx · eliminación de tipos nativa de Node | [RESUELTO en la fase 0] **Node ejecuta el TypeScript directamente, en desarrollo y en producción** (estable desde Node 24.12). `tsc` solo comprueba los tipos (`noEmit`); sin tsx | Sin paso de compilación ni dependencias. Verificado: `packages/shared` se importa sin compilar | ADR 0001 |
 | **TOTP (segundo factor)** | Implementación propia con `node:crypto` · otpauth · speakeasy | **Propia** (RFC 6238, HMAC-SHA1, 6 dígitos, paso de 30 s, ventana de ±1 paso) | Son unas 40 líneas que se prueban con los **vectores oficiales del apéndice B de RFC 6238**. speakeasy lleva años sin mantenimiento [VERIFICAR] | Que `last_used_step` impide reutilizar un código. **Sin dependencia de códigos QR**: se muestran la clave y el enlace `otpauth://`, que en iOS abre la app Contraseñas [VERIFICAR] |
 | **Passkeys (WebAuthn)** | @simplewebauthn/server + /browser · implementación propia | **@simplewebauthn** (MIT [VERIFICAR]), **solo si T18 confirma** que funciona en la PWA | Verificar las aserciones de WebAuthn a mano es delicado; aquí sí está justificado usar una librería | El soporte en el modo *standalone* de iOS; que el RP ID (el dominio) no cambie entre las opciones D y A (§7.3) |
 | **Contraseñas filtradas** | API de rangos de Pwned Passwords (HIBP) · lista local | **API de rangos** con `fetch` nativo (sin dependencia): solo se envían los 5 primeros caracteres del SHA-1 (*k-anonymity*). Además, una **lista local** de las contraseñas más comunes y de palabras del contexto (ASVS 6.2.4, 6.2.11, 6.2.12) | Solo se consulta al fijar o cambiar la contraseña | Si la API no responde, se **rechaza** el cambio y se pide reintentar (fallo seguro, ASVS 16.5.3). `api.pwnedpasswords.com` entra en la lista de destinos salientes permitidos |
 | **Escaneo de secretos** | **gitleaks** · trufflehog · solo GitHub secret scanning | **gitleaks** como **binario** (Go, MIT [VERIFICAR]) en un *hook* de pre-commit (`core.hooksPath` → `.githooks/`, sin husky ni lefthook) y en CI con la imagen oficial de contenedor, sobre **todo el historial**. Además, el secret scanning y la *push protection* de GitHub | Con un repositorio público, tres capas: la máquina local, la CI y GitHub | No usar `gitleaks-action` si exige licencia en tu tipo de cuenta [VERIFICAR]. Fijar la versión de la imagen por *digest* |
-| **Runtime** | Node 24 / 26 | **La LTS activa al empezar** (Node 26 pasó a LTS en octubre de 2026, según lo anunciado) | — | [VERIFICAR] el calendario oficial. Node cambia a una versión mayor al año a partir de la 27 |
+| **Runtime** | Node 24 / 26 | [RESUELTO en la fase 0] **Node 24 LTS, ≥ 24.12** (`.nvmrc` y `engines`); la CI prueba además Node 26 | Argon2 nativo (24.7) y ejecución directa de TypeScript estable (24.12) | ADR 0001 |
 
 ### 4.3 Política de dependencias
 
@@ -1186,7 +1186,7 @@ Tamaños relativos (S, M, L, XL). No pongo días porque no conozco tu ritmo y un
   - **CI**:
     - Instalación con el lockfile congelado, lint, typecheck, tests contra PostgreSQL como servicio y build.
     - Comprobación de que **no se modifica ninguna migración existente**.
-    - **gitleaks sobre todo el historial** (imagen oficial fijada por *digest*).
+    - **gitleaks sobre todo el historial** con el binario oficial de versión y checksum fijados (`scripts/install-gitleaks.sh`; ADR 0005 explica por qué no la imagen).
     - Permisos mínimos del `GITHUB_TOKEN` (`permissions: contents: read`).
   - **Seguridad del repositorio público**:
     - `.githooks/pre-commit` con gitleaks (`git config core.hooksPath .githooks`, sin dependencias npm).
@@ -1197,7 +1197,7 @@ Tamaños relativos (S, M, L, XL). No pongo días porque no conozco tu ritmo y un
     - Corrección respecto a la v1: GitHub solo permite proteger ramas en repositorios privados con un plan de pago, así que ahora **sí** es posible, porque el repositorio será público.
   - **Antes de hacer público el repositorio**: gitleaks sobre todo el historial + revisión manual de todos los archivos y commits (hoy son pocos).
   - `CLAUDE.md` con los comandos reales.
-  - ADR 0001–0006: monorepo, Express, Kysely, sesiones y dos factores, importes en céntimos y repositorio público.
+  - ADR 0001–0005: monorepo, Express, Kysely, importes en céntimos y repositorio público. El de sesiones y dos factores se escribe en la fase 1, con la autenticación.
   - `docs/dependencias.md`.
 - **Terminado cuando**
   - Un clon limpio arranca siguiendo el README en menos de 15 minutos.

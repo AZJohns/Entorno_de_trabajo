@@ -1,0 +1,11 @@
+#!/bin/sh
+# Escaneo de secretos de los cambios preparados (staged) antes de cada commit.
+#
+# Fallo cerrado: si gitleaks no está instalado, el commit se bloquea. El repositorio es público y
+# un secreto subido hay que rotarlo; es mejor no subirlo. Lo activa `pnpm install` (script prepare).
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "pre-commit: gitleaks no está instalado; el commit se bloquea." >&2
+  echo "Instálalo con: sh scripts/install-gitleaks.sh   (y añade ~/.local/bin al PATH)" >&2
+  exit 1
+fi
+exec gitleaks git --pre-commit --staged --redact --verbose .
