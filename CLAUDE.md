@@ -54,8 +54,8 @@ Los comandos los define la fase 0. Hasta entonces son provisionales:
 Si no puedes ejecutarlos, dilo explícitamente. Nunca desactives, saltes ni borres un test para que la CI pase.
 
 ## Repositorio PÚBLICO: todo lo que se sube (también el historial) es público
-- Nunca subas secretos, dominios, IP, correos, nombres reales de cuentas, bancos o tarjetas, ni datos financieros:
-  ni en el código, ni en los tests, ni en la documentación, ni en los mensajes de commit.
+- Nunca subas secretos, dominios, IP, correos de terceros, datos privados, nombres reales de cuentas, bancos o
+  tarjetas, ni datos financieros: ni en el código, ni en los tests, ni en la documentación, ni en los commits.
 - Configuración solo por variables de entorno (`.env` está ignorado; `.env.example` va sin valores). El dominio
   de producción es `PUBLIC_ORIGIN`, nunca un literal en el código.
 - **Nunca subas datos reales**: ni el Excel real, ni extractos, ni volcados, ni capturas con cifras. Los tests
@@ -72,4 +72,5 @@ Si no puedes ejecutarlos, dilo explícitamente. Nunca desactives, saltes ni borr
 
 ## Git
 - Commits pequeños y con un mensaje descriptivo en español. No hagas push directo a `main`: siempre mediante PR con la CI en verde.
-- El correo del autor de los commits es una dirección `noreply`, nunca un correo personal.
+- El correo del propietario ya es público en su perfil de GitHub y se acepta en el historial. No se reescribe el
+  historial por ese motivo. Nunca se añaden correos de terceros.

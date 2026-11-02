@@ -12,6 +12,11 @@
   - **No aplica:** la funcionalidad no existe en este sistema; se indica el motivo.
 - **‡ Sensible a la exposición:** son las filas que hay que revisar si el despliegue pasa de la opción D (privada, Tailscale) a la A (pública) (`plan.md` §7.3).
 - **Fase · módulo:** F0–F6 según `plan.md` §8.
+- **Cada fase implementa solo las filas que tiene asignadas.**
+  - Una fila de una fase posterior no se adelanta, aunque parezca fácil: se implementa cuando llega su fase y con su test.
+  - Una fila con un rango (p. ej., «F1–F2») se cumple por partes: cada fase implementa la parte que corresponde a la funcionalidad que construye (en «F1–F2 · http», las cabeceras se configuran en F1 y se comprueban sobre HTTPS real en F2). La fila solo pasa a «verificado» cuando termina la **última** fase del rango.
+  - Si durante una fase aparece la necesidad de cumplir una fila de otra fase, se anota aquí y se trata en su fase, salvo que bloquee la actual. En ese caso se reasigna de forma explícita, en el mismo PR.
+  - Las filas sin una fase concreta (revisiones de diseño) se comprueban al cerrar cada fase que toca el módulo indicado.
 - **Mantenimiento:** cualquier cambio de diseño que afecte a una fila actualiza este documento en el mismo PR.
 
 ## Resumen
@@ -163,13 +168,13 @@
 
 | ID | Nivel | Requisito (resumen) | Estado | Cómo se cumple | Fase · módulo | Verificación |
 |---|---|---|---|---|---|---|
-| 7.1.1 | L2 | Inactividad y vida máxima documentadas y justificadas frente a NIST | Planificado | `plan.md` §6.2 (24 h / 1 h y la desviación posible si fallan T18 y T19) | F1 · auth | Revisión |
+| 7.1.1 | L2 | Inactividad y vida máxima documentadas y justificadas frente a NIST | Planificado | `plan.md` §6.2: 24 h de caducidad absoluta y 1 h de inactividad, con desbloqueo de un factor tras la inactividad. Todo dentro de lo que permite NIST SP 800-63B-4 para AAL2: **sin desviaciones** | F1 · auth | Revisión |
 | 7.1.2 | L2 | Sesiones simultáneas documentadas | Planificado | Como máximo 5; se cierra la más antigua | F1 · auth | Test |
 | 7.2.1 | L1 | Verificar la sesión en un backend de confianza | Planificado | Sesiones en PostgreSQL | F1 · auth | Test |
 | 7.2.2 | L1 | Tokens dinámicos, no claves estáticas | Planificado | Token de sesión aleatorio. Los tokens del atajo no son sesiones: tienen permisos limitados, caducan y se pueden revocar | F1–F2 · auth | Revisión |
 | 7.2.3 | L1 | Tokens de referencia únicos y de un CSPRNG | Planificado | 256 bits | F1 · auth | Revisión |
-| 7.2.4 | L1 | Token nuevo al autenticar **y al reautenticar** | Planificado | Token nuevo al pasar a `full` y en cada reautenticación | F1 · auth | Test |
-| 7.3.1 | L2 | Caducidad por inactividad según el análisis de riesgos | Planificado | 1 h | F1 · auth | Test con un reloj simulado |
+| 7.2.4 | L1 | Token nuevo al autenticar **y al reautenticar** | Planificado | Token nuevo al pasar a `full`, en cada reautenticación y en cada desbloqueo tras inactividad | F1 · auth | Test |
+| 7.3.1 | L2 | Caducidad por inactividad según el análisis de riesgos | Planificado | 1 h. Tras ella hay que reautenticarse: contraseña o passkey + el secreto de sesión (`/auth/unlock`), como permite NIST | F1 · auth | Test con un reloj simulado |
 | 7.3.2 | L2 | Vida máxima absoluta | Planificado | 24 h | F1 · auth | Test con un reloj simulado |
 | 7.4.1 | L1 | Una sesión terminada no se puede volver a usar | Planificado | `revoked_at` y caducidad comprobadas en cada petición | F1 · auth | Test |
 | 7.4.2 | L1 | Deshabilitar la cuenta termina todas las sesiones | Planificado | El script de deshabilitar revoca todas las sesiones y los tokens | F1 · auth | Test del servicio |

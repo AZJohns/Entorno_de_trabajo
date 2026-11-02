@@ -1,7 +1,7 @@
 # Plan del backoffice personal
 
 - **Estado:** borrador v2 (diseño; todavía no hay código)
-- **Fecha:** 2026-11-02 · **Revisión 2:** incorpora las confirmaciones de la plantilla real y tus decisiones sobre §9 (repositorio público, ASVS 5.0 L2 + NIST SP 800-63B, conciliación, despliegue con medición)
+- **Fecha:** 2026-11-02 · **Revisión 3:** cierre de la parte 1 (correo del historial aceptado, desbloqueo con un factor según NIST, licencia MIT, RTO 24 h) · **Revisión 2:** incorpora las confirmaciones de la plantilla real y tus decisiones sobre §9 (repositorio público, ASVS 5.0 L2 + NIST SP 800-63B, conciliación, despliegue con medición)
 - **Documentos relacionados:** [`docs/plantilla-excel.md`](plantilla-excel.md) (contrato del importador), [`docs/seguridad/asvs-l2.md`](seguridad/asvs-l2.md) (matriz de cumplimiento), [`docs/runbooks/github.md`](runbooks/github.md) (configuración del repositorio público), [`SECURITY.md`](../SECURITY.md) y [`CLAUDE.md`](../CLAUDE.md) (reglas de trabajo)
 
 **Marcas usadas en este documento**
@@ -103,7 +103,7 @@ jobs (infraestructura) ──▶ tasks, notifications, imports, auth (limpiezas 
 ├── CLAUDE.md
 ├── README.md                       # qué es, cómo arrancarlo y enlaces a docs/
 ├── SECURITY.md                     # cómo reportar vulnerabilidades en privado
-├── LICENSE                         # pendiente de decidir (§9, pregunta 28)
+├── LICENSE                         # MIT
 ├── .githooks/                      # pre-commit con gitleaks (core.hooksPath, sin dependencias npm)
 ├── docs/
 │   ├── plan.md                     # este documento
@@ -184,7 +184,7 @@ jobs (infraestructura) ──▶ tasks, notifications, imports, auth (limpiezas 
 | token_hash | bytea | NOT NULL UNIQUE. SHA-256 del valor de la cookie: si se filtra la base de datos, las sesiones no se pueden usar |
 | csrf_token_hash | bytea | NOT NULL |
 | stage | text | `CHECK IN ('mfa_pending','full')`. Tras la contraseña, la sesión queda en `mfa_pending` (5 minutos, solo puede llamar a `/auth/login/second-factor`); con el segundo factor se **emite un token nuevo** en `full` (ASVS 7.2.4) |
-| created_at, last_seen_at | timestamptz | `last_seen_at` controla la caducidad por inactividad (§6.2) |
+| created_at, last_seen_at | timestamptz | `last_seen_at` controla la caducidad por inactividad (§6.2). Una sesión inactiva **no se revoca**: queda bloqueada hasta que se desbloquea con un factor (`POST /auth/unlock`) o hasta que llega su caducidad absoluta |
 | expires_at | timestamptz | NOT NULL (caducidad absoluta) |
 | reauthenticated_at | timestamptz | NULL. Última reautenticación completa, para las acciones sensibles (§6.2) |
 | revoked_at | timestamptz | NULL |
@@ -550,6 +550,7 @@ notes *─* tags (note_tags)
 | POST | `/auth/login/second-factor` | sesión `mfa_pending` (con límite de peticiones) | `{ totp }`, `{ recoveryCode }` o la aserción WebAuthn → 204 + **cookie nueva** en `full` |
 | POST | `/auth/logout` | S | Revoca la sesión actual y responde con `Clear-Site-Data` (ASVS 14.3.1) |
 | GET | `/auth/session` | S | `{ user, csrfToken, expiresAt, idleExpiresAt }` |
+| POST | `/auth/unlock` | cookie de una sesión `full` bloqueada por inactividad, dentro de su caducidad absoluta (con límite de peticiones) | `{ password }` o passkey → 204 + **cookie nueva**. Un solo factor, junto con el secreto de sesión (NIST SP 800-63B-4). 5 intentos fallidos → la sesión se revoca |
 | POST | `/auth/reauth` | S | Reautenticación **completa**: `{ password, totp }` o passkey |
 | POST | `/auth/password` | S+ | `{ currentPassword, newPassword }`. Comprueba la lista de contraseñas filtradas y ofrece cerrar las demás sesiones |
 | POST | `/auth/totp/enroll` | S+ | Genera una semilla nueva sin confirmar; devuelve la clave y el URI `otpauth://` |
@@ -948,7 +949,7 @@ Hay que anotar la versión de iOS y el resultado de cada prueba en `docs/atajo-i
 | T16 | (Opción D) Pago sin haber abierto Tailscale en horas, en Wi-Fi y en datos móviles | El POST llega. Si no llega, se anota como «fallo atribuible a la VPN» (§7.3) |
 | T17 | (Opción D) Consumo de batería de Tailscale (Ajustes → Batería) durante 2 semanas | Se anota el porcentaje diario medio (§7.3) |
 | T18 | Passkey dentro de la PWA instalada: alta, inicio de sesión y reautenticación, con la app cerrada y abierta | Funciona sin abrir Safari (§6.2) |
-| T19 | Autorrelleno del código TOTP desde la app Contraseñas de iOS dentro de la PWA | Se anota si funciona (afecta a la usabilidad de §6.2) |
+| T19 | Autorrelleno de la contraseña y del código TOTP desde la app Contraseñas de iOS dentro de la PWA | Se anota si funciona. Afecta a la comodidad del desbloqueo tras inactividad (solo contraseña) y del inicio de sesión diario (contraseña + TOTP); no cambia ninguna decisión de seguridad |
 
 ---
 
@@ -972,7 +973,7 @@ La matriz requisito a requisito, con su fase, módulo y test, está en [`docs/se
 | Copias de seguridad | Filtración o borrado | Cifrado en el cliente, almacenamiento de solo añadir, 3-2-1 y restauración probada |
 | **Repositorio público** | Fuga de secretos, datos, dominio o IP en el código o en el historial | Reglas de `CLAUDE.md`, gitleaks en pre-commit y en CI sobre todo el historial, secret scanning y *push protection* de GitHub, solo fixtures ficticias y configuración por variables de entorno |
 | Dependencias | Paquete comprometido | Pocas dependencias, lockfile, `minimumReleaseAge`, sin `postinstall`, Dependabot y plazos de corrección (§6.2) |
-| Teléfono robado | Acceso a la PWA con la sesión abierta | Bloqueo del iPhone, inactividad de 1 h, reautenticación para las acciones sensibles y revocación de sesiones desde otro dispositivo |
+| Teléfono robado | Acceso a la PWA con la sesión abierta | Bloqueo del iPhone, inactividad de 1 h (el desbloqueo exige la contraseña o una passkey), reautenticación completa para las acciones sensibles y revocación de sesiones desde otro dispositivo |
 
 ### 6.2 Controles
 
@@ -1011,9 +1012,9 @@ La matriz requisito a requisito, con su fase, módulo y test, está en [`docs/se
 | Parámetro | Valor | Justificación |
 |---|---|---|
 | Caducidad absoluta | **24 h** | NIST SP 800-63B-4 para AAL2: la caducidad absoluta *SHOULD* no superar las 24 h (verificado en la página de AAL de NIST). Una vez al día se repite el inicio de sesión completo |
-| Caducidad por inactividad | **1 h** | Valor de AAL2 según fuentes secundarias [VERIFICAR en el texto de NIST: `pages.nist.gov` no fue accesible desde esta sesión]. Al expirar, hay que **reautenticarse por completo** (passkey, o contraseña + TOTP) |
-| Usabilidad en la PWA | — | El flujo crítico (el pago con Wallet) **no depende de la sesión**: el atajo usa su token. La sesión solo se pide al abrir la bandeja. Con una passkey (Face ID) o con el autorrelleno de la contraseña y del código desde la app Contraseñas de iOS, reautenticarse cuesta unos segundos. Se comprueba en T18 y T19 |
-| Si T18 **y** T19 fallan | inactividad de 8 h como máximo | **Desviación documentada** (ASVS 7.1.1 exige justificar las desviaciones de NIST). Motivos: un solo usuario; dispositivo personal con bloqueo biométrico; la PWA tiene sus propias cookies, separadas de Safari; las acciones sensibles exigen reautenticación; la caducidad absoluta sigue siendo de 24 h. Se decide en la fase 2 (§9, pregunta 33) |
+| Caducidad por inactividad | **1 h** | NIST SP 800-63B-4 para AAL2: la inactividad *SHOULD* no superar 1 h (verificado en `pages.nist.gov`) |
+| Desbloqueo tras inactividad | **Un solo factor**: contraseña o passkey, **sin TOTP**, junto con el secreto de sesión (la cookie) | NIST SP 800-63B-4 permite (*MAY*) que, tras la inactividad y dentro de la caducidad absoluta, el verificador acepte un solo factor (contraseña o biométrico) junto con el secreto de sesión. `POST /auth/unlock`: rota el token (ASVS 7.2.4), reinicia la inactividad y **no** cuenta como reautenticación completa para las acciones sensibles. 5 intentos fallidos revocan la sesión |
+| Usabilidad en la PWA | — | El flujo crítico (el pago con Wallet) **no depende de la sesión**: el atajo usa su token. Desbloquear tras más de 1 h sin usar la app es solo la contraseña, que rellena la app Contraseñas de iOS con Face ID, o una passkey. El inicio de sesión completo (contraseña + TOTP) solo hace falta una vez al día. **Por eso ya no hace falta ampliar la inactividad a 8 h**: con 1 h no hay ninguna desviación de NIST |
 | Sesiones simultáneas | Como máximo 5; al abrir la sexta, se cierra la más antigua | ASVS 7.1.2 |
 | Ver y cerrar sesiones | Lista en Ajustes; cerrarlas exige reautenticación | ASVS 7.5.2 |
 | Cambio de factor | Al cambiar la contraseña, el TOTP o las passkeys, se ofrece cerrar las demás sesiones | ASVS 7.4.3 |
@@ -1060,7 +1061,7 @@ La matriz requisito a requisito, con su fase, módulo y test, está en [`docs/se
 - **Desviación documentada de ASVS 13.3.1** (exige un gestor de secretos tipo *vault*): con un único host y un único operador, un *vault* añadiría infraestructura sin reducir el riesgo real. Si el host se compromete, el atacante obtiene igualmente los secretos en memoria. Mitigación: permisos mínimos, rotación documentada en `docs/runbooks/` y secretos de copias fuera de la app.
 
 **Repositorio público** [RESUELTO]
-- El repositorio se trata como público **desde ya**. Ni en el código ni en el historial puede haber secretos, dominios, IP, correos, nombres reales de cuentas ni datos financieros.
+- El repositorio se trata como público **desde ya**. Ni en el código ni en el historial puede haber secretos, dominios, IP, **correos de terceros**, nombres reales de cuentas, **datos privados** ni datos financieros. Tu nombre y el correo del commit inicial ya son públicos en tu perfil de GitHub: se aceptan y no se reescribe el historial [RESUELTO].
 - El dominio de producción se configura con `PUBLIC_ORIGIN` y nunca se escribe en el repositorio.
 - gitleaks se ejecuta en un *hook* de pre-commit (`.githooks/`) y en la CI. **Antes de hacer público el repositorio**, se pasa sobre **todo el historial** y se revisa a mano.
 - En GitHub: secret scanning y *push protection* **a nivel de repositorio** (la de usuario no genera alertas), Dependabot, code scanning y una regla que protege `main`. Los pasos están en [`docs/runbooks/github.md`](runbooks/github.md).
@@ -1087,7 +1088,7 @@ La matriz requisito a requisito, con su fase, módulo y test, está en [`docs/se
 
 **Cifrado de columnas**: no se usa en general, porque quien compromete el servidor obtiene también la clave. **Excepción**: las semillas TOTP, para que un volcado o una copia de seguridad no basten para generar códigos.
 
-### 6.3 Copias de seguridad [propuesta; confirma los valores en §9, pregunta 22]
+### 6.3 Copias de seguridad [RESUELTO: RPO 24 h, RTO 24 h, retención 7/4/12/3]
 
 | Aspecto | Propuesta |
 |---|---|
@@ -1097,7 +1098,7 @@ La matriz requisito a requisito, con su fase, módulo y test, está en [`docs/se
 | Automático | Un temporizador `systemd` del **host**, no la app: la app no tiene credenciales del almacén |
 | Protección | Clave del almacén **sin permiso de borrado** o con bloqueo de objetos: quien comprometa el servidor no puede borrar las copias |
 | **RPO** (pérdida máxima aceptable) | **24 h**. Lo que entra por el atajo en un día se puede reconstruir con los movimientos del banco. Archivar el WAL sería excesivo aquí |
-| **RTO** (tiempo de recuperación) | **4 h**: crear un VPS nuevo, desplegar con el runbook y restaurar la última copia |
+| **RTO** (tiempo de recuperación) | **24 h**: crear un VPS nuevo, desplegar con el runbook y restaurar la última copia. Es un margen realista para una sola persona: incluye tener que hacerlo fuera del horario de trabajo |
 | **Retención escalonada** | 7 diarias, 4 semanales, 12 mensuales y 3 anuales (`restic forget --keep-daily 7 --keep-weekly 4 --keep-monthly 12 --keep-yearly 3`), aplicada desde una máquina con permisos de borrado, no desde el servidor |
 | **Prueba de restauración** | **Al menos una vez por trimestre**: restaurar en una base de datos temporal y comprobar el número de filas por tabla, la suma de importes por mes y un inicio de sesión. Se anota en `docs/runbooks/backup-restore.md` (fecha, copia restaurada, duración, resultado), **sin cifras reales** porque el repositorio es público. Además, `restic check --read-data-subset` cada mes |
 | Monitorización | Un servicio de «interruptor de hombre muerto» (p. ej., healthchecks.io) avisa si no llega la señal diaria |
@@ -1191,7 +1192,7 @@ Tamaños relativos (S, M, L, XL). No pongo días porque no conozco tu ritmo y un
     - `.githooks/pre-commit` con gitleaks (`git config core.hooksPath .githooks`, sin dependencias npm).
     - `.gitignore` de datos; `.env.example` sin valores.
     - `SECURITY.md` (ya creado) y `.github/dependabot.yml` (npm, GitHub Actions y Docker).
-    - `LICENSE`, en cuanto decidas la licencia (§9, pregunta 28).
+    - `LICENSE` (MIT, ya añadido).
   - **Configuración de GitHub** siguiendo [`docs/runbooks/github.md`](runbooks/github.md), **que haces tú en la web**: secret scanning y *push protection* del repositorio, alertas y actualizaciones de seguridad de Dependabot, code scanning (CodeQL, configuración por defecto) y una **regla que protege `main`** exigiendo PR y la CI en verde.
     - Corrección respecto a la v1: GitHub solo permite proteger ramas en repositorios privados con un plan de pago, así que ahora **sí** es posible, porque el repositorio será público.
   - **Antes de hacer público el repositorio**: gitleaks sobre todo el historial + revisión manual de todos los archivos y commits (hoy son pocos).
@@ -1227,7 +1228,7 @@ Tamaños relativos (S, M, L, XL). No pongo días porque no conozco tu ritmo y un
     - Script `create-user`: contraseña + alta del TOTP + códigos de recuperación.
     - Login en dos pasos (`mfa_pending` → `full`, con un token nuevo).
     - TOTP de uso único, códigos de recuperación, reautenticación completa y cambio de contraseña con comprobación de contraseñas filtradas.
-    - Caducidades de 24 h y 1 h; lista y cierre de sesiones; `Clear-Site-Data` al salir.
+    - Caducidades de 24 h y 1 h; desbloqueo tras inactividad con un factor (`/auth/unlock`); lista y cierre de sesiones; `Clear-Site-Data` al salir.
     - CSRF, límites de peticiones y `audit_events`.
     - Cabeceras (HSTS, CSP, `no-store`).
   - **1b. Libro real**
@@ -1244,6 +1245,7 @@ Tamaños relativos (S, M, L, XL). No pongo días porque no conozco tu ritmo y un
     - **TOTP**: los vectores de RFC 6238, la reutilización de un código rechazada y la ventana de ±1 paso.
     - Que un código de recuperación vale una sola vez.
     - Las caducidades por inactividad y absoluta, con un reloj simulado.
+    - El desbloqueo tras inactividad: acepta solo la contraseña (sin TOTP) dentro de las 24 h; rechaza el desbloqueo pasada la caducidad absoluta, en una sesión `mfa_pending` o sin la cookie; rota el token; no habilita las rutas S+; 5 fallos revocan la sesión.
     - La matriz de **permisos**: todas las rutas sin sesión → 401; en `mfa_pending` → 401; sin CSRF → 403; S+ sin reautenticación → 403; token de dispositivo fuera de `/ingest` → 401/403.
     - Las contraseñas cortas, comunes o filtradas, rechazadas (con un doble de prueba de la API de HIBP).
     - Los límites de peticiones.
@@ -1280,9 +1282,8 @@ Tamaños relativos (S, M, L, XL). No pongo días porque no conozco tu ritmo y un
     - `/ingest/wallet-transactions`, correspondencia de tarjetas, bandeja de pendientes y formulario rápido.
     - Prueba T13 (preguntar el concepto y la categoría en el momento).
   - **2e. Evaluación de passkeys y usabilidad de la sesión**
-    - T18 (passkey en la PWA) y T19 (autorrelleno del TOTP).
+    - T18 (passkey en la PWA) y T19 (autorrelleno de la contraseña y del TOTP).
     - Si T18 funciona: alta de passkeys con @simplewebauthn y su ADR.
-    - Si T18 y T19 fallan: decidir la desviación de la inactividad (§6.2).
   - **2f. Medición de 2 semanas y decisión D/A** según el criterio de §7.3, con su ADR.
   - **2g.** `docs/atajo-iphone.md`: configuración paso a paso (sin dominio ni token reales) y resultados de T1–T19 y de la medición, **solo con recuentos**.
 - **Terminado cuando**
@@ -1454,14 +1455,14 @@ Estado tras la revisión 2: **RESUELTA** (con la decisión tomada) o **PENDIENTE
 | # | Pregunta | Estado | Decisión o recomendación |
 |---|---|---|---|
 | 20 | ¿Opción A o D? | PENDIENTE (fase 2, con datos) | Se empieza con D, se mide 2 semanas y se aplica el criterio de §7.3 |
-| 21 | ¿Segundo factor? ¿Duración de la sesión? | RESUELTA (con dos subpreguntas pendientes) | TOTP obligatorio + códigos de recuperación; 24 h de caducidad absoluta y 1 h de inactividad; reautenticación para las acciones sensibles (§6.2) |
-| 22 | ¿RPO, RTO y retención? | PENDIENTE (confirma los valores propuestos) | **R:** RPO 24 h, RTO 4 h, retención 7/4/12/3 y prueba de restauración trimestral (§6.3) |
+| 21 | ¿Segundo factor? ¿Duración de la sesión? | RESUELTA | TOTP obligatorio + códigos de recuperación; 24 h de caducidad absoluta y 1 h de inactividad (NIST AAL2, verificado); desbloqueo tras inactividad con un solo factor; reautenticación completa para las acciones sensibles (§6.2). Las passkeys siguen en la pregunta 34 |
+| 22 | ¿RPO, RTO y retención? | RESUELTA | RPO 24 h, RTO 24 h, retención de 7 diarias, 4 semanales, 12 mensuales y 3 anuales y prueba de restauración trimestral (§6.3) |
 | 23 | ¿Repositorio público? | RESUELTA | Sí, con las reglas de §6.2 y de `CLAUDE.md` |
 | 24 | ¿`user_id` en las tablas? | RESUELTA | No (YAGNI) |
-| 28 | ¿Licencia? | PENDIENTE (fase 0, antes de publicar) | **R: MIT.** Sin licencia, el código se puede ver pero no reutilizar legalmente; con MIT, cualquiera puede reutilizarlo citando el aviso de copyright. No afecta a la seguridad |
+| 28 | ¿Licencia? | RESUELTA | MIT (`LICENSE`) |
 | 31 | ¿Dominio propio desde el principio, también en D? | PENDIENTE (inicio de la fase 2) | **R:** sí, con DNS-01. Mantiene el mismo origen si se pasa a A (§7.3) |
 | 32 | ¿Segundo destino de las copias (la tercera copia)? | PENDIENTE (fase 2) | **R:** un segundo proveedor de almacén de objetos si cuesta menos de ~1 €/mes con este volumen [VERIFICAR]; si no, un disco externo cifrado actualizado cada mes |
-| 33 | ¿Desviación de la inactividad si fallan la passkey y el autorrelleno (T18 y T19)? | PENDIENTE (fase 2, tras las pruebas) | **R:** 8 h como máximo, documentada como desviación de NIST (§6.2); la caducidad absoluta de 24 h se mantiene |
+| 33 | ¿Ampliar la inactividad a 8 h si fallan la passkey y el autorrelleno? | RESUELTA: **ya no hace falta** | El desbloqueo tras inactividad pide solo la contraseña (o una passkey), sin TOTP, como permite NIST. El coste de usabilidad que justificaba las 8 h desaparece y se mantiene 1 h sin desviación |
 | 34 | ¿Adoptar passkeys? | PENDIENTE (fase 2, tras T18) | **R:** sí, si funcionan en la PWA; el TOTP se mantiene como respaldo |
 | 35 | ¿Retención de `audit_events` y de los logs técnicos? | PENDIENTE (fase 1) | **R:** `audit_events`, 1 año; logs técnicos, 30 días (y en las copias según su retención) |
 
@@ -1480,7 +1481,7 @@ Los números 29–35 son preguntas nuevas de esta revisión (la 30 se fusionó c
 ## 10. Fuentes consultadas
 
 - OWASP ASVS 5.0 (texto de los requisitos, capítulos V1–V17): [repositorio oficial, carpeta 5.0/en](https://github.com/OWASP/ASVS/tree/master/5.0/en)
-- NIST SP 800-63B-4, AAL y reautenticación: [pages.nist.gov/800-63-4/sp800-63b/aal](https://pages.nist.gov/800-63-4/sp800-63b/aal/). La caducidad de 1 h por inactividad solo se ha visto en fuentes secundarias, como [MojoAuth](https://mojoauth.com/glossary/session-timeout) [VERIFICAR]
+- NIST SP 800-63B-4, AAL y reautenticación (caducidad absoluta ≤ 24 h, inactividad ≤ 1 h y reautenticación con un factor tras la inactividad; verificado por el propietario): [pages.nist.gov/800-63-4/sp800-63b/aal](https://pages.nist.gov/800-63-4/sp800-63b/aal/)
 - Tailscale VPN On Demand en iOS: [documentación de Tailscale](https://tailscale.com/kb/1291/ios-vpn-on-demand)
 - GitHub, alertas de secret scanning y *push protection* de usuario frente a la de repositorio: [GitHub Docs](https://docs.github.com/en/code-security/secret-scanning/managing-alerts-from-secret-scanning/about-alerts)
 - Propiedades de la automatización «Transacción» y el importe 0: [Apple Community](https://discussions.apple.com/thread/256252606), [Matthew Cassinelli](https://matthewcassinelli.com/shortcuts-automations-ios-ipados-transaction-display-stage-manager/), [Automators](https://talk.automators.fm/t/apple-wallet-to-csv/17674), [TravelSpend](https://help.travel-spend.com/shortcuts--automation/ignQHsp85RQDsig2QwVcdX/set-up-apple-pay-automation/7tL8XfjBceg4D7mQeiSK2V) y [finerd](https://help.finerd.ai/apple-pay)

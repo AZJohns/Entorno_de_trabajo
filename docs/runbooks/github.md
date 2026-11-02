@@ -13,16 +13,9 @@ Todo lo que hay en el historial será público y además puede quedar copiado en
 
 ### 1.1 Correos en el historial
 
-- **Situación actual**: el commit inicial (`5110c0a`, «Add initial README with project title») tiene como autor tu **correo personal**. Contradice la regla «sin correos en el repositorio ni en el historial». Los commits hechos por Claude usan `noreply@anthropic.com`.
-- **Configura la privacidad del correo** (hazlo en cualquier caso):
-  1. Ajustes de tu cuenta → **Emails** → activa **«Keep my email addresses private»** y **«Block command line pushes that expose my email»**.
-  2. Copia tu dirección `ID+usuario@users.noreply.github.com`. En cada máquina, ejecuta `git config --global user.email "<esa dirección>"`.
-- **Corrige el historial** (decisión tuya; recomendado **ahora**, que solo hay unos pocos commits y el repositorio es privado):
-  1. Instala `git-filter-repo` en tu máquina y haz un clon nuevo con `--mirror`.
-  2. Crea un archivo `mailmap` con una línea: `Tu Nombre <ID+usuario@users.noreply.github.com> <correo-personal>`.
-  3. Ejecuta `git filter-repo --mailmap mailmap` y revisa el resultado con `git log --format='%an <%ae> | %cn <%ce>'`.
-  4. Haz *push* forzado de **todas** las ramas (`main` y `claude/*`). **Es destructivo**: se reescriben los identificadores de todos los commits, y cualquier otro clon o PR abierto queda desfasado.
-  5. Si no quieres reescribir, la alternativa es **aceptar** que ese correo es público (decisión tuya). La regla rige desde ahora en cualquier caso.
+- **Decisión [RESUELTA]**: el commit inicial (`5110c0a`) tiene como autor el correo del propietario. **Se acepta y no se reescribe el historial**: ese correo ya es público en su perfil de GitHub, así que reescribir no protegería nada y obligaría a un *push* forzado de todas las ramas.
+- **Lo que no puede aparecer** (en el código, en la documentación ni en el historial) son **correos de terceros** ni **datos privados** (tuyos o ajenos). Los commits de Claude usan `noreply@anthropic.com`.
+- Opcional: si en el futuro prefieres no exponer ese correo en commits nuevos, en Ajustes → **Emails** activa «Keep my email addresses private» y configura `git config --global user.email` con tu dirección `ID+usuario@users.noreply.github.com`.
 
 ### 1.2 Escaneo de secretos de todo el historial
 
@@ -37,8 +30,7 @@ Todo lo que hay en el historial será público y además puede quedar copiado en
 
 ### 1.4 Licencia
 
-- Decide la licencia (`docs/plan.md` §9, pregunta 28; recomendación: MIT) y añade `LICENSE` **antes** de publicar.
-- Sin licencia, el código es visible pero no se puede reutilizar legalmente.
+- **Decisión [RESUELTA]: MIT.** `LICENSE` ya está en la raíz del repositorio. Comprueba que el titular y el año son correctos antes de publicar.
 
 ### 1.5 Cambiar la visibilidad
 
@@ -120,10 +112,10 @@ Además:
 
 ## 7. Comprobación final (marca cada casilla)
 
-- [ ] El historial no contiene tu correo personal, o has aceptado explícitamente que sea público (§1.1).
+- [x] Correo del commit inicial: aceptado como público (§1.1). Sin correos de terceros ni datos privados en el historial (lo cubren §1.2 y §1.3).
 - [ ] gitleaks sobre todo el historial: 0 hallazgos (§1.2).
 - [ ] Revisión manual hecha (§1.3).
-- [ ] `LICENSE` presente (§1.4).
+- [x] `LICENSE` (MIT) presente (§1.4).
 - [ ] Secret scanning y *push protection* del **repositorio** activos (§2). Prueba: en una rama desechable, sube un secreto **falso** con el formato de un proveedor conocido; tiene que bloquearse. Borra la rama después.
 - [ ] Dependabot (alertas y actualizaciones de seguridad) e informes privados de vulnerabilidades activos (§3).
 - [ ] CodeQL (configuración por defecto) activo y con un primer análisis completado (§4).
