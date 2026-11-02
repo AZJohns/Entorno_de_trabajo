@@ -16,7 +16,7 @@
     "db:up": "docker compose up -d --wait db",
     "db:down": "docker compose down",
     "db:migrate": "pnpm --filter @backoffice/api db:migrate",
-    "check:migrations": "node scripts/check-migrations-immutable.ts",
+    "check:migrations": "node apps/api/scripts/check-migrations-immutable.ts",
     "secrets:scan": "gitleaks git --redact --verbose ."
   },
   "devDependencies": {
