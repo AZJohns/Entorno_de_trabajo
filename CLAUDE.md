@@ -1,0 +1,64 @@
+# CLAUDE.md — reglas para trabajar en este repositorio
+
+Backoffice personal y privado de un solo usuario: finanzas, tareas y notas. Monorepo con `apps/web`
+(React + Vite + Tailwind, PWA), `apps/api` (Express 5, monolito modular) y `packages/shared` (esquemas
+Zod). Usa PostgreSQL. El diseño está en `docs/plan.md` y el contrato del Excel en `docs/plantilla-excel.md`.
+Si alguno de esos documentos contradice el código, avisa antes de cambiar nada.
+
+## Forma de trabajar: entender → diseñar → implementar → comprobar
+1. **Entender**: lee el código, el README del módulo y los ADR relacionados. Si el objetivo es ambiguo, pregunta.
+2. **Diseñar**: explica en pocas líneas qué vas a cambiar y por qué antes de tocar varios archivos.
+3. **Implementar**: haz el cambio mínimo que resuelve lo pedido. No incluyas refactors ni mejoras que no se hayan pedido.
+4. **Comprobar**: ejecuta lint, typecheck y tests (más abajo). Informa del resultado real, incluidos los fallos.
+
+## Alcance
+- Cambios pequeños y dentro de lo pedido. Si algo fuera del alcance lo requiere, propónlo y espera confirmación.
+- No cambies la arquitectura (módulos, capas, formato de errores, versionado de la API) sin un ADR nuevo en `docs/adr/`.
+- No añadas dependencias sin justificarlas en `docs/dependencias.md`: para qué sirve, qué alternativa había,
+  licencia y estado de mantenimiento. Antes, comprueba si Node, el navegador o PostgreSQL ya lo resuelven.
+
+## Arquitectura (resumen)
+- Módulos en `apps/api/src/modules/`: auth, finance, imports, tasks, notes y notifications.
+- Capas: rutas → controlador → servicio → repositorio. La lógica pura (cálculos) va en `domain/`, sin E/S.
+- Un módulo solo importa a otro a través de su `index.ts` (servicio público). Nunca accede a su repositorio ni a sus tablas.
+- La API está bajo `/api/v1`. Todas las rutas exigen sesión salvo una lista explícita. Errores en formato RFC 9457 con el gestor central.
+- Validación con los esquemas de `packages/shared`, que se usan en el frontend y en el backend.
+
+## Base de datos
+- **Nunca edites una migración ya aplicada o publicada en `main`: crea una nueva.** La CI lo comprueba.
+- Importes como `bigint` en céntimos (`*_cents`). Nunca `float`, `parseFloat` ni `Number(texto)` con importes:
+  usa la utilidad de importes de `packages/shared`.
+- No guardes datos derivados (saldos, totales, proyecciones): se calculan al leer.
+- Las reglas de negocio importantes también van como restricciones en la base de datos (`CHECK`, FK, índices únicos).
+
+## Convenciones de código
+- Identificadores en inglés. Comentarios, documentación, mensajes de commit y textos de la interfaz en español.
+- Los comentarios explican el **porqué**, no lo que ya dice el código.
+- TSDoc obligatorio en las funciones exportadas y en toda la lógica financiera (unidades, redondeo, casos límite).
+- Cada módulo tiene un `README.md`: responsabilidad, API pública, tablas y decisiones.
+- TypeScript estricto. No uses `any` ni `@ts-ignore` sin un comentario que lo justifique.
+
+## Tests (obligatorios en la lógica de negocio)
+- Cálculos financieros, importador del Excel, conciliación, permisos (rutas sin sesión, sin CSRF o con un
+  token de dispositivo) e ingesta del atajo.
+- Un cambio de comportamiento lleva su test. Un error corregido lleva un test que lo reproduce.
+
+## Comprobar antes de dar algo por terminado
+Los comandos los define la fase 0. Hasta entonces son provisionales:
+- `pnpm lint`
+- `pnpm typecheck`
+- `pnpm test`
+- `pnpm build` (si el cambio afecta al build)
+
+Si no puedes ejecutarlos, dilo explícitamente. Nunca desactives, saltes ni borres un test para que la CI pase.
+
+## Seguridad y datos
+- **Nunca subas datos reales**: ni el Excel real, ni extractos, ni volcados de la base de datos, ni capturas con cifras.
+  Los tests usan solo fixtures FICTICIAS de `apps/api/test/fixtures/`.
+- Nunca subas secretos: van en variables de entorno (`.env` está ignorado; `.env.example` va sin valores).
+- No registres en los logs cookies, tokens, contraseñas ni cuerpos de petición con datos financieros.
+- Nunca guardes números de tarjeta ni credenciales bancarias: de cada tarjeta solo se guarda su nombre en Wallet.
+- No evalúes ni ejecutes nada del contenido de los archivos subidos.
+
+## Git
+- Commits pequeños y con un mensaje descriptivo en español. No hagas push directo a `main`.
