@@ -1,0 +1,32 @@
+# Actualizaciones de dependencias. Las alertas y actualizaciones de seguridad se activan en la
+# configuración del repositorio (docs/runbooks/github.md §3).
+#
+# cooldown: Dependabot no propone versiones publicadas hace menos de 3 días. Coincide con
+# minimumReleaseAge de pnpm-workspace.yaml (4320 minutos); si no coincidieran, pnpm rechazaría
+# las versiones que propone Dependabot. El cooldown no se aplica a las actualizaciones de seguridad.
+version: 2
+updates:
+  - package-ecosystem: npm # también cubre pnpm (lee pnpm-lock.yaml)
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
