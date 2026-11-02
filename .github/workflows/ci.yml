@@ -1,5 +1,5 @@
 # Integración continua. Cada job es una comprobación que la regla de `main` puede exigir:
-# lint, typecheck, test (24), test (26), build, migrations-immutable y gitleaks.
+# lint, typecheck, test (24), test (26), build, migrations-immutable, gitleaks y windows.
 name: CI
 
 on:
@@ -131,3 +131,50 @@ jobs:
       # Binario oficial con versión y checksum fijados (el mismo script que en local).
       - run: sh scripts/install-gitleaks.sh "$RUNNER_TEMP/bin"
       - run: '"$RUNNER_TEMP/bin/gitleaks" git --redact --verbose --log-opts="--all" .'
+
+  windows:
+    # Comprobación ligera de que el repositorio funciona en Windows x64 con Git para Windows:
+    # finales de línea LF, instalación de gitleaks, pnpm install (activa el hook), lint y el hook.
+    name: windows
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash # Git Bash, el mismo sh con el que Git para Windows ejecuta los hooks
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Todos los archivos de texto tienen LF tras el checkout (.gitattributes)
+        run: |
+          if git ls-files --eol | grep -v 'w/lf' | grep -v 'w/-text' | grep -v 'w/ '; then
+            echo "Hay archivos con CRLF en la copia de trabajo"
+            exit 1
+          fi
+      - name: Instalar gitleaks con el script (asset windows_x64 + SHA-256)
+        run: |
+          sh scripts/install-gitleaks.sh "$(cygpath -u "$RUNNER_TEMP")/bin"
+          cygpath -w "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - run: gitleaks version
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - name: El hook de pre-commit bloquea un secreto falso
+        run: |
+          # core.hooksPath lo fija el script prepare durante pnpm install (scripts/setup-git-hooks.ts).
+          test "$(git config --get core.hooksPath)" = ".githooks"
+          git config user.name "CI"
+          git config user.email "ci@example.invalid"
+          # Token falso generado en tiempo de ejecución: no queda escrito en el repositorio.
+          node -e "const c=require('node:crypto');const a='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';let t='ghp_';for(const b of c.randomBytes(36))t+=a[b%62];require('node:fs').writeFileSync('probe-secret.txt','token = \"'+t+'\"\n')"
+          git add probe-secret.txt
+          before="$(git rev-parse HEAD)"
+          if git commit -m "prueba de secreto"; then
+            echo "ERROR: el hook no ha bloqueado el commit"
+            exit 1
+          fi
+          test "$(git rev-parse HEAD)" = "$before"
+          echo "OK: el hook ha bloqueado el commit con el secreto falso"
