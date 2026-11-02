@@ -1,0 +1,22 @@
+# PostgreSQL para desarrollo local. Solo escucha en 127.0.0.1: no se expone a la red.
+# Las credenciales vienen de .env (ver .env.example); aquí no hay ningún secreto.
+services:
+  db:
+    # Versión fijada por digest: la misma que usa la CI (.github/workflows/ci.yml).
+    image: postgres:18@sha256:3a4264520e121176619f54ff867d12774bc81e95e7b84db58d63bccdb6144b81
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?Define POSTGRES_USER en .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en .env}
+      POSTGRES_DB: ${POSTGRES_DB:-backoffice}
+    ports:
+      - '127.0.0.1:5432:5432'
+    volumes:
+      - db-data:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  db-data:
