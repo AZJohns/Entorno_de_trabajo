@@ -187,13 +187,27 @@ En Git Bash: `openssl rand -hex 16`.
 
 ## Sesiones de Claude Code en la nube
 
-Las sesiones en la nube también hacen commits, así que necesitan gitleaks: si no está instalado, el hook bloquea el commit. En la **configuración del entorno** (script de configuración que se ejecuta al crear la sesión), añade:
+Las sesiones en la nube también hacen commits, así que necesitan gitleaks: sin él, el hook de pre-commit bloquea el commit. También necesitan Node ≥ 24.12, porque `pnpm install` falla con versiones anteriores (`engineStrict`).
 
-```bash
-sh scripts/install-gitleaks.sh "$HOME/.local/bin" && echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"
-```
+De las dos cosas se encarga el **hook `SessionStart` del repositorio** (`.claude/settings.json` → `.claude/hooks/session-start.sh`). **No hace falta ningún script de configuración en el entorno.**
 
-El script descarga la release oficial de gitleaks con la **versión fijada** y **comprueba su SHA-256** antes de instalarla; si el checksum no coincide, no instala nada. La sesión también necesita Node ≥ 24.12 en el `PATH` y pnpm 10.34.9.
+- **Cuándo se ejecuta:** al empezar, al reanudar, al limpiar y al compactar cada sesión. Solo actúa si `CLAUDE_CODE_REMOTE=true`; en tu máquina sale sin hacer nada.
+- **gitleaks:** si no está instalado, lo instala con `scripts/install-gitleaks.sh` (versión fijada y SHA-256 comprobado) en `/usr/local/bin`, que ya está en el `PATH` de todos los comandos. Si ya está, no hace nada; la comprobación tarda menos de un segundo.
+- **Node:** si el `node` del `PATH` es anterior a 24.12 (en la nube, por defecto, es el 22), busca uno instalado en `/opt/node*/bin` y lo antepone al `PATH` de los comandos de la sesión mediante `CLAUDE_ENV_FILE`. Es el mecanismo documentado para que una variable llegue a los comandos; `.bashrc` puede no aplicarse. pnpm cambia solo a la versión fijada en `packageManager`.
+- **Si algo falla** (no se puede instalar gitleaks, o no hay un Node ≥ 24.12), el hook termina con el código 2. La sesión arranca igualmente, pero ves un aviso «SessionStart hook error» con el motivo.
+
+**Por qué un hook y no el script de configuración del entorno:**
+- El entorno **Default** lo comparten tus sesiones de otros repositorios. En ellas, `scripts/install-gitleaks.sh` no existe, así que el script fallaría y la sesión no arrancaría.
+- El hook vive en este repositorio y solo se ejecuta en sus sesiones.
+
+**Límites, según la documentación de Claude Code:**
+- Los hooks del repositorio **no se cargan** en sesiones con varios repositorios ni en los hilos de un proyecto. En esos casos hay que instalar gitleaks a mano (`sh scripts/install-gitleaks.sh /usr/local/bin`) o con un script de configuración **condicionado** a que el archivo exista, para no romper las sesiones de otros repositorios:
+
+  ```bash
+  if [ -f scripts/install-gitleaks.sh ] && ! command -v gitleaks >/dev/null 2>&1; then sh scripts/install-gitleaks.sh /usr/local/bin; fi
+  ```
+
+- El hook se cancela si tarda más de 120 s (`timeout` en `.claude/settings.json`).
 
 ## Licencia
 
