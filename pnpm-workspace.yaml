@@ -1,0 +1,16 @@
+packages:
+  - apps/*
+  - packages/*
+
+# Falla la instalación si la versión de Node no cumple "engines" (Node >= 24.12: Argon2 nativo y
+# ejecución directa de TypeScript estable). Ver docs/adr/0001-monorepo-pnpm.md.
+engineStrict: true
+
+# Defensa de la cadena de suministro: no se instalan versiones publicadas hace menos de 3 días
+# (en minutos). Coincide con el "cooldown" de Dependabot (.github/dependabot.yml) para que sus PR
+# no propongan versiones que pnpm rechazaría.
+minimumReleaseAge: 4320
+
+# pnpm 10 no ejecuta scripts de instalación de dependencias salvo los de esta lista (vacía a
+# propósito). Añadir un paquete aquí exige justificarlo en docs/dependencias.md.
+onlyBuiltDependencies: []

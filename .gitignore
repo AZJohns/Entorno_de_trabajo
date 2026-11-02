@@ -1,0 +1,30 @@
+# Dependencias y artefactos
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.vite/
+
+# Secretos y configuración local (nunca al repositorio)
+.env
+.env.*
+!.env.example
+
+# Datos reales: nunca al repositorio (repositorio público)
+*.xlsx
+*.xlsm
+*.xls
+*.csv
+*.dump
+*.sql.gz
+*.backup
+backups/
+# Única excepción: fixtures FICTICIAS de los tests
+!apps/api/test/fixtures/*ficticio*
+
+# Sistema y editores
+.DS_Store
+*.log
+.idea/
+.vscode/*
+!.vscode/extensions.json
