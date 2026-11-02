@@ -2,11 +2,11 @@
 
 > Documento de referencia para implementar el importador (fase 3 de `docs/plan.md`).
 > Describe **solo la estructura**. Los datos reales nunca se suben al repositorio.
-> Revisión 2 (2026-11-02): incorpora las confirmaciones hechas contra la plantilla real.
+> Revisión 3 (2026-11-02): no quedan puntos por confirmar. Incorpora las etiquetas de los resúmenes, la ausencia de notas en Eventos y las validaciones de datos existentes (§2.1, §6.1, §13 y §14).
 
 ## 0. Cómo leer este documento
 
-- **Confirmado**: comprobado por el propietario contra la plantilla real. Todo lo que en la revisión 1 estaba [A CONFIRMAR] ya está resuelto, salvo los **textos exactos** de algunas etiquetas, que se anotan al crear la fixture (§13).
+- **Confirmado**: comprobado por el propietario contra la plantilla real. Todo lo que en revisiones anteriores estaba [A CONFIRMAR] ya está resuelto (§13).
 - **[DECISIÓN]**: regla de negocio fijada por el propietario.
 - Los códigos internos (`income`, `eur_per_month`…) son los identificadores del código; las etiquetas en español son las del Excel.
 - Versiones de la plantilla:
@@ -53,12 +53,20 @@ El fin de la tabla **no se detecta solo por la primera fila vacía**. Así:
 |---|---|---|---|
 | Datos y supuestos | Datos desde la 6 (validación de Estado hasta F43) | Primera fila con todas las columnas de entrada vacías | Cualquier contenido posterior → aviso `ROW_AFTER_GAP` (no se importa y se enumera) |
 | Presupuesto | Datos 6–19 · 20 vacía · resumen 21–26 (etiqueta en A, valores en E y F) · nota A28:H30 | La tabla termina en la fila **anterior a la etiqueta de inicio del resumen** (lista fija `PRESUPUESTO_SUMMARY_START`, columna A). Las filas vacías al final de la tabla se permiten | El resumen y la nota se ignoran. Si no se encuentra la etiqueta → error `SUMMARY_NOT_FOUND` |
-| Eventos y compromisos | Datos desde la 6, sin resumen | Igual que Datos | Igual que Datos |
+| Eventos y compromisos | Datos desde la 6, sin resumen **ni notas al pie** (confirmado): los datos acaban en la última fila con contenido | Igual que Datos | Igual que Datos |
 | Metas | Datos 6–8 · 9–10 vacías · resumen 11–14 · nota A17 | Igual que Presupuesto, con la lista fija `METAS_SUMMARY_START` | El resumen y la nota se ignoran. Si no se encuentra la etiqueta → `SUMMARY_NOT_FOUND` |
 | Escenarios | Datos 6–12 · nota A15 | Primera fila con todas las columnas de entrada (A, C y D) vacías | Si una fila posterior **solo** tiene contenido en la columna A, es una nota y se ignora. Si tiene contenido en C o D → aviso `ROW_AFTER_GAP` |
 
 - Dentro de la zona de datos de Presupuesto y Metas, **una fila vacía seguida de otra con datos** genera el aviso `ROW_AFTER_GAP`: esa fila no se importa y se enumera. Nunca se pierden datos sin que se note.
-- Las listas de etiquetas de inicio de resumen están en el código, en un único módulo de configuración por hoja. Contienen el texto exacto de la plantilla real, que se anota al crear la fixture (§13). Previsión: «Total gastos recurrentes» en Presupuesto. Por ser una lista, admite variantes si en el futuro se renombra la etiqueta.
+- Las listas de etiquetas de inicio de resumen están en el código, en un único módulo de configuración por hoja. Por ser listas, admiten variantes si en el futuro se renombra una etiqueta. Valores confirmados con la plantilla real (se comparan tras la normalización de §3):
+
+| Hoja | Etiquetas del resumen (columna A, en orden) | Etiqueta que marca el fin de la tabla |
+|---|---|---|
+| Presupuesto (filas 21–26) | «Total gastos recurrentes conocidos» · «Ingresos netos mensuales» · «Margen aparente después de gastos conocidos» · «Tasa de ahorro aparente» · «Gastos esenciales conocidos» · «Integridad de categorías de gasto» | `PRESUPUESTO_SUMMARY_START = ["Total gastos recurrentes conocidos"]` |
+| Metas (filas 11–14) | «Aportación mensual propuesta» · «Margen mensual conocido» · «Margen no asignado» · «Prueba de capacidad» | `METAS_SUMMARY_START = ["Aportación mensual propuesta"]` |
+
+- Solo la **primera** etiqueta decide el fin de la tabla. Las demás se usan como comprobación: si la primera aparece pero el bloque no contiene las siguientes en orden → aviso `SUMMARY_UNEXPECTED`. Ese aviso indica que la estructura del resumen ha cambiado, aunque el fin de la tabla se detecte bien.
+- Las etiquetas y valores del resumen **no se importan**: la app recalcula sus equivalentes (§9.2 y §9.4).
 
 ---
 
@@ -119,9 +127,9 @@ Todas empiezan en la columna A, con la cabecera en la fila 5 y los datos desde l
 | A | Grupo | `groupLabel` | texto | sí | no | Agrupación visual; no clasifica |
 | B | Concepto | `concept` | texto | sí | no | |
 | C | Valor | `amountCents` o `quantityHundredths` | importe o meses, según la Unidad | sí | **no** (confirmado: todos son literales) | Fuente de verdad |
-| D | Unidad | `unit` | lista | sí | no | |
-| E | Naturaleza | `nature` | lista | sí | no | |
-| F | Estado | `status` | lista | sí | no | En la v2, la validación de datos cubre toda la tabla (§14) |
+| D | Unidad | `unit` | lista | sí | no | **En la v1 es texto libre** (sin validación de datos, confirmado); la v2 añade una lista (§14). El importador valida contra el catálogo en cualquier caso |
+| E | Naturaleza | `nature` | lista | sí | no | **En la v1 es texto libre** (confirmado); la v2 añade una lista (§14). El importador valida contra el catálogo en cualquier caso |
+| F | Estado | `status` | lista | sí | no | En la v1, la validación solo cubre `F6:F43`; la v2 la extiende (§14) |
 | G | Fuente/fecha | `sourceNote` | texto (una fecha se convierte a ISO) | no | no | No se interpreta |
 | H | Nota | `note` | texto | no | no | |
 | I | Tipo de registro | `recordType` | lista | sí | no | **Nuevo en la v2** (§7) |
@@ -386,6 +394,7 @@ Formato de cada problema: `{ code, severity: "error" | "warning" | "info", sheet
 | `HEADER_MISMATCH` | error | La cabecera de la fila 5 no coincide |
 | `TEMPLATE_VERSION_UNSUPPORTED` | error | No es v2; indica qué cambio de §14 falta |
 | `SUMMARY_NOT_FOUND` | error | No se encuentra la etiqueta de inicio del resumen (Presupuesto, Metas) |
+| `SUMMARY_UNEXPECTED` | warning | El bloque de resumen no contiene las etiquetas esperadas en orden |
 | `ROW_AFTER_GAP` | warning | Hay datos tras una fila vacía, o en C o D tras el fin de Escenarios |
 | `CELL_REQUIRED` | error | Falta un valor obligatorio |
 | `CELL_TYPE` | error | El tipo de la celda no es el esperado |
@@ -429,8 +438,9 @@ Eliminados respecto a la revisión 1: `MONTH_MISMATCH` (no existe esa celda) y `
   - Una meta de fondo de emergencia, otra completada y otra con aportación 0.
   - Escenarios con ZERO, REF y SUMRANGE, que crucen los umbrales del 0 %, el 20 % y el 40 %, y uno que provoque `SCENARIO_ITEM_ALREADY_IN_BASE`.
   - Una línea esencial pendiente y una categoría sin correspondencia.
-  - La validación de Estado limitada a un rango corto, para comprobar que el importador valida igualmente.
+  - Una validación limitada a un rango corto y una columna de lista sin validación (como Unidad en la v1), con un valor fuera del catálogo después del rango, para comprobar que el importador lo detecta igualmente.
 - Los **resultados esperados se calculan a mano** (`plan-ficticio-v2.expected.md`).
+- Las validaciones de datos de Excel **no sustituyen** a las del importador: Excel no revisa los valores que ya existían al crear la validación, ni los pegados. Por eso el importador valida siempre todas las filas contra los catálogos.
 - Las variantes con errores se generan en los tests a partir de una copia de la fixture válida.
 - Antes de hacer commit, se revisan los metadatos que añada Excel (`docProps/core.xml`: autor, empresa) y se vacían.
 
@@ -438,11 +448,13 @@ Eliminados respecto a la revisión 1: `MONTH_MISMATCH` (no existe esa celda) y `
 
 ## 13. Puntos pendientes antes de implementar
 
-Las 12 dudas de la revisión 1 están resueltas. Quedan detalles de texto que se anotan al crear la fixture, sin decisiones de diseño:
+**Ninguno.** Las 12 dudas de la revisión 1 y los 3 detalles de la revisión 2 están confirmados con la plantilla real:
 
-1. Texto exacto de la primera etiqueta del resumen de Presupuesto (fila 21) y de Metas (fila 11), para `PRESUPUESTO_SUMMARY_START` y `METAS_SUMMARY_START`.
-2. Si «Eventos y compromisos» tiene notas al pie (no se mencionaron). Si las tiene, se tratan como en Escenarios.
-3. Si las validaciones de datos de Unidad (D) y Naturaleza (E) de Datos tienen el mismo rango corto que Estado (F6:F43). Si lo tienen, se amplían también (§14, paso 2).
+1. Etiquetas del resumen de Presupuesto y de Metas → §2.1.
+2. «Eventos y compromisos» no tiene notas al pie → §2.1.
+3. Validaciones de datos existentes en la v1: solo `Datos!F6:F43` (Estado) y `Eventos!F6:F23` (Incluir 12M). Unidad y Naturaleza son texto libre → §6.1 y §14, paso 2.
+
+Si al crear la fixture o al migrar el Excel aparece algo que contradiga este documento, se corrige aquí **antes** de implementar.
 
 ---
 
@@ -465,7 +477,20 @@ Son cambios que haces **una vez** en tu Excel. Ninguno altera los cálculos que 
       - Filas antiguas → Histórico.
       - El resto → Supuesto o Meta.
 
-**2. «Datos y supuestos»: ampliar las validaciones.** La validación de Estado cubre solo `F6:F43`. Selecciona `F6:F500` y vuelve a aplicar la misma lista (Datos → Validación de datos). Haz lo mismo en D (Unidad) y E (Naturaleza) si tienen el mismo rango corto.
+**2. Validaciones de datos: añadir las que faltan y extenderlas a un rango amplio.** Hoy solo existen dos: `Datos!F6:F43` (Estado) y `Eventos!F6:F23` (Incluir 12M). Unidad y Naturaleza son texto libre. En cada caso: selecciona el rango → Datos → Validación de datos → Permitir: **Lista** → Origen con los valores separados por `;`. Marca «Mostrar mensaje de error» con el estilo **Detener**.
+
+| Hoja | Rango | Lista |
+|---|---|---|
+| Datos y supuestos | `D6:D500` (Unidad, **nueva**) | `€/mes;€;meses` |
+| Datos y supuestos | `E6:E500` (Naturaleza, **nueva**) | `Recurrente;Variable;Irregular;Saldo;Supuesto;Objetivo;Potencial;Finalizado;Acumulado;Pagado;Puntual` |
+| Datos y supuestos | `F6:F500` (Estado, **se extiende** desde F43) | `Confirmado;Pendiente;Confirmar;Provisional;Potencial;No activo;Pausado;Histórico;Confirmar pagado;Estimado` |
+| Datos y supuestos | `I6:I500` (Tipo de registro, **nueva**; ya hecho en el paso 1) | la del paso 1 |
+| Eventos y compromisos | `F6:F500` (Incluir 12M, **se extiende** desde F23) | `Sí;No` |
+| Eventos y compromisos | `D6:D500` (Estado, recomendada) | `Estimado;Pagado;Finalizado;Activo;No activo;No comprometido` |
+| Presupuesto | `C6:C19` y `D6:D19` (Tipo y Esencial, recomendadas) | `Fijo;Variable;Irregular` · `Sí;No` |
+
+- En Presupuesto (y en Metas, paso 5) la validación cubre solo la zona de datos, porque debajo está el resumen. Si insertas filas **dentro** de esa zona, Excel extiende la validación automáticamente.
+- **Revisa los valores que ya existen**: una validación nueva no comprueba lo que ya estaba escrito. Usa Datos → Validación de datos → **Rodear con un círculo datos no válidos**. Corrige cada celda marcada: Unidad y Naturaleza eran texto libre, así que puede haber variantes como `EUR/mes` o `€ al mes`. Las diferencias de mayúsculas, acentos y espacios en los extremos ya las tolera la normalización de §3. El importador también las rechazaría (`VALUE_NOT_IN_LIST`), pero así las ves antes.
 
 **3. «Eventos y compromisos»: eliminar «Impacto base».** Haz clic derecho en la columna **G** → Eliminar. «Nota» pasa a G. Comprueba que `G5` dice `Nota` y que ninguna celda muestra `#¡REF!`: no debería, porque ninguna fórmula la leía.
 

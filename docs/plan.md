@@ -1314,7 +1314,7 @@ Tamaños relativos (S, M, L, XL). No pongo días porque no conozco tu ritmo y un
 
 ### Fase 3 — Importación del Excel + presupuesto, proyección, metas, escenarios, comprobaciones y comparativa · tamaño XL (se divide en tres)
 
-- **Antes de empezar:** migrar tu Excel a la v2 (`plantilla-excel.md` §14) y anotar los textos exactos de las etiquetas de resumen (§13). Las decisiones de diseño de la plantilla ya están resueltas.
+- **Antes de empezar:** migrar tu Excel a la v2 (`plantilla-excel.md` §14). La especificación de la plantilla no tiene puntos abiertos (§13).
 - **Alcance**
   - **3a. Importación**
     - Spike de la librería de Excel (§4.2).
