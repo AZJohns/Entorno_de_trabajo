@@ -2,7 +2,8 @@
 
 Backoffice personal y privado de un solo usuario: finanzas, tareas y notas. Monorepo con `apps/web`
 (React + Vite + Tailwind, PWA), `apps/api` (Express 5, monolito modular) y `packages/shared` (esquemas
-Zod). Usa PostgreSQL. El diseño está en `docs/plan.md` y el contrato del Excel en `docs/plantilla-excel.md`.
+Zod). Usa PostgreSQL. El diseño está en `docs/plan.md`, el contrato del Excel en `docs/plantilla-excel.md` y la
+matriz de seguridad (OWASP ASVS 5.0 L2) en `docs/seguridad/asvs-l2.md`.
 Si alguno de esos documentos contradice el código, avisa antes de cambiar nada.
 
 ## Forma de trabajar: entender → diseñar → implementar → comprobar
@@ -52,13 +53,23 @@ Los comandos los define la fase 0. Hasta entonces son provisionales:
 
 Si no puedes ejecutarlos, dilo explícitamente. Nunca desactives, saltes ni borres un test para que la CI pase.
 
+## Repositorio PÚBLICO: todo lo que se sube (también el historial) es público
+- Nunca subas secretos, dominios, IP, correos, nombres reales de cuentas, bancos o tarjetas, ni datos financieros:
+  ni en el código, ni en los tests, ni en la documentación, ni en los mensajes de commit.
+- Configuración solo por variables de entorno (`.env` está ignorado; `.env.example` va sin valores). El dominio
+  de producción es `PUBLIC_ORIGIN`, nunca un literal en el código.
+- **Nunca subas datos reales**: ni el Excel real, ni extractos, ni volcados, ni capturas con cifras. Los tests
+  usan solo fixtures FICTICIAS de `apps/api/test/fixtures/`. Los resultados de las pruebas en el dispositivo, solo
+  como recuentos y formatos.
+- gitleaks se ejecuta en pre-commit y en CI: no lo desactives ni amplíes `.gitleaksignore` sin explicarlo.
+- Si se sube un secreto por error: avisa, **rótalo primero** y después límpialo (`docs/runbooks/github.md` §8).
+- Los cambios de seguridad actualizan `docs/seguridad/asvs-l2.md` en el mismo PR.
+
 ## Seguridad y datos
-- **Nunca subas datos reales**: ni el Excel real, ni extractos, ni volcados de la base de datos, ni capturas con cifras.
-  Los tests usan solo fixtures FICTICIAS de `apps/api/test/fixtures/`.
-- Nunca subas secretos: van en variables de entorno (`.env` está ignorado; `.env.example` va sin valores).
 - No registres en los logs cookies, tokens, contraseñas ni cuerpos de petición con datos financieros.
 - Nunca guardes números de tarjeta ni credenciales bancarias: de cada tarjeta solo se guarda su nombre en Wallet.
 - No evalúes ni ejecutes nada del contenido de los archivos subidos.
 
 ## Git
-- Commits pequeños y con un mensaje descriptivo en español. No hagas push directo a `main`.
+- Commits pequeños y con un mensaje descriptivo en español. No hagas push directo a `main`: siempre mediante PR con la CI en verde.
+- El correo del autor de los commits es una dirección `noreply`, nunca un correo personal.

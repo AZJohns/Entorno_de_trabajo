@@ -1,8 +1,8 @@
 # Plan del backoffice personal
 
-- **Estado:** borrador v1 (diseño; todavía no hay código)
-- **Fecha:** 2026-11-02
-- **Documentos relacionados:** [`docs/plantilla-excel.md`](plantilla-excel.md) (contrato del importador) y [`CLAUDE.md`](../CLAUDE.md) (reglas de trabajo)
+- **Estado:** borrador v2 (diseño; todavía no hay código)
+- **Fecha:** 2026-11-02 · **Revisión 2:** incorpora las confirmaciones de la plantilla real y tus decisiones sobre §9 (repositorio público, ASVS 5.0 L2 + NIST SP 800-63B, conciliación, despliegue con medición)
+- **Documentos relacionados:** [`docs/plantilla-excel.md`](plantilla-excel.md) (contrato del importador), [`docs/seguridad/asvs-l2.md`](seguridad/asvs-l2.md) (matriz de cumplimiento), [`docs/runbooks/github.md`](runbooks/github.md) (configuración del repositorio público), [`SECURITY.md`](../SECURITY.md) y [`CLAUDE.md`](../CLAUDE.md) (reglas de trabajo)
 
 **Marcas usadas en este documento**
 - **[VERIFICAR]**: dato que no he podido comprobar o que cambia con el tiempo (versiones, precios, comportamiento de iOS). Hay que confirmarlo antes de decidir nada que dependa de él.
@@ -24,13 +24,13 @@
 
 | # | Premisa | Corrección |
 |---|---|---|
-| 1 | «Hace falta HTTPS público para el atajo y las notificaciones» | **Solo es cierto en parte.** El atajo sí necesita llegar al servidor. Las notificaciones push **no**: el servidor solo hace conexiones salientes al servicio de push de Apple. La PWA y el *service worker* necesitan HTTPS con un certificado válido, no necesariamente público. Existe una alternativa sin exposición pública (§7.2, opción D) |
+| 1 | «Hace falta HTTPS público para el atajo y las notificaciones» | **Solo es cierto en parte** (la fase 2 empieza con la opción privada y mide; §7). El atajo sí necesita llegar al servidor. Las notificaciones push **no**: el servidor solo hace conexiones salientes al servicio de push de Apple. La PWA y el *service worker* necesitan HTTPS con un certificado válido, no necesariamente público. Existe una alternativa sin exposición pública (§7.2, opción D) |
 | 2 | «Deduplicar envíos repetidos con una clave de idempotencia» | Una clave generada **dentro** del atajo no evita los duplicados cuando iOS ejecuta la automatización dos veces, porque cada ejecución genera una clave distinta. Hacen falta dos mecanismos: la clave, para los reintentos, y una **huella** (tarjeta + importe + comercio + ventana de tiempo) que marque «posible duplicado» sin rechazarlo (§5.5) |
-| 3 | Clasificar las filas de «Datos y supuestos» | Recomiendo **añadir la columna «Tipo de registro»** en lugar de inferirla. Es más fiable y más sencillo de mantener (§3.3) |
+| 3 | Clasificar las filas de «Datos y supuestos» | **RESUELTO:** se añade la columna «Tipo de registro» (plantilla v2; migración en `plantilla-excel.md` §14) |
 | 4 | Las comprobaciones (Checks) de la plantilla | En la app, la mitad de ellas **no pueden fallar por construcción** (p. ej., «gasto total = suma de líneas»). Se convierten en invariantes probados por tests, no en comprobaciones visibles para el usuario (`plantilla-excel.md` §9.6) |
-| 5 | «Tests de conciliación» | La conciliación no está definida en el enunciado. Propongo una definición mínima (§2.3, `account_reconciliations`) y la dejo como pregunta abierta |
-| 6 | Movimientos con origen «importación» | El Excel es **plan**, no movimientos reales. No hay ninguna fuente de importación de movimientos reales definida (¿extractos bancarios?). Se deja el valor en el modelo, pero no se implementa nada [DECIDIR] |
-| 7 | `.xlsm` sin macros | Si no hay macros, guardar como `.xlsx` simplifica la validación del tipo de archivo y elimina una ambigüedad [DECIDIR] |
+| 5 | «Tests de conciliación» | **RESUELTO:** conciliación mensual por cuenta frente al saldo del banco, con un movimiento de ajuste explícito si hay diferencia (§2.3) |
+| 6 | Movimientos con origen «importación» | **RESUELTO:** la importación de extractos queda fuera del MVP y el origen `import` se elimina del modelo hasta entonces |
+| 7 | `.xlsm` sin macros | **RESUELTO:** se guarda como `.xlsx` |
 | 8 | «Al tocar la notificación se abre la bandeja de pendientes» | En iOS hay errores documentados en los que `clients.openWindow(url)` abre la raíz de la app en vez de la URL indicada. Según un comentario de WebKit, ya no se reproduce en iOS 26 [VERIFICAR]. El diseño no depende de ello: la pantalla de inicio muestra los pendientes (§5.7) |
 | 9 | Tareas programadas (recordatorios) | Exigen un proceso **siempre encendido**. Eso descarta los planes gratuitos que «duermen» (§7) |
 
@@ -102,13 +102,17 @@ jobs (infraestructura) ──▶ tasks, notifications, imports, auth (limpiezas 
 .
 ├── CLAUDE.md
 ├── README.md                       # qué es, cómo arrancarlo y enlaces a docs/
+├── SECURITY.md                     # cómo reportar vulnerabilidades en privado
+├── LICENSE                         # pendiente de decidir (§9, pregunta 28)
+├── .githooks/                      # pre-commit con gitleaks (core.hooksPath, sin dependencias npm)
 ├── docs/
 │   ├── plan.md                     # este documento
 │   ├── plantilla-excel.md          # contrato del importador
 │   ├── dependencias.md             # registro de dependencias (§4.3)
 │   ├── atajo-iphone.md             # configuración paso a paso del atajo (fase 2)
 │   ├── adr/                        # 0001-monorepo-pnpm.md, 0002-express.md, …
-│   └── runbooks/                   # despliegue, copia y restauración, rotación de secretos
+│   ├── seguridad/                  # asvs-l2.md (matriz), inventario de logs y de criptografía
+│   └── runbooks/                   # github.md, despliegue, copia y restauración, rotación de secretos
 ├── apps/
 │   ├── api/
 │   │   ├── src/
@@ -142,7 +146,7 @@ jobs (infraestructura) ──▶ tasks, notifications, imports, auth (limpiezas 
 │   └── shared/src/                 # schemas/ (Zod por módulo), money/, errors/ (códigos)
 ├── compose.yaml                    # PostgreSQL local
 ├── deploy/                         # compose.prod.yaml, Caddyfile (sin secretos)
-└── .github/workflows/ci.yml
+└── .github/                        # workflows/ci.yml, dependabot.yml
 ```
 
 ---
@@ -179,12 +183,38 @@ jobs (infraestructura) ──▶ tasks, notifications, imports, auth (limpiezas 
 | user_id | uuid | FK `users` ON DELETE CASCADE |
 | token_hash | bytea | NOT NULL UNIQUE. SHA-256 del valor de la cookie: si se filtra la base de datos, las sesiones no se pueden usar |
 | csrf_token_hash | bytea | NOT NULL |
-| created_at, last_seen_at | timestamptz | |
+| stage | text | `CHECK IN ('mfa_pending','full')`. Tras la contraseña, la sesión queda en `mfa_pending` (5 minutos, solo puede llamar a `/auth/login/second-factor`); con el segundo factor se **emite un token nuevo** en `full` (ASVS 7.2.4) |
+| created_at, last_seen_at | timestamptz | `last_seen_at` controla la caducidad por inactividad (§6.2) |
 | expires_at | timestamptz | NOT NULL (caducidad absoluta) |
+| reauthenticated_at | timestamptz | NULL. Última reautenticación completa, para las acciones sensibles (§6.2) |
 | revoked_at | timestamptz | NULL |
 | user_agent | text | Para listar las sesiones abiertas |
 
 Índice en `expires_at` para la limpieza periódica.
+
+**`totp_authenticators`** (segundo factor obligatorio)
+| Columna | Tipo | Restricciones y notas |
+|---|---|---|
+| id | uuid | PK |
+| user_id | uuid | FK `users` ON DELETE CASCADE |
+| secret_ciphertext, secret_nonce | bytea | NOT NULL. La semilla **se cifra** (AES-256-GCM) con una clave de la variable de entorno `TOTP_ENCRYPTION_KEY`. No se puede guardar como hash, porque hay que recalcular los códigos. Así, una copia de seguridad o un volcado de la base de datos no bastan para generarlos |
+| key_version | smallint | NOT NULL. Permite rotar la clave |
+| last_used_step | bigint | NULL. Último paso de 30 s aceptado: **cada código solo vale una vez** (ASVS 6.5.1) |
+| confirmed_at | timestamptz | NULL hasta que se verifica el primer código |
+| created_at | timestamptz | |
+
+Índice único parcial `(user_id) WHERE confirmed_at IS NOT NULL`: un solo TOTP activo.
+
+**`recovery_codes`** (códigos de recuperación de un solo uso)
+| Columna | Tipo | Restricciones y notas |
+|---|---|---|
+| id | uuid | PK |
+| user_id | uuid | FK ON DELETE CASCADE |
+| code_hash | text | NOT NULL. 10 códigos de 16 caracteres en base32 de Crockford (80 bits). Como tienen **menos de 112 bits**, se guardan con **Argon2id** y sal, no con SHA-256 (ASVS 6.5.2) |
+| used_at | timestamptz | NULL. Un código usado no vuelve a servir |
+| created_at | timestamptz | Al regenerarlos, se borran todos los anteriores |
+
+**`webauthn_credentials`** (passkeys; **solo si la evaluación de la fase 2 es positiva**, §6.2): `credential_id` (bytea, único), `public_key`, `sign_count`, `transports`, `name`, `created_at`, `last_used_at`.
 
 **`device_tokens`** (tokens del atajo)
 | Columna | Tipo | Restricciones y notas |
@@ -204,7 +234,7 @@ jobs (infraestructura) ──▶ tasks, notifications, imports, auth (limpiezas 
 | id | bigint identity | PK |
 | occurred_at | timestamptz | índice |
 | actor | text | `user`, `device:<id>` o `system` |
-| action | text | `login.success`, `login.failure`, `device_token.created`, `device_token.revoked`, `plan_import.confirmed`, `password.changed`… |
+| action | text | `login.success`, `login.failure`, `mfa.success`, `mfa.failure`, `recovery_code.used`, `reauth.success`, `device_token.created`, `device_token.revoked`, `plan_import.confirmed`, `password.changed`, `totp.changed`, `data.exported`, `authz.denied`… (inventario completo en `docs/seguridad/`, ASVS 16.1.1) |
 | entity_type, entity_id | text, uuid | NULL |
 | metadata | jsonb | Sin importes, tokens ni contraseñas |
 
@@ -215,9 +245,9 @@ jobs (infraestructura) ──▶ tasks, notifications, imports, auth (limpiezas 
 |---|---|---|
 | id | uuid | PK |
 | name | text | NOT NULL; único sobre `lower(name)` `WHERE archived_at IS NULL` |
-| type | text | `CHECK IN ('checking','savings','cash','credit_card','other')` |
+| type | text | `CHECK IN ('checking','savings','cash')`: corriente, ahorro y efectivo [RESUELTO: no hay tarjetas de crédito; si algún día hacen falta, se deciden en un ADR] |
 | currency | char(3) | NOT NULL DEFAULT `'EUR'`, `CHECK (currency = 'EUR')` en el MVP. Admitir otras monedas será una decisión explícita, con su migración |
-| opening_balance_cents | bigint | NOT NULL DEFAULT 0. Puede ser negativo (tarjeta de crédito) |
+| opening_balance_cents | bigint | NOT NULL DEFAULT 0. Puede ser negativo (descubierto) |
 | opening_date | date | NOT NULL. El servicio rechaza movimientos anteriores a esta fecha |
 | archived_at | timestamptz | NULL |
 
@@ -250,7 +280,8 @@ jobs (infraestructura) ──▶ tasks, notifications, imports, auth (limpiezas 
 | account_id | uuid | FK `accounts` ON DELETE RESTRICT, NULL solo si está pendiente |
 | category_id | uuid | NULL. FK compuesta `(category_id, kind) → categories(id, kind)`: **la base de datos impide asignar una categoría de ingreso a un gasto** |
 | booked_on | date | NOT NULL. Fecha contable |
-| source | text | `CHECK IN ('manual','shortcut','import')` |
+| source | text | `CHECK IN ('manual','shortcut','reconciliation')`. `import` se elimina hasta que existan los extractos bancarios [RESUELTO] |
+| reconciliation_id | uuid | NULL. FK `account_reconciliations` ON DELETE CASCADE, `UNIQUE`. Solo en los movimientos de ajuste |
 | status | text | `CHECK IN ('pending','confirmed')` |
 | flags | text[] | NOT NULL DEFAULT `'{}'`. `CHECK (flags <@ ARRAY['amount_missing','amount_unparsed','merchant_missing','unknown_card','possible_duplicate','foreign_currency'])` |
 | wallet_card_id | uuid | FK `wallet_cards`, NULL |
@@ -260,7 +291,8 @@ jobs (infraestructura) ──▶ tasks, notifications, imports, auth (limpiezas 
 | created_at, updated_at, confirmed_at | timestamptz | |
 
 Restricciones de tabla:
-- `CHECK (status = 'pending' OR (amount_cents > 0 AND account_id IS NOT NULL AND category_id IS NOT NULL AND flags = '{}'))`: un movimiento confirmado siempre está completo y sin incidencias pendientes.
+- `CHECK (status = 'pending' OR (amount_cents > 0 AND account_id IS NOT NULL AND (category_id IS NOT NULL OR source = 'reconciliation') AND flags = '{}'))`: un movimiento confirmado siempre está completo y sin incidencias pendientes. Los ajustes de conciliación no llevan categoría: aparecen en una línea propia, «Ajustes de conciliación».
+- `CHECK ((source = 'reconciliation') = (reconciliation_id IS NOT NULL))` y `CHECK (source <> 'reconciliation' OR status = 'confirmed')`.
 - `CHECK ((status = 'confirmed') = (confirmed_at IS NOT NULL))`
 - `CHECK (source <> 'shortcut' OR (device_token_id IS NOT NULL AND idempotency_key IS NOT NULL))`
 - Índice único parcial `(device_token_id, idempotency_key) WHERE idempotency_key IS NOT NULL`.
@@ -279,16 +311,21 @@ Restricciones de tabla:
 Índices: `(from_account_id, booked_on)` y `(to_account_id, booked_on)`.
 **Por qué una tabla aparte** y no dos movimientos enlazados: así una transferencia **no puede** contar como gasto por accidente. Ninguna consulta de ingresos o gastos toca esta tabla; solo la usa el cálculo de saldos. La alternativa obliga a que todas las consultas recuerden filtrar las transferencias.
 
-**`account_reconciliations`** (definición propuesta de «conciliación» [DECIDIR])
+**`account_reconciliations`** [RESUELTO: una vez al mes y por cuenta, el saldo calculado se compara con el saldo real del banco]
 | Columna | Tipo | Notas |
 |---|---|---|
 | id | uuid | PK |
 | account_id | uuid | FK `accounts` ON DELETE CASCADE |
-| as_of | date | `UNIQUE (account_id, as_of)` |
-| statement_balance_cents | bigint | El saldo que muestra el banco en esa fecha |
+| month | date | `CHECK (month = date_trunc('month', month))`; `UNIQUE (account_id, month)`: **una por cuenta y mes** |
+| as_of | date | Fecha del saldo del banco; `CHECK` de que está dentro de `month` |
+| statement_balance_cents | bigint | El saldo que muestra el banco |
+| computed_balance_cents | bigint | Saldo calculado **en el momento de conciliar** |
 | note | text | |
+| created_at | timestamptz | |
 
-La diferencia `saldo del banco − saldo calculado` se calcula al leer. Saldo calculado = `opening_balance + Σ ingresos confirmados − Σ gastos confirmados + Σ transferencias recibidas − Σ transferencias enviadas`, contando hasta `as_of` incluido.
+- Saldo calculado = `opening_balance + Σ ingresos confirmados − Σ gastos confirmados + Σ transferencias recibidas − Σ transferencias enviadas`, hasta `as_of` incluido.
+- **Excepción documentada a «no guardar derivados»**: `computed_balance_cents` no es una caché, sino el **registro histórico** de lo que la app calculó al conciliar. Si después se edita un movimiento de un periodo ya conciliado, la pantalla muestra el saldo calculado actual junto al registrado y avisa de la discrepancia.
+- **Ajuste explícito**: si `statement − computed ≠ 0`, en la **misma transacción** se crea un movimiento confirmado con `source = 'reconciliation'`, `kind` según el signo, `amount_cents = |diferencia|`, `booked_on = as_of` y `description` = «Ajuste de conciliación». Así, tras conciliar, saldo calculado = saldo del banco. El ajuste es visible y reversible: borrar la conciliación lo borra en cascada.
 
 ### 2.4 Módulo `finance` — capa de plan (`plan`)
 
@@ -313,16 +350,16 @@ Solo guarda **entradas** de la plantilla. No hay columnas de totales, proyeccion
 | id | uuid | PK; además `UNIQUE (snapshot_id, id)` para las claves ajenas compuestas |
 | snapshot_id | uuid | FK ON DELETE CASCADE |
 | source_row | integer | `CHECK (source_row >= 6)`; `UNIQUE (snapshot_id, source_row)` |
-| record_type | text | `CHECK IN ('income','expense','savings_balance','assumption','goal','scenario','historical','one_off_payment')` |
+| record_type | text | `CHECK IN ('income','expense','savings_balance','assumption','emergency_fund_months','goal','scenario','historical','one_off_payment')`. Índice único parcial `(snapshot_id) WHERE record_type = 'emergency_fund_months'` |
 | group_label, concept | text | `concept` NOT NULL |
 | unit | text | `CHECK IN ('eur_per_month','eur','months')` |
 | amount_cents | bigint | NULL |
-| quantity | numeric(8,2) | NULL |
+| quantity_hundredths | integer | NULL, ≥ 0. Meses en centésimas enteras (6 meses = 600), para calcular sin decimales |
 | nature | text | CHECK con los 11 valores de la plantilla |
 | status | text | CHECK con los 10 valores de la plantilla |
-| source_note, note | text | NULL |
+| source_note, note | text | NULL. `source_note` guarda en ISO `YYYY-MM-DD` las celdas que eran fechas |
 
-`CHECK ((unit IN ('eur_per_month','eur') AND amount_cents IS NOT NULL AND quantity IS NULL) OR (unit = 'months' AND quantity IS NOT NULL AND amount_cents IS NULL))`.
+`CHECK ((unit IN ('eur_per_month','eur') AND amount_cents IS NOT NULL AND quantity_hundredths IS NULL) OR (unit = 'months' AND quantity_hundredths IS NOT NULL AND amount_cents IS NULL))` y `CHECK (amount_cents IS NULL OR amount_cents >= 0)` (todos los importes son positivos).
 
 **`plan_budget_lines`** (filas de «Presupuesto»)
 | Columna | Tipo | Restricciones y notas |
@@ -339,19 +376,38 @@ El importe y el estado **no se copian**: se leen de `plan_items`.
 **`plan_events`** («Eventos y compromisos»)
 | Columna | Tipo | Restricciones y notas |
 |---|---|---|
-| id, snapshot_id, source_row, concept, nature, note | | |
-| plan_item_id | uuid | NULL, con FK compuesta como arriba |
-| amount_cents | bigint | NULL, ≥ 0 |
+| id, snapshot_id, source_row, concept, note | | |
+| nature_label | text | NULL. **Texto libre** (en la plantilla no tiene validación); solo se muestra |
+| amount_item_id | uuid | NULL, con FK compuesta como arriba. Fila en `€` o `€/mes` (con `€/mes` = un único pago igual a la cuota) |
+| multiplier_item_id | uuid | NULL, con FK compuesta. Fila en `meses` (forma PRODUCT2: cuota × plazo) |
+| amount_cents | bigint | NULL, ≥ 0 (literal) |
 | status | text | `CHECK IN ('estimated','paid','finished','active','inactive','not_committed')` |
 | expected_date | date | NULL |
 | include_in_projection | boolean | NOT NULL |
-| base_impact | text | `CHECK IN ('one_off','excluded','scenario','irregular','variable','goal')` |
 
-`CHECK (num_nonnulls(plan_item_id, amount_cents) = 1)` (el importe o es una referencia o es un literal, nunca las dos cosas) y `CHECK (NOT include_in_projection OR expected_date IS NOT NULL)`.
+- `CHECK (num_nonnulls(amount_item_id, amount_cents) = 1)`: el importe es una referencia o un literal, nunca las dos cosas.
+- `CHECK (multiplier_item_id IS NULL OR amount_item_id IS NOT NULL)`: solo hay multiplicador si hay referencia.
+- `CHECK (NOT include_in_projection OR expected_date IS NOT NULL)`.
+- `base_impact` **se elimina** [RESUELTO: ninguna fórmula lo leía; la proyección usa solo `include_in_projection` y la fecha].
 
-**`plan_goals`** y **`plan_scenarios`**: la misma estructura. Cada importe de entrada se guarda como una pareja `*_item_id` / `*_cents` con `num_nonnulls(…) = 1`.
-- Metas: objetivo, actual, aportación, `status CHECK IN ('completed','paused','in_progress')` y `criterion`.
-- Escenarios: `name`, extra mensual y pago puntual.
+**`plan_goals`** («Metas»)
+| Columna | Tipo | Restricciones y notas |
+|---|---|---|
+| id, snapshot_id, source_row, name, criterion | | |
+| goal_kind | text | `CHECK IN ('fixed_amount','emergency_fund')`. Índice único parcial `(snapshot_id) WHERE goal_kind = 'emergency_fund'` |
+| target_item_id / target_cents | uuid / bigint | `fixed_amount`: exactamente uno de los dos. `emergency_fund`: los dos NULL, porque el objetivo lo calcula la app (gastos esenciales × meses objetivo) |
+| current_item_id / current_cents | uuid / bigint | `num_nonnulls(…) = 1` |
+| contribution_item_id / contribution_cents | uuid / bigint | `num_nonnulls(…) = 1` |
+
+**No hay columna `status`**: en la plantilla, el estado es una columna calculada y la app lo recalcula (`plantilla-excel.md` §9.4).
+
+**`plan_scenarios`** y **`plan_scenario_items`** (un escenario es una lista de filas de Datos)
+| Tabla | Columnas | Restricciones |
+|---|---|---|
+| `plan_scenarios` | `id`, `snapshot_id`, `source_row`, `name` | `UNIQUE (snapshot_id, source_row)` |
+| `plan_scenario_items` | `scenario_id`, `snapshot_id`, `plan_item_id`, `role` | `role CHECK IN ('extra_monthly','one_off')`; `PRIMARY KEY (scenario_id, plan_item_id, role)`; FK compuesta `(snapshot_id, plan_item_id) → plan_items` |
+
+El importador traduce `=0` (lista vacía), la referencia directa y `SUM` sobre un rango contiguo a filas de esta tabla. Los escenarios **no** se filtran con `includedInBase`.
 
 **`plan_category_mappings`**
 | Columna | Tipo | Notas |
@@ -379,7 +435,7 @@ El importe y el estado **no se copian**: se leen de `plan_items`.
 | created_at, expires_at, confirmed_at | timestamptz | |
 
 `UNIQUE (kind, month, content_hash) WHERE status = 'confirmed'` e índice `(status, expires_at)` para la limpieza.
-**No se guarda el archivo binario** [DECIDIR]: las entradas ya quedan en las tablas del plan y así no se acumulan copias del Excel.
+**No se guarda el archivo binario** [RESUELTO]: las entradas ya quedan en las tablas del plan y así no se acumulan copias del Excel.
 
 ### 2.6 Módulo `tasks`
 
@@ -404,7 +460,7 @@ El importe y el estado **no se copian**: se leen de `plan_items`.
 | started_at | timestamptz | NOT NULL |
 | ended_at | timestamptz | NULL mientras el cronómetro está en marcha; `CHECK (ended_at IS NULL OR ended_at > started_at)` |
 
-Índice único `((true)) WHERE ended_at IS NULL`: solo puede haber **un cronómetro en marcha** en toda la aplicación. Sirve tanto para el cronómetro como para la anotación manual [DECIDIR cuál de las dos].
+Índice único `((true)) WHERE ended_at IS NULL`: solo puede haber **un cronómetro en marcha** en toda la aplicación. [RESUELTO] Se admiten **las dos formas**, y las dos se guardan como intervalos: el cronómetro (iniciar y parar, con un único cronómetro activo) y la anotación manual (inicio y fin, o inicio y duración convertida en fin).
 
 **`task_reminders`**
 | Columna | Tipo | Restricciones y notas |
@@ -459,7 +515,10 @@ accounts 1─* movements *─1 categories      wallet_cards *─1 accounts
 accounts 1─* transfers (origen y destino)  accounts 1─* account_reconciliations
 import_batches 1─1 plan_snapshots 1─* plan_items
 plan_snapshots 1─* plan_budget_lines *─1 plan_items   (y *─1 categories)
-plan_snapshots 1─* plan_events|plan_goals|plan_scenarios *─0..1 plan_items
+plan_snapshots 1─* plan_events|plan_goals *─0..1 plan_items
+plan_snapshots 1─* plan_scenarios 1─* plan_scenario_items *─1 plan_items
+users 1─0..1 totp_authenticators · users 1─* recovery_codes
+account_reconciliations 1─0..1 movements (ajuste)
 plan_category_mappings *─1 categories
 tasks 1─* task_time_entries · tasks 1─* task_reminders
 notes *─* tags (note_tags)
@@ -479,7 +538,7 @@ notes *─* tags (note_tags)
 - Columna **Auth**:
   - **P**: público.
   - **S**: cookie de sesión, más la cabecera CSRF en los métodos que modifican datos.
-  - **S+**: sesión y, además, haber reintroducido la contraseña en los últimos 10 minutos.
+  - **S+**: sesión y, además, una **reautenticación completa** (contraseña + TOTP, o passkey) en los últimos 10 minutos (ASVS 7.5.1).
   - **D(scope)**: token de dispositivo con ese permiso.
 - **Denegar por defecto**: el router de `/api/v1` exige sesión salvo en una lista explícita de excepciones. Un test recorre todas las rutas registradas y lo comprueba.
 
@@ -487,15 +546,20 @@ notes *─* tags (note_tags)
 | Método | Ruta | Auth | Descripción |
 |---|---|---|---|
 | GET | `/health` | P | `{ status: "ok" }`. Sin versión ni detalles internos |
-| POST | `/auth/login` | P (con límite de peticiones) | `{ username, password }` → 204 + `Set-Cookie` |
-| POST | `/auth/logout` | S | Revoca la sesión actual |
-| GET | `/auth/session` | S | `{ user, csrfToken, expiresAt }` |
-| POST | `/auth/reauth` | S | Confirma la contraseña para las acciones sensibles |
-| POST | `/auth/password` | S+ | Cambia la contraseña y revoca las demás sesiones |
+| POST | `/auth/login` | P (con límite de peticiones) | `{ username, password }` → 200 `{ next: "second-factor" }` + cookie de sesión en `mfa_pending` |
+| POST | `/auth/login/second-factor` | sesión `mfa_pending` (con límite de peticiones) | `{ totp }`, `{ recoveryCode }` o la aserción WebAuthn → 204 + **cookie nueva** en `full` |
+| POST | `/auth/logout` | S | Revoca la sesión actual y responde con `Clear-Site-Data` (ASVS 14.3.1) |
+| GET | `/auth/session` | S | `{ user, csrfToken, expiresAt, idleExpiresAt }` |
+| POST | `/auth/reauth` | S | Reautenticación **completa**: `{ password, totp }` o passkey |
+| POST | `/auth/password` | S+ | `{ currentPassword, newPassword }`. Comprueba la lista de contraseñas filtradas y ofrece cerrar las demás sesiones |
+| POST | `/auth/totp/enroll` | S+ | Genera una semilla nueva sin confirmar; devuelve la clave y el URI `otpauth://` |
+| POST | `/auth/totp/confirm` | S+ | `{ code }`. Activa la semilla nueva y desactiva la anterior; ofrece cerrar las demás sesiones |
+| POST | `/auth/recovery-codes` | S+ | Regenera los 10 códigos y los devuelve **una sola vez** |
+| GET | `/export` | S+ | Exportación completa en JSON (`Content-Disposition: attachment`) |
 | GET / DELETE | `/auth/sessions`, `/auth/sessions/:id` | S | Ver y cerrar las sesiones abiertas |
 | GET | `/auth/device-tokens` | S | Lista (prefijo, uso, caducidad) |
 | POST | `/auth/device-tokens` | S+ | `{ name, expiresInDays, scopes }` → 201 con el token **en claro una sola vez** |
-| DELETE | `/auth/device-tokens/:id` | S | Revoca el token (no lo borra) |
+| DELETE | `/auth/device-tokens/:id` | S+ | Revoca el token (no lo borra) |
 
 **finance: capa real**
 | Método | Ruta | Auth | Descripción |
@@ -503,11 +567,13 @@ notes *─* tags (note_tags)
 | GET, POST | `/accounts` | S | |
 | GET, PATCH | `/accounts/:id` | S | |
 | POST | `/accounts/:id/archive` | S | 409 si tiene movimientos pendientes |
-| GET, POST | `/accounts/:id/reconciliations` | S | Devuelve `statementBalanceCents`, `computedBalanceCents` y `differenceCents` |
+| GET | `/accounts/:id/reconciliations` | S | Historial con la discrepancia actual, si la hay |
+| POST | `/accounts/:id/reconciliations` | S | `{ month, asOf, statementBalanceCents }` → 201 `{ computedBalanceCents, differenceCents, adjustmentMovementId? }`. 409 si ya existe la de ese mes |
+| DELETE | `/reconciliations/:id` | S | Borra la conciliación y su ajuste |
 | GET, POST | `/categories` | S | |
 | PATCH | `/categories/:id` | S | |
 | POST | `/categories/:id/archive` | S | |
-| GET | `/movements` | S | Filtros: `from`, `to`, `accountId`, `categoryId`, `status`, `kind`, `source`, `q`, con cursor |
+| GET | `/movements` | S | Filtros: `from`, `to`, `accountId`, `categoryId`, `status`, `kind`, `source` (`manual`, `shortcut` o `reconciliation`), `q`, con cursor |
 | POST | `/movements` | S | Alta manual (formulario rápido) |
 | GET, PATCH, DELETE | `/movements/:id` | S | |
 | POST | `/movements/:id/confirm` | S | Valida que esté completo, limpia `flags` y `raw_payload` y lo pasa a confirmado |
@@ -592,10 +658,10 @@ El contrato completo, columna a columna, está en [`plantilla-excel.md`](plantil
 | Hoja | Papel | Se lee | Destino | Se ignora |
 |---|---|---|---|---|
 | Datos y supuestos | Entrada principal | Columnas A–H (+ I en la v2) | `plan_items` | — |
-| Presupuesto | Entrada + calculada | Categoría, Concepto, Tipo, Esencial, **referencias** de Mensual y Estado | `plan_budget_lines` (+ `plan_category_mappings`) | Anual, % ingreso y el bloque de resumen |
-| Eventos y compromisos | Entrada | Todas las columnas; Importe como referencia o literal | `plan_events` | — |
-| Metas | Entrada + calculada | Meta, Objetivo, Actual, Aportación, Estado, Criterio | `plan_goals` | Pendiente y Meses |
-| Escenarios | Calculada con definiciones | Nombre, extra mensual y pago puntual [columnas A CONFIRMAR] | `plan_scenarios` | Gasto base, caja libre, tasa y lectura |
+| Presupuesto | Entrada + calculada | Categoría, Concepto, Tipo, Esencial, **referencias** de Mensual y Estado (filas 6 hasta la etiqueta del resumen) | `plan_budget_lines` (+ `plan_category_mappings`) | Anual y % ingreso (un literal ≠ 0 genera un aviso), resumen y nota |
+| Eventos y compromisos | Entrada | Concepto, Naturaleza (texto libre), Importe (literal, referencia o cuota × plazo), Estado, Fecha, Incluir 12M y Nota | `plan_events` | «Impacto base», que se elimina en la v2 |
+| Metas | Entrada + calculada | Meta, Objetivo (salvo en el fondo de emergencia), Actual, Aportación, Criterio y **Tipo de meta** (v2) | `plan_goals` | Pendiente, Meses y **Estado** (calculados), resumen y nota |
+| Escenarios | Calculada con definiciones | A Escenario; C Extra mensual y D Pago puntual como listas de filas (`=0`, referencia o `SUM` de un rango contiguo) | `plan_scenarios` + `plan_scenario_items` | B, E, F, G y H (calculadas) y la nota |
 | Proyección 12M | Calculada | — | — | Toda (se recalcula) |
 | Checks | Calculada | — | — | Toda (se recalcula) |
 | Dashboard | Calculada | — | — | Toda (se recalcula) |
@@ -616,7 +682,7 @@ La plantilla mezcla datos de entrada y resultados. La app los separa: **las tabl
 | Evolución | Cada tipo nuevo exige una regla nueva y riesgo de colisiones | Un valor nuevo en la lista |
 | Defensa en una entrevista | Se puede explicar, pero cuesta justificar por qué se adivina algo que se puede declarar | «Contrato de datos explícito, mejor explícito que implícito» |
 
-**Recomendación: B.** La inferencia resuelve un problema que no hace falta tener: tú controlas la plantilla. La vista previa se mantiene en cualquier caso, porque sirve para revisar los problemas, las correspondencias de categorías y las diferencias con el mes anterior.
+**DECISIÓN TOMADA: B** (plantilla v2; pasos exactos en `plantilla-excel.md` §14). Motivo: la inferencia resuelve un problema que no hace falta tener: tú controlas la plantilla. La vista previa se mantiene en cualquier caso, porque sirve para revisar los problemas, las correspondencias de categorías y las diferencias con el mes anterior.
 
 Si decides **no** tocar la plantilla (opción A), estas son las reglas mínimas, por orden de prioridad:
 1. Decisión recordada para el par normalizado (grupo, concepto).
@@ -632,7 +698,7 @@ Si decides **no** tocar la plantilla (opción A), estas son las reglas mínimas,
 ### 3.4 Relacionar filas entre hojas
 
 1. Se lee el **texto de la fórmula** de Presupuesto · Mensual y Estado, Eventos · Importe y las columnas de entrada de Metas y Escenarios.
-2. Se analiza con la gramática estricta de `plantilla-excel.md` §5 → `(columna, fila)` de «Datos y supuestos».
+2. Se analiza con las cuatro **formas cerradas** de `plantilla-excel.md` §5 (REF, SUMRANGE, PRODUCT2 y ZERO) → una o varias filas de «Datos y supuestos». Nunca se evalúa nada: `SUM(C20:C23)` se convierte en la lista de filas 20–23, y el producto, en la pareja (cuota, plazo), que multiplica la app.
 3. La fila se convierte en el `plan_item` con ese `source_row` **de la misma importación**. La FK compuesta impide mezclar fotos.
 4. Validaciones: que la fila destino exista y no esté vacía; que la columna sea la esperada (C para importes, F para estados); que Mensual y Estado apunten a la misma fila; que la unidad sea compatible.
 5. **El texto del concepto nunca se usa para relacionar filas.** Si los conceptos de las dos hojas no coinciden, solo se muestran los dos en la vista previa.
@@ -678,12 +744,13 @@ subida ──▶ failed (estructura inválida)
 
 ### 3.8 Comparativa plan frente a real (por categoría y mes M)
 
-- **Plan aplicable a M**: la foto vigente de M. Si no hay, la vigente más reciente anterior a M, indicada claramente («plan de septiembre») [DECIDIR].
+- **Plan aplicable a M**: la foto vigente de M. Si no hay, la vigente más reciente anterior a M, indicada claramente («plan de septiembre») [RESUELTO].
 - **Plan por categoría**: Σ de las líneas de presupuesto incluidas, según la correspondencia de categorías.
 - **Real por categoría**: Σ de los gastos **confirmados** con `booked_on` dentro de M.
-- Los movimientos **pendientes** se muestran aparte («N pendientes, X €») y no se reparten por categoría [DECIDIR].
+- Los movimientos **pendientes** se muestran aparte («N pendientes, X €») y no se reparten por categoría [RESUELTO].
 - Las transferencias no aparecen, por construcción.
-- Los **eventos puntuales** de M se muestran en una fila propia, «Pagos puntuales previstos», porque en la plantilla no tienen categoría [DECIDIR].
+- Los **ajustes de conciliación** del mes se muestran en una fila propia, «Ajustes de conciliación», porque no tienen categoría.
+- Los **eventos puntuales** de M se muestran en una fila propia, «Pagos puntuales previstos», porque en la plantilla no tienen categoría [RESUELTO].
 - Las categorías con gasto real y sin plan aparecen como «sin presupuesto».
 - Columnas: plan, real, diferencia (real − plan) y % ejecutado. También hay una fila de ingresos plan frente a real.
 
@@ -737,6 +804,10 @@ Licencias y estado de mantenimiento según lo consultado en noviembre de 2026; h
 | **Markdown (notas)** | **react-markdown** · marked + DOMPurify | **react-markdown** + `remark-gfm`, **sin `rehype-raw`** | No renderiza HTML incrustado por defecto → sin XSS | No activar nunca HTML crudo |
 | **Monorepo** | **pnpm workspaces** · npm workspaces · Turborepo/Nx | **pnpm** | `node_modules` estricto: detecta las dependencias no declaradas. Desde la v10 **no ejecuta los scripts `postinstall`** de las dependencias por defecto. **`minimumReleaseAge`** (desde la 10.16; 24 h por defecto en la 11) protege frente a versiones maliciosas recién publicadas | Dónde va la configuración en tu versión (`pnpm-workspace.yaml` frente a `.npmrc`). Instalación de pnpm sin Corepack si tu versión de Node ya no lo incluye |
 | **Ejecutar TypeScript (API)** | `tsc` · tsx · eliminación de tipos nativa de Node | En desarrollo, `node --watch` con eliminación de tipos nativa (exige `erasableSyntaxOnly`: sin `enum` ni *parameter properties*), o tsx si falla. En producción, compilar con `tsc` | Menos dependencias y comportamiento predecible en producción | Que la importación de `packages/shared` funcione con la eliminación de tipos nativa |
+| **TOTP (segundo factor)** | Implementación propia con `node:crypto` · otpauth · speakeasy | **Propia** (RFC 6238, HMAC-SHA1, 6 dígitos, paso de 30 s, ventana de ±1 paso) | Son unas 40 líneas que se prueban con los **vectores oficiales del apéndice B de RFC 6238**. speakeasy lleva años sin mantenimiento [VERIFICAR] | Que `last_used_step` impide reutilizar un código. **Sin dependencia de códigos QR**: se muestran la clave y el enlace `otpauth://`, que en iOS abre la app Contraseñas [VERIFICAR] |
+| **Passkeys (WebAuthn)** | @simplewebauthn/server + /browser · implementación propia | **@simplewebauthn** (MIT [VERIFICAR]), **solo si T18 confirma** que funciona en la PWA | Verificar las aserciones de WebAuthn a mano es delicado; aquí sí está justificado usar una librería | El soporte en el modo *standalone* de iOS; que el RP ID (el dominio) no cambie entre las opciones D y A (§7.3) |
+| **Contraseñas filtradas** | API de rangos de Pwned Passwords (HIBP) · lista local | **API de rangos** con `fetch` nativo (sin dependencia): solo se envían los 5 primeros caracteres del SHA-1 (*k-anonymity*). Además, una **lista local** de las contraseñas más comunes y de palabras del contexto (ASVS 6.2.4, 6.2.11, 6.2.12) | Solo se consulta al fijar o cambiar la contraseña | Si la API no responde, se **rechaza** el cambio y se pide reintentar (fallo seguro, ASVS 16.5.3). `api.pwnedpasswords.com` entra en la lista de destinos salientes permitidos |
+| **Escaneo de secretos** | **gitleaks** · trufflehog · solo GitHub secret scanning | **gitleaks** como **binario** (Go, MIT [VERIFICAR]) en un *hook* de pre-commit (`core.hooksPath` → `.githooks/`, sin husky ni lefthook) y en CI con la imagen oficial de contenedor, sobre **todo el historial**. Además, el secret scanning y la *push protection* de GitHub | Con un repositorio público, tres capas: la máquina local, la CI y GitHub | No usar `gitleaks-action` si exige licencia en tu tipo de cuenta [VERIFICAR]. Fijar la versión de la imagen por *digest* |
 | **Runtime** | Node 24 / 26 | **La LTS activa al empezar** (Node 26 pasó a LTS en octubre de 2026, según lo anunciado) | — | [VERIFICAR] el calendario oficial. Node cambia a una versión mayor al año a partir de la 27 |
 
 ### 4.3 Política de dependencias
@@ -767,6 +838,7 @@ Licencias y estado de mantenimiento según lo consultado en noviembre de 2026; h
    - **Obtener contenido de URL**: método POST, con las cabeceras `Authorization: Bearer <token>`, `Idempotency-Key: <fecha y hora con segundos + número aleatorio>` y `Content-Type: application/json`, y un cuerpo JSON con `card`, `merchant`, `amount` (**como texto, tal cual llega**), `name` y `occurredAt` (fecha actual en ISO 8601).
    - **Si** el resultado no indica éxito → **Mostrar notificación** «No se pudo registrar el pago: regístralo a mano». Un fallo nunca debe pasar desapercibido.
 6. Requisito señalado por terceros: **los datos móviles deben estar activados para Wallet**, o la automatización puede fallar [VERIFICAR].
+7. **Con la opción de despliegue D (Tailscale, §7)**: app de Tailscale con **VPN On Demand** en «Siempre» para Wi-Fi y para datos móviles. iOS solo permite **una** VPN con On Demand a la vez: si usas otra VPN con On Demand, entra en conflicto.
 
 **Sobre el token guardado en el atajo:** los atajos se sincronizan por iCloud, así que el token queda guardado en los servidores de Apple. Por eso tiene un permiso mínimo (solo crear pendientes y leer categorías; **no puede leer movimientos ni saldos**), caduca, se puede revocar y registra su último uso.
 
@@ -826,13 +898,13 @@ Notificación ─▶ toque ─▶ PWA ─▶ bandeja de pendientes ─▶ comple
   1. En el *service worker*: si ya hay una ventana abierta → `focus()` + `postMessage({ navigate: '/inbox' })`; si no → `openWindow('/inbox')`.
   2. La **pantalla de inicio** muestra «Pendientes (N)» de forma destacada cuando N > 0. Aunque el enlace profundo falle, la bandeja queda a un toque.
   3. Contador en el icono con `navigator.setAppBadge(N)`, disponible en las web apps de pantalla de inicio desde iOS 16.4 [VERIFICAR].
-- **Privacidad en la pantalla de bloqueo** [DECIDIR]: «Nuevo pago pendiente» (genérico) o «12,50 € en Comercio». El contenido del push viaja cifrado de extremo a extremo (RFC 8291), pero la pantalla de bloqueo lo muestra.
+- **Privacidad en la pantalla de bloqueo** [RESUELTO: texto genérico por defecto, «Nuevo pago pendiente»; se puede cambiar en las preferencias]. El contenido del push viaja cifrado de extremo a extremo (RFC 8291), pero la pantalla de bloqueo lo muestra.
 
 ### 5.8 Mejora opcional: preguntar el concepto y la categoría en el momento
 
 - El atajo llama a `GET /ingest/catalog`, muestra «Elegir de la lista» y «Pedir entrada» y envía `description` y `categoryId`.
 - **Incertidumbres:** si una automatización con «Ejecutar inmediatamente» puede mostrar diálogos interactivos y cómo lo hace (en la pantalla de bloqueo o encima de la app de pago); si es cómodo hacerlo en la caja; y la latencia de dos peticiones.
-- Aunque se envíe la categoría, el movimiento **sigue entrando como pendiente**. Así hay una sola ruta de confirmación. Una variante sería confirmarlo directamente si el importe es mayor que 0 y no hay marcas [DECIDIR tras probarlo].
+- [RESUELTO] **Se prueba** en la prueba T13. Mientras tanto, aunque se envíen el concepto y la categoría, el movimiento **entra como pendiente** (una sola ruta de confirmación). Confirmarlo directamente cuando el importe es mayor que 0 y no hay marcas **se decide después de T13** (§9, pregunta 18).
 
 ### 5.9 Limitaciones
 
@@ -852,7 +924,7 @@ Notificación ─▶ toque ─▶ PWA ─▶ bandeja de pendientes ─▶ comple
 
 ### 5.10 Protocolo de pruebas en tu dispositivo
 
-Hay que anotar la versión de iOS y el resultado de cada prueba en `docs/atajo-iphone.md`.
+Hay que anotar la versión de iOS y el resultado de cada prueba en `docs/atajo-iphone.md`. **Sin datos reales**: el repositorio es público, así que solo se anotan resultados (funciona o no, formato), nunca importes, comercios ni nombres de tarjetas.
 
 **Durante el *spike***, el endpoint guarda el cuerpo recibido en un log temporal para conocer el formato real. **Después hay que borrar ese log.**
 
@@ -873,108 +945,164 @@ Hay que anotar la versión de iOS y el resultado de cada prueba en `docs/atajo-i
 | T13 | Mejora opcional: diálogos dentro de la automatización | ¿Aparecen? ¿Es cómodo usarlos en la caja? |
 | T14 | Apple Pay en una web o una app y pago con el Apple Watch | ¿Se dispara? |
 | T15 | Devolución o reembolso | ¿Se dispara? ¿Con qué signo? |
+| T16 | (Opción D) Pago sin haber abierto Tailscale en horas, en Wi-Fi y en datos móviles | El POST llega. Si no llega, se anota como «fallo atribuible a la VPN» (§7.3) |
+| T17 | (Opción D) Consumo de batería de Tailscale (Ajustes → Batería) durante 2 semanas | Se anota el porcentaje diario medio (§7.3) |
+| T18 | Passkey dentro de la PWA instalada: alta, inicio de sesión y reautenticación, con la app cerrada y abierta | Funciona sin abrir Safari (§6.2) |
+| T19 | Autorrelleno del código TOTP desde la app Contraseñas de iOS dentro de la PWA | Se anota si funciona (afecta a la usabilidad de §6.2) |
 
 ---
 
 ## 6. (f) Seguridad y copias de seguridad
 
+**Estándares de referencia [RESUELTO]**
+- **OWASP ASVS 5.0, nivel 2**, para la seguridad de la aplicación.
+- **NIST SP 800-63B-4** para las contraseñas, los autenticadores y la reautenticación (nivel AAL2).
+
+La matriz requisito a requisito, con su fase, módulo y test, está en [`docs/seguridad/asvs-l2.md`](seguridad/asvs-l2.md). Este apartado recoge las decisiones; la matriz, la trazabilidad. Cuando no se cumple un requisito al pie de la letra, se indica como **desviación documentada**, con su motivo y su mitigación.
+
 ### 6.1 Modelo de amenazas (resumen)
 
 | Activo | Amenaza | Control principal |
 |---|---|---|
-| Datos financieros | Atacante desde internet (escaneos, fuerza bruta) | Superficie mínima, autenticación obligatoria, límite de peticiones, PostgreSQL sin exponer |
-| Contraseña | Fuerza bruta o relleno de credenciales | Argon2id, límite de peticiones y espera creciente; contraseña larga y única (gestor de contraseñas) |
-| Sesión | Robo de la cookie, CSRF | `HttpOnly`, `Secure`, `SameSite=Lax`, prefijo `__Host-`, token CSRF y comprobación de `Origin` |
-| Token del atajo | Filtración (iCloud, captura de pantalla) | Permiso mínimo, guardado como hash, caducidad, revocación y `last_used_at` |
-| Copias de seguridad | Filtración o borrado | Cifrado en el cliente; almacenamiento en modo de solo añadir; restauración probada |
-| Repositorio | Commit accidental de datos o secretos | `.gitignore`, solo fixtures ficticias, escaneo de secretos en CI |
-| Dependencias | Paquete comprometido (como los incidentes en npm de septiembre de 2025) | Pocas dependencias, lockfile, `minimumReleaseAge`, sin scripts `postinstall` |
-| Teléfono robado | Acceso a la PWA con la sesión abierta | Bloqueo del iPhone; reautenticación para las acciones sensibles; revocar sesiones desde otro dispositivo |
+| Datos financieros | Atacante desde internet (escaneos, fuerza bruta) | Superficie mínima (opción D: ninguna pública), autenticación obligatoria con dos factores, límite de peticiones y PostgreSQL sin exponer |
+| Contraseña | Fuerza bruta, relleno de credenciales, contraseña filtrada | Argon2id, lista de contraseñas filtradas y **TOTP obligatorio**: la contraseña sola no basta |
+| Segundo factor | Robo de la semilla TOTP (volcado o copia de seguridad) | La semilla se cifra con una clave que no está ni en la base de datos ni en las copias |
+| Sesión | Robo de la cookie, CSRF | `HttpOnly`, `Secure`, `SameSite=Lax`, prefijo `__Host-`, token CSRF, comprobación de `Origin` y caducidad corta |
+| Token del atajo | Filtración (iCloud, captura de pantalla) | Permiso mínimo, guardado como hash, caducidad, revocación (que exige reautenticación) y `last_used_at` |
+| Copias de seguridad | Filtración o borrado | Cifrado en el cliente, almacenamiento de solo añadir, 3-2-1 y restauración probada |
+| **Repositorio público** | Fuga de secretos, datos, dominio o IP en el código o en el historial | Reglas de `CLAUDE.md`, gitleaks en pre-commit y en CI sobre todo el historial, secret scanning y *push protection* de GitHub, solo fixtures ficticias y configuración por variables de entorno |
+| Dependencias | Paquete comprometido | Pocas dependencias, lockfile, `minimumReleaseAge`, sin `postinstall`, Dependabot y plazos de corrección (§6.2) |
+| Teléfono robado | Acceso a la PWA con la sesión abierta | Bloqueo del iPhone, inactividad de 1 h, reautenticación para las acciones sensibles y revocación de sesiones desde otro dispositivo |
 
 ### 6.2 Controles
 
-**Autenticación**
-- Argon2id con parámetros iguales o superiores a los mínimos de OWASP. El formato PHC permite subirlos y recalcular el hash al iniciar sesión.
-- Contraseña de **15 caracteres como mínimo**, en línea con NIST SP 800-63B-4 para un único factor [VERIFICAR la redacción final]. Sin reglas de composición.
-- Usuario creado por un script de CLI (`scripts/create-user`). **No existe ningún endpoint de registro.**
-- Recuperación de acceso: un script en el servidor (requiere acceso SSH). No hay «olvidé mi contraseña» por correo, porque abriría una vía de ataque.
-- Segundo factor (TOTP o passkey) [DECIDIR]. Una passkey (WebAuthn) en la PWA sería segura y cómoda, pero hay que verificar el soporte en el modo *standalone* de iOS.
+**Autenticación (NIST AAL2 · ASVS V6)**
+- **Dos factores obligatorios**: contraseña + **TOTP** (RFC 6238; 6 dígitos; 30 s). **No existe ninguna sesión completa sin segundo factor.** El script `create-user` da de alta la contraseña **y** el TOTP a la vez: muestra una sola vez el enlace `otpauth://` y los códigos de recuperación.
+- **Códigos de recuperación**: 10, de un solo uso, de 80 bits y guardados con Argon2id (ASVS 6.5.2). Regenerarlos invalida los anteriores.
+- **Cada código TOTP vale una sola vez** (`last_used_step`, ASVS 6.5.1). Se acepta el paso actual y el anterior para tolerar el desfase de reloj (RFC 6238 §5.2). **Desviación documentada** frente a una lectura estricta de ASVS 6.5.5 (vida máxima de 30 s): en el peor caso, un código vale hasta 60 s. Mitigación: los códigos son de un solo uso y el número de intentos está limitado.
+- **Passkey** (WebAuthn, un autenticador multifactor resistente al *phishing*): **se evalúa en la fase 2** (prueba T18). Si funciona dentro de la web app de pantalla de inicio de iOS, se ofrece **como alternativa** al par contraseña + TOTP, con el TOTP siempre disponible como respaldo. Hay que verificar cómo trata NIST SP 800-63B-4 las passkeys sincronizadas en AAL2 [VERIFICAR].
+- **Contraseña** (NIST 800-63B-4 y ASVS 6.2):
+  - Mínimo 15 caracteres. NIST permite 8 cuando la contraseña forma parte de un sistema multifactor; se eligen 15 porque ASVS lo «recomienda encarecidamente».
+  - Se admiten al menos 64 caracteres.
+  - Sin reglas de composición y sin caducidad periódica.
+  - Se permite pegar y usar gestores de contraseñas.
+  - Se verifica exactamente como llega, sin recortarla ni cambiar mayúsculas.
+  - Al fijarla o cambiarla, se comprueba contra: una lista local de las contraseñas más comunes (al menos 3.000, ASVS 6.2.4), una lista documentada de **palabras del contexto** (nombre de la app, usuario, dominio; ASVS 6.1.2 y 6.2.11) y la API de rangos de **Pwned Passwords** (ASVS 6.2.12).
+- **Hash**: Argon2id con parámetros iguales o superiores a los mínimos de OWASP; formato PHC.
+- **Recuperación** (ASVS 6.4):
+  - No hay recuperación por correo ni preguntas secretas.
+  - Si se pierde el TOTP: código de recuperación.
+  - Si se pierde todo: un script en el servidor. Exige acceso SSH, que equivale a la verificación de identidad del alta (ASVS 6.4.4). El restablecimiento de la contraseña **no desactiva el TOTP** (ASVS 6.4.3).
+- **Defensa contra la fuerza bruta** (documentada, ASVS 6.1.1):
+  - Login: 5 intentos por IP cada 15 minutos, más una espera creciente global.
+  - Segundo factor: 5 intentos por sesión `mfa_pending`; después, la sesión se revoca y hay que volver a empezar.
+  - **Sin bloqueo de cuenta**: con un solo usuario, el bloqueo sería una denegación de servicio contra uno mismo.
+- **Vías de autenticación documentadas** (ASVS 6.1.3 y 6.3.4):
+  1. Contraseña + TOTP.
+  2. Contraseña + código de recuperación.
+  3. Passkey, si se adopta.
+  4. Script en el servidor (recuperación).
 
-**Sesiones**
-- Identificador aleatorio de 256 bits. En la base de datos solo se guarda su SHA-256.
-- Cookie `__Host-sid`: `HttpOnly; Secure; SameSite=Lax; Path=/`.
-- Caducidad por inactividad de 14 días y caducidad absoluta de 60 [DECIDIR].
-- La sesión se rota al iniciar sesión y se revocan todas al cambiar la contraseña.
+  El token de dispositivo **no** es una vía de acceso a la app: solo permite llamar a `/ingest/*`.
+- Sin cuentas por defecto (ASVS 6.3.2) y sin endpoint de registro.
 
-**CSRF**
-- Token sincronizado por sesión: lo entrega `/auth/session`, viaja en la cabecera `X-CSRF-Token` en los métodos que modifican datos y se compara su hash.
-- Además, se comprueba `Origin` (o `Sec-Fetch-Site`).
-- `SameSite=Lax` es la tercera capa. **No se usa `csurf`**, que está obsoleto.
-- Por qué `Lax` y no `Strict`: con `Strict`, una navegación iniciada fuera de la app (por ejemplo, desde una notificación) podría llegar sin la cookie [VERIFICAR en el dispositivo].
+**Sesiones (ASVS V7) — duración justificada**
 
-**Límite de peticiones**
-- Login: 5 intentos por IP cada 15 minutos, más una espera creciente global. Un bloqueo de cuenta sería una denegación de servicio contra ti mismo.
-- Ingesta: 30 por minuto por token.
-- Resto de la API: 300 por minuto.
+| Parámetro | Valor | Justificación |
+|---|---|---|
+| Caducidad absoluta | **24 h** | NIST SP 800-63B-4 para AAL2: la caducidad absoluta *SHOULD* no superar las 24 h (verificado en la página de AAL de NIST). Una vez al día se repite el inicio de sesión completo |
+| Caducidad por inactividad | **1 h** | Valor de AAL2 según fuentes secundarias [VERIFICAR en el texto de NIST: `pages.nist.gov` no fue accesible desde esta sesión]. Al expirar, hay que **reautenticarse por completo** (passkey, o contraseña + TOTP) |
+| Usabilidad en la PWA | — | El flujo crítico (el pago con Wallet) **no depende de la sesión**: el atajo usa su token. La sesión solo se pide al abrir la bandeja. Con una passkey (Face ID) o con el autorrelleno de la contraseña y del código desde la app Contraseñas de iOS, reautenticarse cuesta unos segundos. Se comprueba en T18 y T19 |
+| Si T18 **y** T19 fallan | inactividad de 8 h como máximo | **Desviación documentada** (ASVS 7.1.1 exige justificar las desviaciones de NIST). Motivos: un solo usuario; dispositivo personal con bloqueo biométrico; la PWA tiene sus propias cookies, separadas de Safari; las acciones sensibles exigen reautenticación; la caducidad absoluta sigue siendo de 24 h. Se decide en la fase 2 (§9, pregunta 33) |
+| Sesiones simultáneas | Como máximo 5; al abrir la sexta, se cierra la más antigua | ASVS 7.1.2 |
+| Ver y cerrar sesiones | Lista en Ajustes; cerrarlas exige reautenticación | ASVS 7.5.2 |
+| Cambio de factor | Al cambiar la contraseña, el TOTP o las passkeys, se ofrece cerrar las demás sesiones | ASVS 7.4.3 |
+| Salir | Botón visible en todas las pantallas; `Clear-Site-Data` y borrado de la caché de TanStack Query | ASVS 7.4.4 y 14.3.1 |
 
-**Autorización**
-- Denegar por defecto (§2.10).
-- Los tokens de dispositivo solo sirven en `/ingest/*`. Un test por cada combinación de credencial y ruta: **tests de permisos obligatorios**.
+**Rotación del token**: la sesión recibe un token nuevo al pasar de `mfa_pending` a `full` **y en cada reautenticación** (ASVS 7.2.4).
+
+**Reautenticación completa** (en los últimos 10 minutos; ASVS 7.5.1): crear **o revocar** tokens de dispositivo, **exportar datos**, cambiar la contraseña, cambiar el TOTP, regenerar los códigos de recuperación, añadir o eliminar passkeys, cerrar otras sesiones y subir el Excel del plan.
+
+**Cookies y CSRF**
+- Cookie `__Host-sid`: `HttpOnly; Secure; SameSite=Lax; Path=/` (ASVS 3.3).
+- Token CSRF sincronizado en la cabecera `X-CSRF-Token` y comprobación de `Origin` / `Sec-Fetch-Site` (ASVS 3.5.1). Sin `csurf`.
+- Por qué `Lax` y no `Strict`: con `Strict`, una navegación iniciada fuera de la app (desde una notificación) podría llegar sin la cookie [VERIFICAR en el dispositivo].
+
+**Límite de peticiones**: login y segundo factor (arriba); ingesta, 30 por minuto por token; resto de la API, 300 por minuto (ASVS 2.4.1).
+
+**SSRF en el push** (ASVS 1.3.6): el `endpoint` de una suscripción lo envía el cliente. Solo se aceptan URL `https` de los hosts de los servicios de push conocidos (Apple, Google, Mozilla), tanto al suscribirse como al enviar. Así, nadie puede usar el servidor para hacer peticiones a la red interna.
+
+**Autorización**: denegar por defecto (§2.10). Los tokens de dispositivo solo sirven en `/ingest/*`. Un test por cada combinación de credencial y ruta. Las denegaciones se registran (ASVS 16.3.2).
 
 **Entradas y salidas**
-- Zod en todas las fronteras.
-- Kysely parametriza las consultas → sin inyección SQL. `sql.raw` está prohibido salvo justificación.
+- Zod en todas las fronteras, con esquemas **estrictos** que rechazan los campos desconocidos (protección contra la asignación masiva, ASVS 15.3.3).
+- Kysely parametriza las consultas. `sql.raw` está prohibido salvo justificación.
 - React escapa la salida; Markdown sin HTML crudo; `ts_headline` se trata como texto.
+- Para los mapas internos con claves que vienen del usuario se usan `Map` o `Object.create(null)` (contaminación de prototipos, ASVS 15.3.6).
 
-**Archivos subidos**
-- Solo los acepta la sesión con reautenticación, con un límite de 5 MB en el *parser*.
-- Comprobación de los bytes iniciales y de la estructura OOXML. Límites de descompresión.
-- Rechazo de `vbaProject.bin` y de vínculos externos.
+**Archivos subidos** (ASVS V5)
+- Tipos, extensiones y tamaños, incluido el tamaño descomprimido, documentados en `plantilla-excel.md` §2 (ASVS 5.1.1).
+- Solo se aceptan con reautenticación.
+- Se comprueban los bytes iniciales y la estructura OOXML; hay límites de descompresión.
+- Se rechazan `vbaProject.bin` y los vínculos externos.
 - Nada se escribe en disco y no se evalúan fórmulas.
-- Como solo sube archivos el usuario autenticado, el riesgo de denegación de servicio es limitado; los límites bastan.
 
-**Cabeceras**
-- helmet con:
-  - CSP: `default-src 'self'`, sin `unsafe-inline` en los scripts, `frame-ancestors 'none'`.
-  - HSTS.
-  - `Referrer-Policy: no-referrer`.
-  - `Permissions-Policy` restrictiva.
+**Cabeceras** (ASVS 3.4) con helmet:
+- **HSTS** de 1 año con `includeSubDomains`.
+- **CSP** con `default-src 'self'`, sin `unsafe-inline` en los scripts y con `frame-ancestors 'none'`.
+- `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` y `Permissions-Policy` restrictiva.
+- **`Cache-Control: no-store` en todas las respuestas de `/api`** (ASVS 14.3.2).
 
 **Secretos**
-- En variables de entorno, validadas al arrancar. `.env.example` sin valores; `.env*` en `.gitignore`.
-- En producción, un archivo con permisos `600` fuera del repositorio.
-- Secretos: la URL de la base de datos, las claves VAPID, la contraseña del repositorio de copias y la clave de firma, si la hubiera.
+- Todos en variables de entorno, validadas al arrancar; `.env.example` sin valores.
+- En producción, en un archivo con permisos `600` fuera del repositorio, y copia en el gestor de contraseñas.
+- Inventario: `DATABASE_URL`, `VAPID_PRIVATE_KEY`, `TOTP_ENCRYPTION_KEY`, `HIBP_USER_AGENT` y `PUBLIC_ORIGIN`. Solo en el host, nunca en la app: la contraseña de restic y las claves del almacén de copias.
+- **Desviación documentada de ASVS 13.3.1** (exige un gestor de secretos tipo *vault*): con un único host y un único operador, un *vault* añadiría infraestructura sin reducir el riesgo real. Si el host se compromete, el atacante obtiene igualmente los secretos en memoria. Mitigación: permisos mínimos, rotación documentada en `docs/runbooks/` y secretos de copias fuera de la app.
 
-**Ningún dato real en el repositorio**
-- `.gitignore` con `*.xlsx`, `*.xlsm`, `*.csv`, `*.dump`, `*.sql.gz`, `backups/` y `.env*`, con excepciones explícitas solo para `apps/api/test/fixtures/*ficticio*`.
-- Escaneo de secretos en CI (p. ej., gitleaks [VERIFICAR la licencia y el mantenimiento]) y *push protection* de GitHub.
+**Repositorio público** [RESUELTO]
+- El repositorio se trata como público **desde ya**. Ni en el código ni en el historial puede haber secretos, dominios, IP, correos, nombres reales de cuentas ni datos financieros.
+- El dominio de producción se configura con `PUBLIC_ORIGIN` y nunca se escribe en el repositorio.
+- gitleaks se ejecuta en un *hook* de pre-commit (`.githooks/`) y en la CI. **Antes de hacer público el repositorio**, se pasa sobre **todo el historial** y se revisa a mano.
+- En GitHub: secret scanning y *push protection* **a nivel de repositorio** (la de usuario no genera alertas), Dependabot, code scanning y una regla que protege `main`. Los pasos están en [`docs/runbooks/github.md`](runbooks/github.md).
+- `SECURITY.md` explica cómo reportar vulnerabilidades en privado.
+- La seguridad no depende de ocultar el código: todo control tiene que funcionar aunque el atacante lea el repositorio.
 
-**Logs**
-- pino con `redact`. No se registran los cuerpos de las peticiones de finanzas ni de la ingesta (salvo en el *spike*, de forma temporal y luego borrado).
-- Cada petición lleva un `requestId`.
+**Logs (ASVS V16)**
+- pino en JSON, con `redact` para cookies, `authorization`, contraseñas, códigos TOTP, tokens y cuerpos con datos financieros.
+- Marcas de tiempo en UTC. Inventario de los eventos registrados en `docs/seguridad/` (ASVS 16.1.1).
+- `audit_events` en la base de datos para los eventos de seguridad: autenticación con éxito y fallida, segundo factor, reautenticación, tokens, exportaciones y denegaciones.
+- Los logs se copian a diario al almacén de copias, que es de solo añadir y está fuera del servidor (ASVS 16.4.2 y 16.4.3, cumplimiento **parcial**: no hay un SIEM ni alertas en tiempo real; se acepta el riesgo y se documenta).
 
-**Servidor (si es un VPS)**
-- SSH solo con clave; sin `root` ni contraseña. Mejor aún, SSH solo a través de Tailscale.
-- Cortafuegos con 80 y 443 abiertos. Actualizaciones de seguridad automáticas.
-- PostgreSQL solo en la red interna de Docker. Imágenes con la versión fijada.
+**Dependencias (ASVS 15.1)**
+- Plazos de corrección de vulnerabilidades: **crítica 7 días · alta 30 días · media 90 días · baja con la siguiente actualización ordinaria**.
+- Actualización general mensual.
+- SBOM: la exportación del *dependency graph* de GitHub (SPDX), sin herramientas adicionales.
 
-**Cifrado de columnas:** no se propone. El atacante que compromete el servidor también obtiene la clave, así que el beneficio real es bajo y la complejidad, alta. Se prefiere reforzar el servidor y cifrar las copias.
+**Servidor**
+- SSH solo con clave y **solo a través de Tailscale**; sin `root` ni contraseña.
+- Cortafuegos: ningún puerto público en la opción D; 80 y 443 en la A.
+- Actualizaciones de seguridad automáticas.
+- PostgreSQL solo en la red interna de Docker, con un rol de la app sin privilegios de superusuario.
+- **Desviación documentada de ASVS 13.2.1**: la app se conecta a PostgreSQL con contraseña. Mitigación: red interna, rol dedicado de mínimo privilegio y contraseña larga aleatoria rotada según el runbook.
 
-### 6.3 Copias de seguridad
+**Cifrado de columnas**: no se usa en general, porque quien compromete el servidor obtiene también la clave. **Excepción**: las semillas TOTP, para que un volcado o una copia de seguridad no basten para generar códigos.
+
+### 6.3 Copias de seguridad [propuesta; confirma los valores en §9, pregunta 22]
 
 | Aspecto | Propuesta |
 |---|---|
-| Qué | `pg_dump -Fc` de la base de datos completa, diario |
-| Cómo | **restic** (BSD-2 [VERIFICAR]): `pg_dump … \| restic backup --stdin`. Cifrado en el cliente, deduplicación, retención y `restic check`. Alternativa: `age` + `rclone` |
-| Quién lo ejecuta | Un temporizador `systemd` o el cron **del host**, no la app: la app no debe tener credenciales del almacén de copias |
-| Dónde | Almacenamiento de objetos fuera del proveedor del servidor (p. ej., Backblaze B2, Cloudflare R2 o Hetzner Storage Box) [VERIFICAR el precio: céntimos al mes con este volumen] |
-| Protección frente a un servidor comprometido | Una clave de aplicación **sin permiso de borrado**, o un bloqueo de objetos. Así un atacante en el servidor no puede borrar las copias |
-| Retención | 7 diarias, 4 semanales y 12 mensuales |
-| Claves | La contraseña de restic, en tu gestor de contraseñas **y** en una copia fuera de línea. Sin ella, las copias no sirven de nada |
-| Restauración | **Prueba mensual**: restaurar en una base de datos temporal y ejecutar una consulta de humo (número de filas y suma de importes). Una copia que nunca se ha restaurado no se puede dar por buena |
-| Monitorización | El script avisa a un servicio de «interruptor de hombre muerto» (p. ej., healthchecks.io) al terminar bien; si un día no avisa, te llega una alerta |
-| Objetivos | RPO de 24 h (como mucho se pierde un día) y RTO de unas horas [DECIDIR]. Para un RPO menor haría falta archivar el WAL (pgBackRest o WAL-G), que es excesivo aquí |
-| Exportación | Exportar en JSON o CSV desde la app (portabilidad y copia legible) [opcional] |
+| **Regla 3-2-1** | **3 copias**: (1) la base de datos de producción; (2) un repositorio restic diario en un almacén de objetos de un **proveedor distinto** del servidor; (3) una copia semanal de ese repositorio (`restic copy`) en un **segundo destino**, que puede ser otro proveedor o un disco externo cifrado en casa [§9, pregunta 32]. **2 soportes o proveedores distintos** y **al menos 1 fuera del servidor**; en realidad son 2 |
+| Qué | `pg_dump -Fc` completo y los logs del día |
+| Cómo | **restic**: cifrado en el cliente, deduplicación, retención y `restic check`. Licencia BSD-2 [VERIFICAR] |
+| Automático | Un temporizador `systemd` del **host**, no la app: la app no tiene credenciales del almacén |
+| Protección | Clave del almacén **sin permiso de borrado** o con bloqueo de objetos: quien comprometa el servidor no puede borrar las copias |
+| **RPO** (pérdida máxima aceptable) | **24 h**. Lo que entra por el atajo en un día se puede reconstruir con los movimientos del banco. Archivar el WAL sería excesivo aquí |
+| **RTO** (tiempo de recuperación) | **4 h**: crear un VPS nuevo, desplegar con el runbook y restaurar la última copia |
+| **Retención escalonada** | 7 diarias, 4 semanales, 12 mensuales y 3 anuales (`restic forget --keep-daily 7 --keep-weekly 4 --keep-monthly 12 --keep-yearly 3`), aplicada desde una máquina con permisos de borrado, no desde el servidor |
+| **Prueba de restauración** | **Al menos una vez por trimestre**: restaurar en una base de datos temporal y comprobar el número de filas por tabla, la suma de importes por mes y un inicio de sesión. Se anota en `docs/runbooks/backup-restore.md` (fecha, copia restaurada, duración, resultado), **sin cifras reales** porque el repositorio es público. Además, `restic check --read-data-subset` cada mes |
+| Monitorización | Un servicio de «interruptor de hombre muerto» (p. ej., healthchecks.io) avisa si no llega la señal diaria |
+| Claves | La contraseña de restic, en el gestor de contraseñas y en una copia en papel fuera de línea. `TOTP_ENCRYPTION_KEY`, igual: sin ella, una restauración obliga a volver a dar de alta el TOTP |
+| Exportación | `GET /export` (JSON, con reautenticación) para tener una copia legible y portabilidad |
 
 ---
 
@@ -982,41 +1110,62 @@ Hay que anotar la versión de iOS y el resultado de cada prueba en `docs/atajo-i
 
 ### 7.1 Requisitos reales
 
-1. **HTTPS con un certificado válido** para la PWA: el *service worker* y el push exigen un contexto seguro.
-2. **Que el atajo pueda llegar al servidor.** Es lo único que exige accesibilidad desde fuera de casa.
-3. **Proceso siempre encendido**: el planificador de recordatorios y la latencia del atajo. Descarta los planes gratuitos que se duermen (en Render, tras 15 minutos de inactividad y con más de 30 s para despertar [VERIFICAR]).
+1. **HTTPS con un certificado de confianza** para la PWA: el *service worker* y el push exigen un contexto seguro.
+2. **Que el atajo pueda llegar al servidor** cuando pagas fuera de casa.
+3. **Proceso siempre encendido** (planificador de recordatorios y latencia del atajo). Descarta los planes gratuitos que se duermen.
 4. PostgreSQL persistente con copias.
-5. Conexiones salientes a los servicios de push.
+5. Conexiones salientes a los servicios de push y a la API de Pwned Passwords.
 
-### 7.2 Opciones (costes aproximados en noviembre de 2026, sin IVA) [VERIFICAR todos los precios]
+### 7.2 Opciones
 
-| Opción | Componentes | Coste/mes | A favor | En contra |
+**Corrección importante**: **Tailscale no aloja nada.** Las dos opciones finalistas necesitan el **mismo servidor siempre encendido** (un VPS o un equipo en casa) y el coste es similar. **Lo que cambia es la exposición.**
+
+| Opción | Qué se expone | Coste/mes [VERIFICAR] | A favor | En contra |
 |---|---|---|---|---|
-| **A. VPS en la UE + Docker Compose + Caddy** | Hetzner CX23 (2 vCPU / 4 GB) o similar (OVH, Netcup); dominio; almacenamiento de copias | VPS **~4–6 €** (Hetzner subió precios dos veces en 2026) + dominio ~1 € (10–15 €/año) + copias < 1 € → **~6–8 €** | Siempre encendido, coste fijo, control total, PostgreSQL local sin exponer, el planificador funciona | Te ocupas del sistema operativo, los parches y el cortafuegos: la seguridad del servidor es responsabilidad tuya |
-| B. PaaS + PostgreSQL gestionado | Render Starter (~7 $) + PostgreSQL gestionado (~6–19 $), o Railway / Fly.io | **~15–30 $** | Sin sistema operativo que mantener; TLS y despliegue desde git; copias del proveedor (según el plan) | Más caro. Los planes gratuitos duermen; el PostgreSQL gratuito de Render **caduca a los 30 días**. Dependencia del proveedor |
-| C. Servidor en casa + Cloudflare Tunnel | Raspberry Pi o NAS + `cloudflared` + dominio en Cloudflare | ~0 € + hardware + electricidad | Sin abrir puertos | Disponibilidad doméstica. **Cloudflare termina el TLS y ve el tráfico en claro**: tus datos financieros pasan por un tercero. Copia fuera de casa obligatoria |
-| D. Solo red privada (Tailscale), sin exposición pública | VPS o casa + Tailscale; HTTPS con un certificado de `*.ts.net` | 0 € (plan personal [VERIFICAR]) + host | **Ninguna superficie de ataque pública** | El atajo solo funciona con la VPN activa en el iPhone (¿VPN bajo demanda? [VERIFICAR]). Hay que verificar el push y el *service worker* con un dominio `ts.net`. Dependes de Tailscale |
-| E. Supabase como PostgreSQL + API en otro host | | Gratuito: **se pausa a los ~7 días sin actividad y no tiene copias**. Pro: ~25 $ | PostgreSQL gestionado con copias (Pro) | Caro para lo que aporta aquí |
+| **A. Endurecida (pública)** | 80 y 443 a internet; SSH solo por Tailscale | VPS ~4–6 € (Hetzner CX23 tras las subidas de 2026) + dominio ~1 € + copias < 1 € → **~6–8 €** | Funciona desde cualquier red sin VPN en el iPhone | Superficie pública: escaneos y ataques automatizados. La aplicación tiene que resistirlos (ASVS L2, dos factores, límites de peticiones) |
+| **D. Privada (Tailscale)** | **Nada** a internet; todo dentro de la *tailnet* | El mismo servidor, **~6–8 €**. Plan personal de Tailscale gratuito [VERIFICAR] | **Ninguna superficie de ataque pública** | El atajo solo llega con la VPN activa. Hay que medir los fallos y la batería. Dependes de Tailscale |
+| B. PaaS + PostgreSQL gestionado | Pública | ~15–30 $ | Sin sistema operativo que mantener | Más caro; los planes gratuitos se duermen. **Descartada** |
+| C. Casa + Cloudflare Tunnel | Pública vía Cloudflare | ~0 € + hardware | Sin abrir puertos | **Cloudflare descifra el tráfico**. **Descartada** para datos financieros |
+| E. Supabase como base de datos | — | Gratuito: se pausa a los ~7 días y no tiene copias | — | **Descartada** |
 
-### 7.3 Recomendación
+**Corrección sobre la opción D**: según la documentación de Tailscale, **VPN On Demand en iOS admite «Siempre» tanto en Wi-Fi como en datos móviles**, así que la VPN puede mantenerse activa sin intervención. Límite: **iOS solo permite una VPN con On Demand activado a la vez**. Si conectas otra VPN, iOS desactiva el On Demand de Tailscale hasta que lo reconectes a mano.
 
-**Opción A** con estas medidas:
-1. Caddy (HTTPS automático con Let's Encrypt).
-2. Solo los puertos 80 y 443 abiertos al público.
-3. SSH accesible únicamente por Tailscale (combina lo mejor de A y D para la administración).
-4. PostgreSQL sin exponer.
-5. Copias con restic a un almacén externo.
+### 7.3 Procedimiento de decisión [RESUELTO: se decide en la fase 2 con datos]
 
-**Coste estimado: 6–8 €/mes** [VERIFICAR].
+1. **La fase 2 empieza con la opción D.**
+2. **Mismo origen en las dos opciones** (recomendación; §9, pregunta 31):
+   - Desde el primer día se usa un **dominio propio**. En D, su registro DNS apunta a la IP de Tailscale (100.x) y el certificado se obtiene con **ACME DNS-01**, que no necesita que el servidor sea accesible desde internet.
+   - Así, pasar a A **solo cambia el registro DNS y el cortafuegos**. Se mantienen el origen, la PWA instalada, las suscripciones push, las cookies, el RP ID de las passkeys y la URL del atajo.
+   - Con un nombre `*.ts.net`, en cambio, el cambio obligaría a reinstalar la PWA, volver a suscribirse al push, dar de alta de nuevo las passkeys y editar el atajo.
+   - Hay que verificar el plugin DNS de Caddy (o certbot) para tu proveedor de DNS [VERIFICAR]. El dominio **no se escribe en el repositorio**.
+3. **Medición durante 2 semanas de uso real**, anotada en `docs/atajo-iphone.md` **solo con recuentos, sin importes, comercios ni nombres de tarjeta**:
+   - `N_wallet`: pagos con Wallet.
+   - `N_fallo_vpn`: pagos en los que el atajo mostró la notificación de fallo **y** la causa era la VPN (Tailscale desconectado o la *tailnet* inaccesible).
+   - `N_fallo_otro`: fallos por otras causas (sin cobertura, error del servidor…).
+   - Batería: porcentaje diario medio de Tailscale en Ajustes → Batería.
+   - Conflictos: si has necesitado otra VPN con On Demand.
+   - Muestra mínima: **20 pagos con Wallet**. Si en 2 semanas no se llega, se prolonga la medición.
+4. **Criterio para pasar a la opción A endurecida** (basta con que se cumpla uno):
+   - `N_fallo_vpn / N_wallet > 5 %`, o `N_fallo_vpn ≥ 3` en el periodo.
+   - Batería de Tailscale **> 5 %** del consumo diario medio.
+   - Necesidad real de otra VPN con On Demand.
+   - T8 o T9 (push y apertura de la PWA) fallan por culpa de la VPN.
 
-Si más adelante quieres **cero exposición**, se puede migrar a la D sin cambiar el código. Solo cambian el DNS y el certificado.
+   Si no se cumple ninguno → **se queda en D**.
+5. **Paso a A endurecida (sin cambiar código)**:
+   1. Abrir 80 y 443 en el cortafuegos del proveedor y del host.
+   2. Apuntar el registro DNS a la IP pública y cambiar a ACME HTTP-01, o mantener DNS-01.
+   3. SSH sigue solo por Tailscale.
+   4. Comprobar las cabeceras y TLS desde fuera.
+   5. Revisar en `asvs-l2.md` las filas marcadas como «sensible a la exposición».
+   6. Anotar la decisión en un ADR.
 
 ### 7.4 Proceso de despliegue
 
 - **Al principio, manual y documentado** (`docs/runbooks/deploy.md`): `git pull` → `docker compose build` → `migrate` (como comando separado, **antes** de arrancar la versión nueva) → `docker compose up -d` → comprobar `/health`.
-- Unos segundos de corte son aceptables con un solo usuario, así que no hace falta *blue/green*. Las migraciones van siempre hacia delante. Para los cambios destructivos se usa el patrón *expand/contract* (añadir, migrar los datos y eliminar en un despliegue posterior).
-- **Después**: un workflow de GitHub Actions que construye la imagen, la publica en GHCR (privado) y despliega por SSH con una clave restringida a ese comando.
-- Entornos: **local** (Docker Compose) y **producción**. **Sin staging**: con un solo usuario, el coste de mantenerlo supera su beneficio. Se compensa con tests y con migraciones probadas en local sobre una copia **ficticia**.
+- Unos segundos de corte son aceptables con un solo usuario: no hace falta *blue/green*. Las migraciones van siempre hacia delante, con *expand/contract* para los cambios destructivos.
+- **Después**: un workflow de GitHub Actions que construye la imagen, la publica en GHCR y despliega por SSH **a través de Tailscale**, con una clave restringida a ese comando. Al ser un repositorio público, los workflows de despliegue **solo** se ejecutan en `main` y nunca con código de PR de terceros.
+- Entornos: **local** y **producción**. Sin *staging*.
 
 ---
 
@@ -1024,121 +1173,147 @@ Si más adelante quieres **cero exposición**, se puede migrar a la D sin cambia
 
 Tamaños relativos (S, M, L, XL). No pongo días porque no conozco tu ritmo y una cifra inventada daría una precisión falsa. Cada fase termina con: tests en verde en CI, el README de los módulos afectados, los ADR de las decisiones tomadas y `docs/dependencias.md` actualizado.
 
-### Fase 0 — Base del repositorio, CI y CLAUDE.md · tamaño S
+### Fase 0 — Base del repositorio, CI, seguridad del repositorio público y CLAUDE.md · tamaño S
 
 - **Alcance**
   - pnpm workspaces (`apps/web`, `apps/api`, `packages/shared`).
-  - `tsconfig` base estricto (`strict`, `noUncheckedIndexedAccess`, `erasableSyntaxOnly`).
-  - Todo en ESM. ESLint + Prettier y Vitest.
+  - `tsconfig` base estricto (`strict`, `noUncheckedIndexedAccess`, `erasableSyntaxOnly`); todo en ESM. ESLint + Prettier y Vitest.
   - `compose.yaml` con PostgreSQL.
-  - API con solo `/api/v1/health`, el gestor de errores (RFC 9457), la configuración validada, pino y el ejecutor de migraciones con una primera migración (extensiones `unaccent` y configuración `es_unaccent`).
+  - API con solo `/api/v1/health`, el gestor de errores (RFC 9457), la configuración validada, pino con `redact` y el ejecutor de migraciones con una primera migración (`unaccent` y `es_unaccent`).
   - Web con Vite + React + Tailwind y una página vacía.
   - `packages/shared` con la utilidad de importes (céntimos ↔ texto) y sus tests.
-  - CI: instalación con el lockfile congelado, lint, typecheck, tests contra PostgreSQL como servicio y build.
-  - Comprobación en CI de que **no se modifica ninguna migración existente** (`git diff` contra `main` de `db/migrations/`).
-  - `.gitignore` de datos, `.env.example`, `CLAUDE.md` actualizado con los comandos reales, ADR 0001–0005 (monorepo, Express, Kysely, sesiones, importes en céntimos) y `docs/dependencias.md`.
-  - Proteger `main` en GitHub (exigir la CI).
+  - **CI**:
+    - Instalación con el lockfile congelado, lint, typecheck, tests contra PostgreSQL como servicio y build.
+    - Comprobación de que **no se modifica ninguna migración existente**.
+    - **gitleaks sobre todo el historial** (imagen oficial fijada por *digest*).
+    - Permisos mínimos del `GITHUB_TOKEN` (`permissions: contents: read`).
+  - **Seguridad del repositorio público**:
+    - `.githooks/pre-commit` con gitleaks (`git config core.hooksPath .githooks`, sin dependencias npm).
+    - `.gitignore` de datos; `.env.example` sin valores.
+    - `SECURITY.md` (ya creado) y `.github/dependabot.yml` (npm, GitHub Actions y Docker).
+    - `LICENSE`, en cuanto decidas la licencia (§9, pregunta 28).
+  - **Configuración de GitHub** siguiendo [`docs/runbooks/github.md`](runbooks/github.md), **que haces tú en la web**: secret scanning y *push protection* del repositorio, alertas y actualizaciones de seguridad de Dependabot, code scanning (CodeQL, configuración por defecto) y una **regla que protege `main`** exigiendo PR y la CI en verde.
+    - Corrección respecto a la v1: GitHub solo permite proteger ramas en repositorios privados con un plan de pago, así que ahora **sí** es posible, porque el repositorio será público.
+  - **Antes de hacer público el repositorio**: gitleaks sobre todo el historial + revisión manual de todos los archivos y commits (hoy son pocos).
+  - `CLAUDE.md` con los comandos reales.
+  - ADR 0001–0006: monorepo, Express, Kysely, sesiones y dos factores, importes en céntimos y repositorio público.
+  - `docs/dependencias.md`.
 - **Terminado cuando**
   - Un clon limpio arranca siguiendo el README en menos de 15 minutos.
   - `pnpm lint && pnpm typecheck && pnpm test && pnpm build` pasan en local y en CI.
-  - Un test verifica el formato de error y otro verifica `/health`.
+  - Un test verifica el formato de error y otro, `/health`.
   - Un PR que modifica una migración existente hace fallar la CI.
+  - Un commit con un secreto de prueba **lo bloquea el *hook*** y, si se fuerza, **lo detecta la CI**. La prueba se hace en una rama desechable con un secreto falso del formato que reconoce gitleaks.
+  - gitleaks está limpio sobre todo el historial.
+  - La regla de `main` está activa: no se puede fusionar sin la CI en verde.
+  - La *push protection* del repositorio, Dependabot y CodeQL están activos (casillas del runbook).
 - **Riesgos**
-  - Pulir las herramientas sin fin. Mitigación: limitar el tiempo; lo que no haga falta en la fase 1, no se configura.
-  - Incompatibilidades entre ESM y CJS y la nueva configuración de Tailwind v4.
+  - Pulir las herramientas sin fin. Mitigación: limitar el tiempo.
+  - Falsos positivos de gitleaks. Mitigación: un `.gitleaksignore` revisado y nunca reglas genéricas.
+  - Hacer público el repositorio antes de revisar el historial.
 - **Conceptos para la entrevista**
-  - Workspaces y resolución de dependencias.
-  - ESM frente a CJS.
-  - Qué garantiza cada paso de la CI (lint ≠ typecheck ≠ tests).
-  - Lockfiles e instalaciones reproducibles.
+  - Workspaces; ESM frente a CJS.
+  - Qué garantiza cada paso de la CI.
+  - Lockfiles.
   - Configuración *12-factor*.
-  - Qué es un ADR y por qué existe.
-  - Migraciones versionadas e inmutables.
+  - ADR.
+  - Migraciones inmutables.
+  - **Cadena de suministro**: escaneo de secretos en varias capas, por qué un secreto subido hay que **rotarlo** (no basta con borrarlo del historial), Dependabot, SBOM, permisos mínimos del `GITHUB_TOKEN` y riesgos de `pull_request_target` en repositorios públicos.
 
-### Fase 1 — Autenticación + cuentas, categorías y movimientos + balance mensual y gráficos · tamaño L
+### Fase 1 — Autenticación con dos factores + cuentas, categorías y movimientos + balance mensual y gráficos · tamaño L
 
 - **Alcance**
-  - **1a. Autenticación**
-    - Script `create-user`.
-    - Login, logout, sesión, reautenticación y cambio de contraseña.
-    - CSRF, límite de peticiones en el login y `audit_events`.
-    - Pantallas de login y de sesiones abiertas.
+  - **1a. Autenticación (ASVS V6 y V7 · NIST AAL2)**
+    - Script `create-user`: contraseña + alta del TOTP + códigos de recuperación.
+    - Login en dos pasos (`mfa_pending` → `full`, con un token nuevo).
+    - TOTP de uso único, códigos de recuperación, reautenticación completa y cambio de contraseña con comprobación de contraseñas filtradas.
+    - Caducidades de 24 h y 1 h; lista y cierre de sesiones; `Clear-Site-Data` al salir.
+    - CSRF, límites de peticiones y `audit_events`.
+    - Cabeceras (HSTS, CSP, `no-store`).
   - **1b. Libro real**
-    - Cuentas, categorías (con categorías iniciales opcionales), movimientos (alta manual, edición, confirmación y filtros) y transferencias.
-    - Correspondencia entre las tarjetas de Wallet y las cuentas: la tabla existe desde ahora y su interfaz llega en la fase 2.
-    - Conciliación de saldo (§2.3).
-  - **1c. Informes**
-    - Balance mensual (ingresos, gastos y neto), desglose por categoría y saldo por cuenta.
-    - Gráficos con Recharts: barras de ingresos y gastos por mes, línea de saldo a fin de mes y barras por categoría.
-  - Todo **en local**; sin desplegar todavía.
+    - Cuentas (corriente, ahorro y efectivo), categorías, movimientos (alta, edición, confirmación y filtros) y transferencias.
+    - **Conciliación mensual con un movimiento de ajuste.**
+  - **1c. Informes**: balance mensual, desglose por categoría, saldo por cuenta (con los ajustes en una línea propia) y 3 gráficos.
+  - **1d. Exportación** `GET /export` con reautenticación.
+  - Todo **en local**.
 - **Terminado cuando**
   - Hay tests de:
-    - Conversión y formato de importes (tabla con decimales, miles y negativos).
-    - Saldo: el saldo inicial, los ingresos y gastos confirmados y las transferencias de entrada y salida, **sin que las transferencias cuenten como gasto**.
-    - Pertenencia de cada movimiento a su mes.
-    - Las restricciones de la base de datos (un movimiento confirmado incompleto falla; una categoría de ingreso en un gasto falla).
-    - La conciliación.
-    - Los **permisos**: todas las rutas sin sesión → 401; sin CSRF → 403; el login limitado → 429.
-  - Prueba manual: alta, edición y confirmación de movimientos y gráficos de 12 meses con datos **ficticios** de una semilla.
-  - Existen los ADR de sesiones frente a JWT y de CSRF.
+    - Importes y saldos, con las transferencias fuera de los gastos y los ajustes incluidos en el saldo.
+    - Las restricciones de la base de datos.
+    - **La conciliación**: una diferencia de 0 no crea ajuste; una positiva crea un ingreso de ajuste; una negativa, un gasto; tras conciliar, saldo calculado = saldo del banco; borrar la conciliación borra el ajuste; no puede haber dos por cuenta y mes; un movimiento editado después produce un aviso de discrepancia.
+    - **TOTP**: los vectores de RFC 6238, la reutilización de un código rechazada y la ventana de ±1 paso.
+    - Que un código de recuperación vale una sola vez.
+    - Las caducidades por inactividad y absoluta, con un reloj simulado.
+    - La matriz de **permisos**: todas las rutas sin sesión → 401; en `mfa_pending` → 401; sin CSRF → 403; S+ sin reautenticación → 403; token de dispositivo fuera de `/ingest` → 401/403.
+    - Las contraseñas cortas, comunes o filtradas, rechazadas (con un doble de prueba de la API de HIBP).
+    - Los límites de peticiones.
+  - Las filas de V6, V7 y V8 de `asvs-l2.md` asignadas a la fase 1 están en estado «cumplido» y cada una enlaza a su test.
 - **Riesgos**
-  - Errores sutiles de autenticación. Mitigación: tests de permisos y la checklist de OWASP.
-  - Cookies `Secure` en `http://localhost` con Safari [VERIFICAR; si hace falta, HTTPS local con mkcert].
-  - Que se cuelen números decimales (`Number(input)`). Mitigación: todo pasa por la utilidad de importes compartida.
-  - Que los gráficos se coman el tiempo. Mitigación: 3 gráficos y ninguno más.
+  - Errores sutiles de autenticación (la matriz ASVS y los tests de permisos los mitigan).
+  - Cookies `Secure` en `localhost` con Safari [VERIFICAR; si hace falta, mkcert].
+  - El desfase de reloj en el TOTP.
+  - Que se cuelen números decimales en los importes.
 - **Conceptos para la entrevista**
-  - Hash frente a cifrado; Argon2id y sus parámetros; por qué los tokens aleatorios se guardan con SHA-256 y las contraseñas con un hash lento.
-  - Sesiones con estado frente a JWT (revocación).
-  - CSRF y `SameSite`; los atributos de las cookies.
-  - Restricciones SQL, FK compuestas e índices parciales.
-  - Por qué céntimos enteros y no `float`.
-  - Capas e inyección de dependencias manual.
-  - Diseño REST: códigos de estado, idempotencia de PUT y DELETE, paginación por cursor frente a desplazamiento.
-  - Caché e invalidación con TanStack Query.
+  - Factores de autenticación y AAL2.
+  - TOTP (HMAC, pasos de tiempo, reutilización).
+  - Por qué los códigos de recuperación se guardan con Argon2id y los tokens aleatorios de 256 bits con SHA-256.
+  - *k-anonymity* en Pwned Passwords.
+  - Fijación de sesión y rotación del token.
+  - Sesiones con estado frente a JWT; CSRF y `SameSite`.
+  - Restricciones SQL; importes en céntimos.
+  - Conciliación contable y ajustes explícitos frente a «arreglar» el saldo inicial.
 
-### Fase 2 — Despliegue + PWA + registro rápido + atajo de iPhone · tamaño L
+### Fase 2 — Despliegue privado con medición + PWA + registro rápido + atajo de iPhone · tamaño L
 
 - **Alcance**
-  - **2a. Spike de iOS (primero, como máximo 1–2 días)**
-    - Desplegar lo mínimo: `/health`, un endpoint de ingesta que solo registra en el log y una PWA con push.
-    - Pasar T1–T3 y T7–T9 **antes** de construir el resto. Este módulo depende de que esto funcione.
-  - **2b. Producción**
-    - VPS, Caddy y dominio.
-    - Copias con restic y una **restauración probada**.
+  - **2a. Spike de iOS (primero; como máximo 1–2 días)**
+    - Servidor siempre encendido con la **opción D** (Tailscale), dominio propio y certificado por DNS-01 (§7.3).
+    - `/health`, un endpoint de ingesta que solo registra en el log y una PWA con push.
+    - Pasar T1–T3, T7–T9 y T16 **antes** de construir el resto.
+  - **2b. Producción en D**
+    - Copias **3-2-1** automáticas con restic y la **primera prueba de restauración documentada**.
     - Monitorización de disponibilidad y de las copias.
-    - Runbooks.
-  - **2c. PWA**
-    - Manifiesto, iconos, *service worker* (`injectManifest`), suscripción a push, notificación de prueba y contador del icono.
+    - Runbooks de despliegue, copia y restauración y rotación de secretos.
+  - **2c. PWA**: manifiesto, *service worker*, suscripción a push, notificación de prueba y contador en el icono.
   - **2d. Atajo**
-    - Tokens de dispositivo (crear, listar y revocar).
-    - `/ingest/wallet-transactions` con idempotencia, marcas y huella.
-    - Correspondencia de tarjetas, bandeja de pendientes y formulario rápido.
-  - **2e.** `docs/atajo-iphone.md` con la configuración paso a paso y los resultados del protocolo §5.10.
+    - Tokens de dispositivo (crear y revocar, ambos con reautenticación).
+    - `/ingest/wallet-transactions`, correspondencia de tarjetas, bandeja de pendientes y formulario rápido.
+    - Prueba T13 (preguntar el concepto y la categoría en el momento).
+  - **2e. Evaluación de passkeys y usabilidad de la sesión**
+    - T18 (passkey en la PWA) y T19 (autorrelleno del TOTP).
+    - Si T18 funciona: alta de passkeys con @simplewebauthn y su ADR.
+    - Si T18 y T19 fallan: decidir la desviación de la inactividad (§6.2).
+  - **2f. Medición de 2 semanas y decisión D/A** según el criterio de §7.3, con su ADR.
+  - **2g.** `docs/atajo-iphone.md`: configuración paso a paso (sin dominio ni token reales) y resultados de T1–T19 y de la medición, **solo con recuentos**.
 - **Terminado cuando**
-  - El protocolo T1–T15 está pasado y documentado, con la versión de iOS.
-  - Se ha hecho una restauración completa de una copia en una base de datos temporal.
-  - Las cabeceras de seguridad están verificadas (CSP sin errores en la consola).
-  - Un token revocado recibe un 401 y el atajo muestra la notificación local.
-  - Hay tests de la ingesta: idempotencia (la misma clave → 200 y una sola fila), huella, marcas, conversión de importes con los ejemplos **reales** de T3 (anonimizados) y permisos del token (no puede leer `/movements`).
-  - Un gasto manual se registra en menos de 15 s desde el iPhone.
+  - Protocolo T1–T19 pasado y documentado con la versión de iOS.
+  - Medición de 2 semanas con al menos 20 pagos, completada y **decisión D/A tomada con el criterio de §7.3**.
+  - Primera restauración completa hecha y anotada; la tercera copia (`restic copy`) verificada.
+  - Cabeceras verificadas: sin errores de CSP en la consola; HSTS presente.
+  - Revocar un token → el atajo recibe 401 y muestra la notificación local.
+  - Hay tests de la ingesta (idempotencia, huella, marcas, importes con los formatos **reales** de T3 reescritos con cifras inventadas, permisos del token).
+  - Gasto manual registrado en menos de 15 s.
+  - Filas de la fase 2 en `asvs-l2.md` actualizadas.
 - **Riesgos**
-  - **El mayor del proyecto: el comportamiento de iOS.** Mitigación: el spike 2a va primero.
-  - Que el enlace profundo de la notificación no funcione. Mitigación: §5.7.
+  - **El comportamiento de iOS** (el spike va primero).
+  - Que la VPN corte el atajo (la medición y el criterio objetivo lo cubren).
+  - Que el plugin DNS-01 no exista para tu proveedor de DNS: cambiar de DNS o usar certbot.
+  - Que la passkey no funcione en la PWA: el TOTP sigue disponible.
   - Pérdida de suscripciones push.
-  - El trabajo de mantener un VPS.
-  - Que la sesión de la PWA expire antes de lo esperado.
+  - **Filtrar datos reales en la documentación del dispositivo** (el repositorio es público).
 - **Conceptos para la entrevista**
-  - TLS y ACME (Let's Encrypt); proxy inverso.
-  - Ciclo de vida de un *service worker*.
-  - Protocolo Web Push (servicio de push, VAPID y cifrado).
-  - Limitaciones de las PWA en iOS.
-  - Claves de idempotencia (el patrón de Stripe) frente a la deduplicación por huella.
-  - Tokens *bearer* frente a cookies; permisos de mínimo privilegio.
-  - Modelo de amenazas; copias 3-2-1, RPO y RTO.
+  - Superficie de ataque y redes privadas (WireGuard/Tailscale) frente a exposición pública.
+  - ACME HTTP-01 frente a DNS-01.
+  - Por qué el **origen** (esquema + host + puerto) determina cookies, *service workers*, push y el RP ID de WebAuthn.
+  - Ciclo de vida de un *service worker*; Web Push y VAPID.
+  - Passkeys y resistencia al *phishing*.
+  - Idempotencia frente a huella.
+  - Decisiones basadas en métricas con un criterio fijado **antes** de medir.
+  - 3-2-1, RPO y RTO.
 
 ### Fase 3 — Importación del Excel + presupuesto, proyección, metas, escenarios, comprobaciones y comparativa · tamaño XL (se divide en tres)
 
-- **Antes de empezar:** resolver la lista [A CONFIRMAR] de `plantilla-excel.md` §13 y la decisión sobre la columna «Tipo de registro».
+- **Antes de empezar:** migrar tu Excel a la v2 (`plantilla-excel.md` §14) y anotar los textos exactos de las etiquetas de resumen (§13). Las decisiones de diseño de la plantilla ya están resueltas.
 - **Alcance**
   - **3a. Importación**
     - Spike de la librería de Excel (§4.2).
@@ -1174,7 +1349,7 @@ Tamaños relativos (S, M, L, XL). No pongo días porque no conozco tu ritmo y un
 
 - **Alcance**
   - Kanban de 4 columnas, arrastrar y reordenar (dnd-kit) y el menú «Mover a…».
-  - Fecha límite, tiempo dedicado (cronómetro o anotación manual [DECIDIR]) y recordatorios por push.
+  - Fecha límite, tiempo dedicado (cronómetro **y** anotación manual, ambos guardados como intervalos) y recordatorios por push.
   - Planificador de 60 s.
 - **Terminado cuando**
   - Hay tests:
@@ -1235,51 +1410,79 @@ Tamaños relativos (S, M, L, XL). No pongo días porque no conozco tu ritmo y un
 
 ---
 
-## 9. (i) Preguntas abiertas (te corresponde decidir)
+## 9. (i) Preguntas abiertas
 
-Cada pregunta incluye mi recomendación (**R**) para que puedas decidir rápido.
+Estado tras la revisión 2: **RESUELTA** (con la decisión tomada) o **PENDIENTE** (con mi recomendación **R** y cuándo hay que decidirla).
 
 **Plantilla y plan**
-1. ¿Añades la columna I «Tipo de registro» a la plantilla? **R:** sí (§3.3).
-2. ¿Qué estados cuentan en el plan base? **R:** la tabla de `plantilla-excel.md` §6.1 (excluye Potencial, No activo, Pausado e Histórico).
-3. ¿Qué relación hay entre «Impacto base» e «Incluir 12M»? ¿Un evento «Escenario» se proyecta?
-4. ¿El mes 1 de la proyección es el mes del plan o el siguiente? ¿Puede haber varias filas «Saldo de ahorro»?
-5. Las columnas de la hoja «Escenarios» y cómo afecta el pago puntual a la caja libre.
-6. ¿Algún «Objetivo» de las metas es una fórmula calculada (fondo de emergencia)? Si lo es, la app necesita esa regla explícita.
-7. ¿Hay gastos irregulares expresados en € (no en €/mes) en el Presupuesto? ¿Cómo se convierten a cantidad mensual?
-8. ¿Se aceptan valores fijos en Presupuesto · Mensual? **R:** no; se exige una referencia.
-9. Si un mes no tiene plan importado, ¿se aplica el último? **R:** sí, indicándolo.
-10. ¿Los eventos puntuales cuentan en la comparativa? **R:** en una fila aparte.
-11. ¿`.xlsm` o `.xlsx`? **R:** `.xlsx`.
-12. ¿Se guarda el archivo original subido? **R:** no.
+
+| # | Pregunta | Estado | Decisión o recomendación |
+|---|---|---|---|
+| 1 | ¿Columna «Tipo de registro»? | RESUELTA | Sí, en la plantilla v2 (`plantilla-excel.md` §7 y §14) |
+| 2 | ¿Qué estados cuentan en el plan base? | RESUELTA | La tabla de `plantilla-excel.md` §6.1 (excluye Potencial, No activo, Pausado e Histórico). Los escenarios son la excepción |
+| 3 | ¿«Impacto base» frente a «Incluir 12M»? | RESUELTA | «Impacto base» se elimina en la v2; la proyección usa solo Incluir 12M y la fecha |
+| 4 | ¿Cuál es el mes 1? ¿Varias filas de saldo? | RESUELTA | Mes 1 = el mes elegido al subir el archivo; los meses pasados se muestran con datos reales. Se admiten varias filas de saldo y se suman |
+| 5 | ¿Columnas de Escenarios y cómo se aplica el pago puntual? | RESUELTA | A–H confirmadas; el escenario es una lista de filas de Datos; el pago puntual se resta entero |
+| 6 | ¿El objetivo de alguna meta se calcula con una fórmula? | RESUELTA | Sí, el del fondo de emergencia: tipo de meta `emergency_fund`, que calcula la app |
+| 7 | ¿Gastos irregulares en €? | RESUELTA | El gasto irregular tiene el Anual escrito a mano: aviso `VALUE_IN_CALCULATED_COLUMN` + paso 6 de la migración |
+| 8 | ¿Valores fijos en Presupuesto · Mensual? | RESUELTA | No; se exige una referencia |
+| 9 | ¿Un mes sin plan usa el último? | RESUELTA | Sí, indicándolo |
+| 10 | ¿Eventos puntuales en la comparativa? | RESUELTA | En una fila aparte |
+| 11 | ¿`.xlsm` o `.xlsx`? | RESUELTA | `.xlsx` |
+| 12 | ¿Guardar el archivo original? | RESUELTA | No |
 
 **Finanzas reales**
-13. ¿Los pendientes cuentan en los saldos y en la comparativa? **R:** no; se muestran aparte.
-14. Tarjetas de crédito con cargo aplazado: ¿cuenta propia y transferencia en el momento de la liquidación (lo correcto), o asignarlas a la cuenta corriente (lo simple)?
-15. ¿Qué significa el origen «importación» en los movimientos reales? ¿Extractos bancarios (CSV o Norma 43)? ¿En qué fase?
-16. ¿«Conciliación» es comparar con el saldo del banco (mi propuesta) o casar los pendientes con un extracto importado?
+
+| # | Pregunta | Estado | Decisión o recomendación |
+|---|---|---|---|
+| 13 | ¿Los pendientes cuentan en los saldos y en la comparativa? | RESUELTA | No; se muestran aparte |
+| 14 | ¿Tarjetas de crédito? | RESUELTA | No hay. Cuentas corriente, ahorro y efectivo; si algún día hacen falta, ADR |
+| 15 | ¿Origen «importación»? | RESUELTA | La importación de extractos queda fuera del MVP; `import` se elimina del modelo |
+| 16 | ¿Qué es la conciliación? | RESUELTA | Una vez al mes por cuenta: saldo calculado frente al del banco, con un ajuste explícito si hay diferencia |
+| 29 | ¿El saldo inicial de la proyección (`S0`) debería salir de las cuentas reales? | PENDIENTE (fase 3) | **R:** cuando haya cuentas conciliadas, `S0` = Σ de los saldos calculados de las cuentas a fin del mes anterior al mes 1, mostrando la diferencia con las filas «Saldo de ahorro» del Excel; hasta entonces, las filas del Excel |
 
 **Atajo y notificaciones**
-17. ¿Importe y comercio visibles en la pantalla de bloqueo? **R:** texto genérico por defecto.
-18. ¿Probar la mejora de preguntar la categoría en el momento? ¿Confirmar directamente si el pago está completo?
-19. Caducidad del token del atajo. **R:** 180 días, con un aviso 14 días antes.
+
+| # | Pregunta | Estado | Decisión o recomendación |
+|---|---|---|---|
+| 17 | ¿Importes en la pantalla de bloqueo? | RESUELTA | Texto genérico por defecto |
+| 18 | ¿Preguntar en el atajo? ¿Confirmar directamente? | RESUELTA la prueba / PENDIENTE la confirmación directa | Se prueba en T13. La confirmación directa se decide después de T13 (fase 2) |
+| 19 | ¿Caducidad del token del atajo? | RESUELTA | 180 días, con un aviso 14 días antes |
 
 **Seguridad y despliegue**
-20. ¿Opción A (VPS) o D (solo Tailscale)? ¿Qué presupuesto mensual aceptas?
-21. ¿Segundo factor o passkey? ¿Cuánto debe durar la sesión de la PWA?
-22. RPO y RTO, y retención de las copias.
-23. **¿El repositorio será público?** Ventaja: sirve de portfolio. Riesgo: expone la arquitectura de un sistema con tus finanzas. La seguridad no debe depender de ocultar el código, pero entonces nunca deben aparecer en él el dominio, la IP ni los datos. **R:** público solo si se cumple esa disciplina; si no, privado.
-24. ¿`user_id` en las tablas por si algún día hubiera varios usuarios? **R:** no (YAGNI). El índice `users ((true))` documenta la decisión.
+
+| # | Pregunta | Estado | Decisión o recomendación |
+|---|---|---|---|
+| 20 | ¿Opción A o D? | PENDIENTE (fase 2, con datos) | Se empieza con D, se mide 2 semanas y se aplica el criterio de §7.3 |
+| 21 | ¿Segundo factor? ¿Duración de la sesión? | RESUELTA (con dos subpreguntas pendientes) | TOTP obligatorio + códigos de recuperación; 24 h de caducidad absoluta y 1 h de inactividad; reautenticación para las acciones sensibles (§6.2) |
+| 22 | ¿RPO, RTO y retención? | PENDIENTE (confirma los valores propuestos) | **R:** RPO 24 h, RTO 4 h, retención 7/4/12/3 y prueba de restauración trimestral (§6.3) |
+| 23 | ¿Repositorio público? | RESUELTA | Sí, con las reglas de §6.2 y de `CLAUDE.md` |
+| 24 | ¿`user_id` en las tablas? | RESUELTA | No (YAGNI) |
+| 28 | ¿Licencia? | PENDIENTE (fase 0, antes de publicar) | **R: MIT.** Sin licencia, el código se puede ver pero no reutilizar legalmente; con MIT, cualquiera puede reutilizarlo citando el aviso de copyright. No afecta a la seguridad |
+| 31 | ¿Dominio propio desde el principio, también en D? | PENDIENTE (inicio de la fase 2) | **R:** sí, con DNS-01. Mantiene el mismo origen si se pasa a A (§7.3) |
+| 32 | ¿Segundo destino de las copias (la tercera copia)? | PENDIENTE (fase 2) | **R:** un segundo proveedor de almacén de objetos si cuesta menos de ~1 €/mes con este volumen [VERIFICAR]; si no, un disco externo cifrado actualizado cada mes |
+| 33 | ¿Desviación de la inactividad si fallan la passkey y el autorrelleno (T18 y T19)? | PENDIENTE (fase 2, tras las pruebas) | **R:** 8 h como máximo, documentada como desviación de NIST (§6.2); la caducidad absoluta de 24 h se mantiene |
+| 34 | ¿Adoptar passkeys? | PENDIENTE (fase 2, tras T18) | **R:** sí, si funcionan en la PWA; el TOTP se mantiene como respaldo |
+| 35 | ¿Retención de `audit_events` y de los logs técnicos? | PENDIENTE (fase 1) | **R:** `audit_events`, 1 año; logs técnicos, 30 días (y en las copias según su retención) |
 
 **Producto**
-25. Tiempo dedicado a las tareas: ¿cronómetro, anotación manual o ambos?
-26. Portfolio: ¿publicar con commits por la API de GitHub (mi propuesta) u otra vía?
-27. Interfaz solo en español (sin i18n). **R:** sí.
+
+| # | Pregunta | Estado | Decisión o recomendación |
+|---|---|---|---|
+| 25 | ¿Tiempo dedicado a las tareas? | RESUELTA | Cronómetro (uno activo a la vez) y anotación manual, ambos como intervalos |
+| 26 | ¿Cómo se publica en el portfolio? | RESUELTA | Commits mediante la API de GitHub a Portfolio-v2 |
+| 27 | ¿Interfaz solo en español? | RESUELTA | Sí |
+
+Los números 29–35 son preguntas nuevas de esta revisión (la 30 se fusionó con la 18).
 
 ---
 
-## 10. Fuentes consultadas para los datos marcados como verificados o [VERIFICAR]
+## 10. Fuentes consultadas
 
+- OWASP ASVS 5.0 (texto de los requisitos, capítulos V1–V17): [repositorio oficial, carpeta 5.0/en](https://github.com/OWASP/ASVS/tree/master/5.0/en)
+- NIST SP 800-63B-4, AAL y reautenticación: [pages.nist.gov/800-63-4/sp800-63b/aal](https://pages.nist.gov/800-63-4/sp800-63b/aal/). La caducidad de 1 h por inactividad solo se ha visto en fuentes secundarias, como [MojoAuth](https://mojoauth.com/glossary/session-timeout) [VERIFICAR]
+- Tailscale VPN On Demand en iOS: [documentación de Tailscale](https://tailscale.com/kb/1291/ios-vpn-on-demand)
+- GitHub, alertas de secret scanning y *push protection* de usuario frente a la de repositorio: [GitHub Docs](https://docs.github.com/en/code-security/secret-scanning/managing-alerts-from-secret-scanning/about-alerts)
 - Propiedades de la automatización «Transacción» y el importe 0: [Apple Community](https://discussions.apple.com/thread/256252606), [Matthew Cassinelli](https://matthewcassinelli.com/shortcuts-automations-ios-ipados-transaction-display-stage-manager/), [Automators](https://talk.automators.fm/t/apple-wallet-to-csv/17674), [TravelSpend](https://help.travel-spend.com/shortcuts--automation/ignQHsp85RQDsig2QwVcdX/set-up-apple-pay-automation/7tL8XfjBceg4D7mQeiSK2V) y [finerd](https://help.finerd.ai/apple-pay)
 - Enlace profundo de las notificaciones en iOS: [WebKit 263687](https://bugs.webkit.org/show_bug.cgi?id=263687) y [Apple Developer Forums 733604](https://developer.apple.com/forums/thread/733604)
 - `crypto.argon2` en Node: [commit «mark argon2 … as stable»](https://github.com/nodejs/node/commit/5402b5e)
@@ -1291,7 +1494,7 @@ Cada pregunta incluye mi recomendación (**R**) para que puedas decidir rápido.
 - pnpm `minimumReleaseAge`: [ThreatCluster](https://threatcluster.io/cluster/pnpm-11-introduces-default-minimum-release-age-to-mitigate-s-81fce868)
 - Calendario de Node: [InfoQ](https://infoq.com/news/2026/06/nodejs-release-changes)
 - Hetzner CX23: [VPSBenchmarks](https://www.vpsbenchmarks.com/hosters/hetzner/plans/cx23)
-- Pausa de los proyectos gratuitos de Supabase: [Supabase](https://supabase.com/kb/faqs/platform/free-project-pausing)
-- Planes de Render: [Render, plataformas gratuitas 2026](https://render.com/articles/platforms-with-a-real-free-tier-for-developers-in-2026.md)
+- Pausa de los proyectos de Supabase: [Supabase](https://supabase.com/kb/faqs/platform/free-project-pausing)
+- Render: [plataformas gratuitas 2026](https://render.com/articles/platforms-with-a-real-free-tier-for-developers-in-2026.md)
 - Kysely: [unpkg](https://app.unpkg.com/kysely@0.28.8)
 - vite-plugin-pwa: [registro de cambios](https://vite-pwa-org.netlify.app/guide/change-log)
