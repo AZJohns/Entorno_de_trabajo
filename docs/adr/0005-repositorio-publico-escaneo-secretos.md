@@ -44,6 +44,6 @@ El repositorio será público (sirve de portfolio), pero el sistema guarda datos
 
 ## Consecuencias
 
-- Para hacer commits hay que tener gitleaks instalado (`sh scripts/install-gitleaks.sh`), también en las sesiones en la nube (`README.md`).
+- Para hacer commits hay que tener gitleaks instalado (`sh scripts/install-gitleaks.sh`). En las sesiones de Claude Code en la nube lo instala el hook `SessionStart` del repositorio (`.claude/hooks/session-start.sh`), que también garantiza Node ≥ 24.12. No se usa el script de configuración del entorno porque el entorno Default lo comparten otros repositorios (`README.md`).
 - Si se filtra un secreto: **rotarlo primero** y limpiarlo después (`docs/runbooks/github.md` §8).
 - Ampliar `.gitleaksignore` exige justificarlo.
