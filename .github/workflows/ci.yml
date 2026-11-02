@@ -134,8 +134,8 @@ jobs:
 
   windows:
     # Comprobación ligera de que el repositorio funciona en Windows x64 con Git para Windows:
-    # finales de línea LF, instalación de gitleaks, pnpm install (activa el hook), lint, carga de
-    # migraciones con rutas de Windows, check-migrations-immutable y el hook.
+    # finales de línea LF, instalación de gitleaks, pnpm install (activa el hook), lint, TODOS los
+    # tests (con el PostgreSQL del runner), check-migrations-immutable y el hook.
     name: windows
     runs-on: windows-latest
     defaults:
@@ -163,10 +163,30 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
-      # Las migraciones se importan con URL file://: en Windows, import() de "C:\…" falla con
-      # ERR_UNSUPPORTED_ESM_URL_SCHEME. Este test no necesita base de datos.
-      - name: Proveedor de migraciones (rutas de Windows)
-        run: pnpm --filter @backoffice/api exec vitest run test/migration-provider.test.ts
+      # Todos los tests, también los de integración con PostgreSQL. El runner de Windows trae un
+      # PostgreSQL instalado con el servicio deshabilitado: se habilita y se arranca. Si no existiera,
+      # el job falla (no se degrada en silencio a ejecutar solo una parte de los tests).
+      - name: Arrancar el PostgreSQL preinstalado del runner
+        shell: pwsh
+        run: |
+          $svc = Get-Service -Name 'postgresql*' -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $svc) { throw 'Este runner de Windows no trae PostgreSQL instalado' }
+          Write-Host "Servicio: $($svc.Name) (estado: $($svc.Status), inicio: $($svc.StartType))"
+          Set-Service -Name $svc.Name -StartupType Manual
+          Start-Service -Name $svc.Name
+          $pgbin = if ($env:PGBIN) { $env:PGBIN } else { Split-Path (Get-Command psql).Source }
+          & "$pgbin\postgres.exe" --version
+          for ($i = 0; $i -lt 30; $i++) {
+            & "$pgbin\pg_isready.exe" -h 127.0.0.1 -p 5432
+            if ($LASTEXITCODE -eq 0) { break }
+            Start-Sleep -Seconds 1
+          }
+          if ($LASTEXITCODE -ne 0) { throw 'PostgreSQL no responde' }
+          # Credenciales del PostgreSQL de la imagen del runner (públicas y desechables, no secretos).
+          $user = if ($env:PGUSER) { $env:PGUSER } else { 'postgres' }
+          $pass = if ($env:PGPASSWORD) { $env:PGPASSWORD } else { 'root' }
+          "TEST_DATABASE_URL=postgres://${user}:${pass}@127.0.0.1:5432/postgres" >> $env:GITHUB_ENV
+      - run: pnpm test
       # El script debe ejecutarse de verdad (import.meta.main) y no terminar en silencio con éxito.
       - name: check-migrations-immutable se ejecuta en Windows
         run: |
