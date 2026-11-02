@@ -38,7 +38,7 @@ docs/            Plan, ADR, seguridad y runbooks
    pnpm install
    ```
 
-2. Crea tu `.env` a partir del ejemplo y rellena `POSTGRES_PASSWORD`, `DATABASE_URL` y `TEST_DATABASE_URL` con la misma contraseña (por ejemplo, la salida de `openssl rand -hex 16`):
+2. Crea tu `.env` a partir del ejemplo y rellena `POSTGRES_PASSWORD`, `DATABASE_URL` y `TEST_DATABASE_URL` con la misma contraseña (por ejemplo, la salida de `openssl rand -hex 16`). Las dos URL usan el puerto de `POSTGRES_PORT` (5432 por defecto; si está ocupado, ver [Puerto 5432 ocupado](#puerto-5432-ocupado-postgresql-nativo-u-otro-programa)):
 
    ```bash
    cp .env.example .env
@@ -134,6 +134,38 @@ Comprueba que se encuentra:
 ```powershell
 gitleaks version
 ```
+
+### Puerto 5432 ocupado (PostgreSQL nativo u otro programa)
+
+Si en tu PC ya hay un PostgreSQL instalado como servicio, normalmente ocupa el puerto **5432** y `pnpm db:up` falla al publicar el puerto. Los dos pueden convivir: el del proyecto se publica en otro puerto del host.
+
+1. Mira qué proceso usa el 5432. La última columna es el PID; búscalo en el Administrador de tareas, pestaña Detalles:
+
+   ```powershell
+   netstat -ano | findstr :5432
+   ```
+
+2. Comprueba también que el puerto que vas a elegir no esté en un **rango reservado** por Windows (Hyper-V, WSL o Docker reservan rangos dinámicos y el puerto falla aunque nadie lo use):
+
+   ```powershell
+   netsh interface ipv4 show excludedportrange protocol=tcp
+   ```
+
+3. Elige un puerto libre y fuera de esos rangos (por ejemplo, `5433`) y ponlo en `.env`. Usa **ese mismo puerto** en `DATABASE_URL` y en `TEST_DATABASE_URL`, porque compose y la API leen variables distintas:
+
+   ```dotenv
+   POSTGRES_PORT=5433
+   DATABASE_URL=postgres://backoffice:<contraseña>@127.0.0.1:5433/backoffice
+   TEST_DATABASE_URL=postgres://backoffice:<contraseña>@127.0.0.1:5433/backoffice
+   ```
+
+4. Vuelve a crear el contenedor con el nuevo puerto:
+
+   ```powershell
+   pnpm db:down; pnpm db:up
+   ```
+
+Usa siempre `127.0.0.1` en las URL, no `localhost`: así te conectas al PostgreSQL del contenedor y no, por error, al nativo, que puede escuchar en `::1`.
 
 ### Arranque
 

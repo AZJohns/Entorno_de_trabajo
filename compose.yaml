@@ -1,4 +1,6 @@
 # PostgreSQL para desarrollo local. Solo escucha en 127.0.0.1: no se expone a la red.
+# El puerto del host es configurable (POSTGRES_PORT en .env) para convivir con otro PostgreSQL que ya
+# use el 5432, p. ej. un servicio nativo en Windows. Dentro del contenedor siempre es el 5432.
 # Las credenciales vienen de .env (ver .env.example); aquí no hay ningún secreto.
 services:
   db:
@@ -9,7 +11,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en .env}
       POSTGRES_DB: ${POSTGRES_DB:-backoffice}
     ports:
-      - '127.0.0.1:5432:5432'
+      - '127.0.0.1:${POSTGRES_PORT:-5432}:5432'
     volumes:
       - db-data:/var/lib/postgresql
     healthcheck:
