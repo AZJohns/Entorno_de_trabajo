@@ -19,6 +19,10 @@ Las reglas de negocio importantes deben estar **también** en la base de datos. 
 2. **Migraciones con el `Migrator` de Kysely**, escritas en TypeScript con SQL explícito (`sql\`…\``):
    - Están en `apps/api/src/db/migrations/` y se nombran `NNNN_descripcion.ts` con un número de 4 cifras. Con un único desarrollador no hay migraciones paralelas, y un número correlativo se lee mejor que una marca de tiempo.
    - Se aplican con `pnpm db:migrate`. Kysely registra las aplicadas en la tabla `kysely_migration`.
+   - **Proveedor propio** (`apps/api/src/db/migration-provider.ts`) en lugar de `FileMigrationProvider` de Kysely:
+     - Kysely hace `import()` de la ruta absoluta, y en Windows (`C:\…`) el cargador ESM de Node lo rechaza (`ERR_UNSUPPORTED_ESM_URL_SCHEME`). El proveedor propio importa cada archivo con `pathToFileURL(ruta).href`.
+     - Además, un `.ts` con un nombre que no sigue `NNNN_descripcion.ts` es un error, en vez de ignorarse en silencio.
+     - Su test no necesita base de datos y se ejecuta también en el job `windows` de la CI.
 3. **Una migración aplicada o publicada en `main` no se edita nunca: se crea otra nueva.**
    - Lo comprueba la CI (`apps/api/scripts/check-migrations-immutable.ts`): solo se permite **añadir** archivos en esa carpeta.
    - Kysely no guarda checksums de las migraciones aplicadas, así que sin esta comprobación una edición pasaría desapercibida.

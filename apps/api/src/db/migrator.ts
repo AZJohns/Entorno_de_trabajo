@@ -7,11 +7,11 @@
  *   comprueba (`scripts/check-migrations-immutable.ts`).
  * - Se avanza siempre hacia delante. `down` solo existe si es trivial y sirve para el desarrollo local.
  */
-import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Kysely } from 'kysely';
-import { FileMigrationProvider, Migrator, type MigrationResultSet } from 'kysely/migration';
+import { Migrator, type MigrationResultSet } from 'kysely/migration';
+import { TsFileMigrationProvider } from './migration-provider.ts';
 
 /**
  * Las migraciones operan sobre un esquema que cambia con cada una: no hay un tipo de base de datos
@@ -30,7 +30,7 @@ export const MIGRATIONS_FOLDER = path.join(
 export function createMigrator(db: AnyDatabase): Migrator {
   return new Migrator({
     db,
-    provider: new FileMigrationProvider({ fs, path, migrationFolder: MIGRATIONS_FOLDER }),
+    provider: new TsFileMigrationProvider(MIGRATIONS_FOLDER),
   });
 }
 
