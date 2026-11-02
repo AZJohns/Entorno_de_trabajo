@@ -134,7 +134,8 @@ jobs:
 
   windows:
     # Comprobación ligera de que el repositorio funciona en Windows x64 con Git para Windows:
-    # finales de línea LF, instalación de gitleaks, pnpm install (activa el hook), lint y el hook.
+    # finales de línea LF, instalación de gitleaks, pnpm install (activa el hook), lint, carga de
+    # migraciones con rutas de Windows, check-migrations-immutable y el hook.
     name: windows
     runs-on: windows-latest
     defaults:
@@ -162,6 +163,16 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
+      # Las migraciones se importan con URL file://: en Windows, import() de "C:\…" falla con
+      # ERR_UNSUPPORTED_ESM_URL_SCHEME. Este test no necesita base de datos.
+      - name: Proveedor de migraciones (rutas de Windows)
+        run: pnpm --filter @backoffice/api exec vitest run test/migration-provider.test.ts
+      # El script debe ejecutarse de verdad (import.meta.main) y no terminar en silencio con éxito.
+      - name: check-migrations-immutable se ejecuta en Windows
+        run: |
+          output="$(node apps/api/scripts/check-migrations-immutable.ts HEAD)"
+          echo "$output"
+          echo "$output" | grep -q 'Migraciones inmutables respecto a HEAD: OK'
       - name: El hook de pre-commit bloquea un secreto falso
         run: |
           # core.hooksPath lo fija el script prepare durante pnpm install (scripts/setup-git-hooks.ts).
