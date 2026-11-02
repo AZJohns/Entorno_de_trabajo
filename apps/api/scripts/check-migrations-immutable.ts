@@ -7,7 +7,6 @@
  * Uso: `node scripts/check-migrations-immutable.ts <ref-base>` (p. ej., `origin/main`).
  */
 import { execFileSync } from 'node:child_process';
-import { pathToFileURL } from 'node:url';
 
 /** Carpeta de migraciones, relativa a la raíz del repositorio. */
 export const MIGRATIONS_PATH = 'apps/api/src/db/migrations';
@@ -51,6 +50,9 @@ function main(): void {
   console.log(`Migraciones inmutables respecto a ${baseRef}: OK`);
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
+// import.meta.main (Node ≥ 24.2) indica si este archivo es el punto de entrada. No se compara
+// import.meta.url con process.argv[1]: en Windows pueden diferir (mayúsculas de la unidad, «c:» frente a
+// «C:») y el script terminaría sin comprobar nada, con éxito: un falso verde.
+if (import.meta.main) {
   main();
 }
