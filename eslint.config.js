@@ -76,6 +76,21 @@ export default tseslint.config(
           selector: "JSXAttribute[name.name='dangerouslySetInnerHTML']",
           message: 'No insertes HTML sin escapar.',
         },
+        {
+          // Mismo riesgo sin JSX: createElement(..., { dangerouslySetInnerHTML }) o un objeto de props.
+          selector:
+            "Property[key.name='dangerouslySetInnerHTML'], Property[key.value='dangerouslySetInnerHTML']",
+          message: 'No insertes HTML sin escapar.',
+        },
+        {
+          // Las mismas inyecciones por el DOM directo (ASVS 1.1.2, 1.2.1).
+          selector: 'AssignmentExpression[left.property.name=/^(innerHTML|outerHTML)$/]',
+          message: 'No insertes HTML sin escapar: usa textContent o JSX.',
+        },
+        {
+          selector: 'CallExpression[callee.property.name=/^(insertAdjacentHTML|write|writeln)$/]',
+          message: 'No insertes HTML sin escapar.',
+        },
       ],
     },
   },

@@ -25,8 +25,8 @@
 | Estado | Requisitos |
 |---|---|
 | Verificado (fase 0) | 9 |
-| Verificado (fase 1) | 83 |
-| Planificado | 83 |
+| Verificado (fase 1) | 91 |
+| Planificado | 75 |
 | Desviación documentada | 8 |
 | No aplica | 70 |
 | **Total L1 + L2** | **253** |
@@ -42,7 +42,7 @@
 - **13.3.1**: Gestor de secretos (*vault*).
 - **16.4.3**: Logs enviados a un sistema separado.
 
-**Fase 1 (revisión de las filas de F0):** se cierran 1.1.1, 1.2.3, 1.2.5, 1.3.7, 1.3.10, 1.5.2, 3.7.1, 14.2.3 y 15.1.2 (revisión del código del 2026-11-03, más una regla de lint nueva para 1.2.5 y la comprobación del SBOM) y 16.1.1 (inventario `logs.md`). Ninguna fila asignada solo a F0 queda sin cerrar (las que tienen un rango, como «F0+» o «F0–F1», siguen su regla).
+**Fase 1 (revisión de las filas de F0):** se cierran 1.1.1, 1.2.3, 1.2.5, 1.3.7, 1.3.10, 1.5.2, 3.7.1, 14.2.3 y 15.1.2 (revisión del código del 2026-11-03, más una regla de lint nueva para 1.2.5 y la comprobación del SBOM) y 16.1.1 (inventario `logs.md`). Después de integrar el #15 se cierra también 1.4.2 (test nuevo `packages/shared/test/finance-schemas.test.ts`); 2.3.3 y 5.4.1 conservan su parte de F1 anotada y se completan en la F3. Ninguna fila asignada solo a F0 queda sin cerrar (las que tienen un rango, como «F0+» o «F0–F1», siguen su regla).
 
 **Fase 1 (cierre con la exportación):** las filas de V6, V7 y V8 asignadas solo a la fase 1 están verificadas (V8: 8.1.1, 8.1.2, 8.2.1 y 8.3.1); 8.2.2 y 8.2.3 siguen «Planificado» porque su rango acaba en F2 (tokens de dispositivo). También se cierran 3.2.1 y 5.4.2 con la exportación. **Fase 1, autenticación (PR de la parte 3a):** las filas de V6 y V7 asignadas a la fase 1 están verificadas. Las filas «F1 · todos», «F1+» o con un rango que acaba después siguen «Planificado» hasta su última fase; en «Cómo se cumple» se anota la parte ya hecha. Las filas de V8 asignadas a F1 se cierran con el resto de la fase 1 (cuentas, movimientos y exportación), salvo 8.3.1, que ya no depende de ellas.
 
@@ -51,9 +51,9 @@
 | ID | Nivel | Requisito (resumen) | Estado | Cómo se cumple | Fase · módulo | Verificación |
 |---|---|---|---|---|---|---|
 | 1.1.1 | L2 | Decodificar a forma canónica una sola vez y antes de validar | **Verificado (F1)** | Express parsea el JSON una sola vez (`express.json`, `apps/api/src/app.ts`) y Zod valida después; no hay decodificaciones manuales | F0 · http | Revisión (2026-11-03): sin `decodeURI*`, `decodeURIComponent` ni `unescape` en `apps/` ni `packages/`. Test: `apps/api/test/app.test.ts` («JSON mal formado → 400 MALFORMED_JSON») |
-| 1.1.2 | L2 | Codificar la salida como último paso, para el intérprete de destino | Planificado | React escapa al renderizar; la API solo emite JSON serializado por Express | F1 · web | Revisión |
-| 1.2.1 | L1 | Codificación de salida según el contexto (HTML, atributos, cabeceras) | Planificado | React; las cabeceras solo llevan valores generados por el servidor | F1 · web, http | Test XSS (F5) + revisión |
-| 1.2.2 | L1 | Codificar los datos al construir URLs | Planificado | El cliente de la API usa `URL` y `encodeURIComponent`; nunca concatena | F1 · web/lib | Revisión |
+| 1.1.2 | L2 | Codificar la salida como último paso, para el intérprete de destino | **Verificado (F1)** | React escapa al renderizar; la API solo emite JSON serializado por Express · `dangerouslySetInnerHTML`, `innerHTML`, `outerHTML`, `insertAdjacentHTML` y `document.write` prohibidos por lint en `apps/web` | F1 · web | Lint: `no-restricted-syntax` en `eslint.config.js` · Test: `apps/web/test/finance-pages.test.tsx` («una descripción con <script> se muestra como texto…») |
+| 1.2.1 | L1 | Codificación de salida según el contexto (HTML, atributos, cabeceras) | **Verificado (F1)** | React; las cabeceras solo llevan valores generados por el servidor | F1 · web, http | Test: `apps/web/test/finance-pages.test.tsx` («una descripción con <script> se muestra como texto…») + lint. Las cabeceras no llevan datos del usuario (`security.test.ts`) |
+| 1.2.2 | L1 | Codificar los datos al construir URLs | **Verificado (F1)** | Query strings con `URLSearchParams` (`queryString`) y segmentos de ruta con `encodeURIComponent` (`segment`, en `apps/web/src/finance/queries.ts`); el id de `useParams` lo controla quien escribe la URL | F1 · web/lib | Test: `apps/web/test/finance-pages.test.tsx` («codifica el id de la ruta del navegador…») |
 | 1.2.3 | L1 | Codificar al generar JavaScript o JSON dinámico | **Verificado (F1)** | No se genera JavaScript; el JSON sale de `res.json` | F0 · http | Revisión (2026-11-03): sin JSONP, `<script>` dinámico ni `innerHTML` en `apps/`; lint: `no-eval`, `no-new-func` y `dangerouslySetInnerHTML` prohibido (`eslint.config.js`) |
 | 1.2.4 | L1 | Consultas parametrizadas | Planificado | Kysely parametriza; `sql.raw` prohibido salvo justificación (regla de lint) | F0–F5 · repositorios | Lint + revisión |
 | 1.2.5 | L1 | Sin inyección de comandos del sistema | **Verificado (F1)** | La app no ejecuta comandos; las copias las hace el host con argumentos fijos. Solo los scripts de desarrollo y CI (`scripts/`, `apps/api/scripts/`) usan `execFileSync` con argumentos fijos | F0 · — | Lint: `no-restricted-imports` de `child_process` en `apps/api/src`, `apps/web/src` y `packages/*/src` (`eslint.config.js`) |
@@ -65,7 +65,7 @@
 | 1.3.6 | L2 | Protección contra SSRF | Planificado | **Lista de hosts permitidos para los endpoints de push** (servicios de push de Apple, Google y Mozilla) al suscribirse y al enviar; solo `https`. El resto de destinos salientes es fijo | F2 · notifications | Test: suscripción con un endpoint interno → 400 |
 | 1.3.7 | L2 | Sin inyección de plantillas | **Verificado (F1)** | No se construyen plantillas con entrada del usuario | F0 · — | Revisión (2026-11-03): sin motor de plantillas entre las dependencias ni `res.render`; lint: `no-eval`, `no-new-func` |
 | 1.3.10 | L2 | Sanitizar las cadenas de formato | **Verificado (F1)** | Logs estructurados (pino con objetos); sin `printf` con entrada del usuario | F0 · http | Revisión (2026-11-03): los mensajes de log son literales y los datos van en el objeto (`apps/api/src/http/errors.ts`, `apps/api/src/server.ts`); test de la redacción: `apps/api/test/logger.test.ts` |
-| 1.4.2 | L2 | Evitar desbordamientos de enteros | Planificado | Importes `bigint`; `Number.isSafeInteger` en la conversión; límites en Zod | F0–F1 · shared/money | Test |
+| 1.4.2 | L2 | Evitar desbordamientos de enteros | **Verificado (F1)** | Importes `bigint`; `Number.isSafeInteger` en la conversión; `z.int()` (solo enteros seguros) en los esquemas de la API | F0–F1 · shared/money | Test: `packages/shared/test/money.test.ts` («acepta el máximo entero seguro y rechaza el siguiente»), `packages/shared/test/finance-schemas.test.ts` (movimientos y transferencias) y `apps/api/test/db-cents.test.ts` (`centsFromDb` rechaza lo que excede el entero seguro) |
 | 1.5.1 | L1 | Analizadores XML sin entidades externas (XXE) | Planificado | El lector OOXML no debe resolver entidades externas [VERIFICAR en el spike] | F3 · imports | Test con un XLSX que declara una entidad externa |
 | 1.5.2 | L2 | Deserialización segura | **Verificado (F1)** | Solo JSON validado con Zod; no se reconstruyen tipos de objeto | F0 · http | Revisión (2026-11-03): sin `JSON.parse` de entrada ni deserializadores de objetos en `apps/api/src`; el test con `__proto__` llega con 15.3.6. El importador del Excel (F3) tiene sus propias filas |
 
@@ -77,13 +77,13 @@
 |---|---|---|---|---|---|---|
 | 2.1.1 | L1 | Reglas de validación documentadas | Planificado | Los esquemas Zod de `packages/shared` + `plantilla-excel.md` | F0+ · shared | Revisión |
 | 2.1.2 | L2 | Coherencia de datos combinados documentada | Planificado | Restricciones de `plan.md` §2 (confirmado = completo, categoría del mismo tipo…) | F1+ · finance | Revisión |
-| 2.1.3 | L2 | Límites de negocio documentados | Planificado | `docs/seguridad/limites.md`: tamaños, longitudes, número de sesiones y límites de peticiones · **Auth hecho**: `docs/seguridad/limites.md` §1 y §4 | F1 · todos | Revisión |
+| 2.1.3 | L2 | Límites de negocio documentados | **Verificado (F1)** | `docs/seguridad/limites.md` §7: índice único de límites de peticiones, campos, importes, fechas, cantidades y duraciones, con su fuente de verdad. Los límites de peticiones de la API general y de la ingesta están marcados como fase 2 (2.4.1) | F1 · todos | Revisión: `docs/seguridad/limites.md` §7 |
 | 2.2.1 | L1 | Validación positiva (listas permitidas, rangos) | Planificado | Zod estricto con enumeraciones, rangos y longitudes | F1+ · todos | Tests de validación |
 | 2.2.2 | L1 | Validación en una capa de servicio de confianza | Planificado | El backend valida siempre, aunque el frontend use los mismos esquemas · Libro: esquemas de `packages/shared/src/finance/schemas.ts` en los controladores y reglas entre filas en `ledger.service.ts` (`apps/api/test/finance/api-movements.test.ts`, `api-transfers.test.ts`, `api-reconciliations.test.ts`) | F1+ · http | Tests de API |
 | 2.2.3 | L2 | Combinaciones de datos razonables | Planificado | `CHECK` en la base de datos + reglas combinadas de Zod (origen ≠ destino, fecha ≥ apertura…) · Libro: restricciones de `0003_ledger` (`apps/api/test/finance/ledger-schema.test.ts`) y 422 por categoría de otro tipo, fecha anterior a la apertura o conciliación anterior a ella (`api-movements.test.ts`, `api-transfers.test.ts`, `api-reconciliations.test.ts`) | F1+ · finance | Tests |
 | 2.3.1 | L1 | Flujos en el orden previsto, sin saltar pasos | Planificado | Login `mfa_pending` → `full`; importación vista previa → confirmación; conciliación · **Auth hecho**: `apps/api/test/auth/login.test.ts` («la sesión pendiente no da acceso: solo permite el segundo factor») | F1, F3 · auth, imports | Tests: saltar un paso → rechazo |
 | 2.3.2 | L2 | Límites de negocio implementados | Planificado | Los de 2.1.3 | F1+ · todos | Tests |
-| 2.3.3 | L2 | Transacciones en la lógica de negocio | Planificado | Confirmar una importación, conciliar + ajuste, reordenar tareas | F1, F3, F4 | Tests |
+| 2.3.3 | L2 | Transacciones en la lógica de negocio | Planificado | Confirmar una importación, conciliar + ajuste, reordenar tareas · **Parte F1 (revisión 2026-11-03)**: cada operación compuesta del libro (transferencias, conciliación + ajuste, borrado de la conciliación) corre en una sola transacción (`#transaction` en `ledger.service.ts`) | F1, F3, F4 | Tests: el de atomicidad (fallo a mitad de la operación) se escribe en la F3, con la confirmación de importaciones; en la F1 no hay un fallo intermedio natural y habría que inyectarlo |
 | 2.3.4 | L2 | Bloqueos para recursos limitados | Planificado | Bloqueo consultivo por mes al importar; cronómetro único; `SKIP LOCKED` en los recordatorios | F3, F4 | Tests de concurrencia |
 | 2.4.1 ‡ | L2 | Controles contra la automatización | Planificado | Límites de peticiones (login, segundo factor, ingesta, API) · **Login y segundos factores hechos** (`apps/api/test/auth/rate-limit.test.ts`: por IP y global en el login; 429 en el segundo factor, `/unlock` y `/reauth`) | F1–F2 · http | Tests |
 
@@ -272,8 +272,8 @@
 
 | ID | Nivel | Requisito (resumen) | Estado | Cómo se cumple | Fase · módulo | Verificación |
 |---|---|---|---|---|---|---|
-| 14.1.1 | L2 | Datos sensibles identificados y clasificados | Planificado | `docs/seguridad/datos.md`: credenciales (hashes, semillas, tokens), datos financieros, notas y metadatos | F1 | Revisión |
-| 14.1.2 | L2 | Requisitos de protección por nivel | Planificado | El mismo documento | F1 | Revisión |
+| 14.1.1 | L2 | Datos sensibles identificados y clasificados | **Verificado (F1)** | `docs/seguridad/datos.md` §1–2: cuatro niveles (N3 secreto a N0 público) y clasificación de credenciales, datos financieros, sesiones, auditoría, logs, configuración, copias y exportación | F1 | Revisión: `docs/seguridad/datos.md` |
+| 14.1.2 | L2 | Requisitos de protección por nivel | **Verificado (F1)** | `docs/seguridad/datos.md` §3: cifrado, almacenamiento, logs, exportación, acceso, retención, minimización y rotación por nivel; §4 lista lo que depende de la fase 2 | F1 | Revisión: `docs/seguridad/datos.md` |
 | 14.2.1 | L1 | Datos sensibles solo en el cuerpo o en cabeceras, nunca en la URL | Planificado | Tokens en cabeceras. La búsqueda `q` va en la URL: los logs de Caddy y de pino **no registran la query string** | F1–F2 · http, deploy | Test (redacción) + revisión |
 | 14.2.2 | L2 | Sin caché de datos sensibles en componentes del servidor | Planificado | `Cache-Control: no-store`; Caddy sin caché · `no-store` en `/api` desde F1 (test: `apps/api/test/security.test.ts`) | F1–F2 | Test |
 | 14.2.3 | L2 | Sin envío de datos a terceros (rastreadores) | **Verificado (F1)** | Sin analíticas ni CDN de terceros; la CSP lo impone. Única llamada a un tercero: la API consulta los rangos de HIBP al fijar la contraseña (solo 5 caracteres del SHA-1, *k-anonymity*) | F0 · web | Revisión (2026-11-03): sin URL externas en `apps/web/src`; test: `apps/api/test/security.test.ts` («CSP estricta…»: `default-src`, `script-src` y `connect-src 'self'`) |
@@ -298,7 +298,7 @@
 | 15.3.4 ‡ | L2 | IP original correcta tras el proxy | Planificado | `TRUST_PROXY_HOPS` (0 por defecto; 1 detrás de Caddy en F2). Nunca `trust proxy = true` | F2 · http | Test: `apps/api/test/auth/proxy.test.ts` (F1); configuración real en F2 |
 | 15.3.5 | L2 | Tipos estrictos e igualdad estricta | **Verificado (F0)** | TypeScript estricto + `eqeqeq` | F0 · todos | TypeScript `strict` + lint `eqeqeq` |
 | 15.3.6 | L2 | Sin contaminación de prototipos | Planificado | `Map` u `Object.create(null)` para las claves que vienen del usuario; Zod descarta `__proto__` | F1+ · todos | Test con `__proto__` |
-| 15.3.7 | L2 | Sin contaminación de parámetros HTTP | Planificado | Zod espera cadenas: los parámetros repetidos (arrays) se rechazan | F1 · http | Test |
+| 15.3.7 | L2 | Sin contaminación de parámetros HTTP | **Verificado (F1)** | Zod espera cadenas: un parámetro repetido llega como array y se rechaza con 400 `VALIDATION_ERROR`; ninguno de los valores se elige en silencio | F1 · http | Test: `apps/api/test/finance/api-reports.test.ts` («rechaza un parámetro repetido…») |
 
 ## V16 — Registro de seguridad y gestión de errores
 
@@ -329,8 +329,8 @@
 
 | Documento | Requisitos | Fase |
 |---|---|---|
-| `docs/seguridad/limites.md`: límites de negocio, funciones costosas y lista de palabras del contexto | 2.1.3, 6.1.2, 15.1.3 | F1 (creado; parte de autenticación) |
-| `docs/seguridad/datos.md`: clasificación de los datos y protección por nivel | 14.1.1, 14.1.2 | F1 |
+| `docs/seguridad/limites.md`: límites de negocio, funciones costosas y lista de palabras del contexto | 2.1.3, 6.1.2, 15.1.3 | F1 (creado; §7 reúne todos los límites del libro y la autenticación) |
+| `docs/seguridad/datos.md`: clasificación de los datos y protección por nivel | 14.1.1, 14.1.2 | F1 (creado) |
 | `docs/seguridad/logs.md`: inventario de los eventos y sus destinos | 16.1.1, 16.2.3 | F1 (creado; parte de autenticación) |
 | `docs/seguridad/criptografia.md`: inventario y ciclo de vida de las claves | 11.1.1, 11.1.2 | F1–F2 |
 | `docs/seguridad/comunicaciones.md`: destinos salientes permitidos | 13.1.1, 13.2.4 | F2 |
