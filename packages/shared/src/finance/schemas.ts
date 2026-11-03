@@ -77,6 +77,8 @@ export const accountResponseSchema = z.object({
   currency: z.literal('EUR'),
   openingBalanceCents: signedCents,
   openingDate: localDateSchema,
+  /** Saldo actual, calculado al leer: todos los movimientos confirmados y las transferencias, también los futuros. */
+  balanceCents: signedCents,
   archived: z.boolean(),
 });
 

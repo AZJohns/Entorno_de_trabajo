@@ -50,6 +50,7 @@ Una cuenta archivada queda **congelada**: no admite movimientos, transferencias 
 ## Decisiones
 
 - **Saldo** hasta `as_of` incluido = apertura + ingresos confirmados − gastos confirmados + transferencias recibidas − enviadas. Los pendientes no cuentan; los ajustes sí.
+- **`balanceCents` en las cuentas** (`GET /accounts`, `/accounts/:id` y las respuestas de alta, edición y archivado): saldo **actual**, sin fecha: `balanceAsOf(ledger, null)`, es decir, todos los movimientos confirmados y las transferencias, **también los de fecha futura**; los pendientes no cuentan. Se calcula al leer y no se guarda. La lista usa `loadLedgers`: dos consultas (movimientos y transferencias) para todas las cuentas, y el dominio calcula cada saldo; no se duplica la lógica con `SUM` en SQL. Es el mismo saldo que exige 0 para archivar.
 - **Ajuste**: `statement − computed`. Si es 0 no se crea nada; si es positivo, un ingreso; si es negativo, un gasto por el valor absoluto, con `booked_on = as_of` para que entre en el saldo de esa fecha.
 - **Los ajustes van en una línea propia** de los informes (`monthlyTotals.adjustmentsCents`): no son ingresos ni gastos reales.
 - **Totales y saldos**: para las cuentas que ya existían al empezar el mes, la variación de la suma de sus saldos es `netCents + adjustmentsCents`; las transferencias se anulan entre cuentas propias.

@@ -34,6 +34,7 @@ describe('cuentas', () => {
       currency: 'EUR',
       openingBalanceCents: 123_456,
       openingDate: '2026-01-01',
+      balanceCents: 123_456,
       archived: false,
     });
   });
