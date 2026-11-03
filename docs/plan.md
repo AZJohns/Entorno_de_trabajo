@@ -160,6 +160,7 @@ jobs (infraestructura) ──▶ tasks, notifications, imports, auth (limpiezas 
 - **Importes:** `bigint` con el sufijo `_cents`. En JavaScript se manejan como `number` comprobando `Number.isSafeInteger` (el máximo seguro equivale a unos 90 billones de euros). El driver `pg` devuelve `bigint` y `SUM()` como cadena de texto: se convierten en un único sitio, con esa comprobación.
 - **Enumeraciones** como `text` con un `CHECK (… IN (…))`, en lugar del tipo `ENUM` de PostgreSQL. Motivo: a un `ENUM` no se le puede quitar un valor y añadir uno tiene restricciones dentro de las transacciones. Un `CHECK` se reemplaza con una migración normal.
 - Las claves ajenas declaran siempre `ON DELETE` de forma explícita. Las entidades a las que apuntan otras (cuentas, categorías) se **archivan** (`archived_at`) en lugar de borrarse.
+- **`ON DELETE RESTRICT` y el código de error:** al borrar una fila referenciada, PostgreSQL 17 y anteriores devuelven `23503` (`foreign_key_violation`) y PostgreSQL 18 devuelve `23001` (`restrict_violation`); con `NO ACTION` sigue siendo `23503`. No aparece en las notas de la versión; se observó en la CI. Para responder 409 se usa `isReferencedRowError` (`apps/api/src/db/errors.ts`), el único sitio que lista los dos códigos.
 - **No se guardan datos derivados**: saldos, totales, proyecciones y resultados de los checks se calculan al leer. Con un solo usuario y miles de filas, el coste es despreciable. Si un día no lo fuera, se añadiría una vista materializada.
 - `created_at` y `updated_at` son `timestamptz NOT NULL DEFAULT now()`. `updated_at` lo actualiza el repositorio, no un *trigger*, para que el comportamiento sea visible en el código.
 
@@ -247,7 +248,7 @@ jobs (infraestructura) ──▶ tasks, notifications, imports, auth (limpiezas 
 | Columna | Tipo | Restricciones y notas |
 |---|---|---|
 | id | uuid | PK |
-| name | text | NOT NULL; único sobre `lower(name)` `WHERE archived_at IS NULL` |
+| name | text | NOT NULL, `CHECK (char_length(name) BETWEEN 1 AND 100)`; único sobre `lower(name)` `WHERE archived_at IS NULL` |
 | type | text | `CHECK IN ('checking','savings','cash')`: corriente, ahorro y efectivo [RESUELTO: no hay tarjetas de crédito; si algún día hacen falta, se deciden en un ADR] |
 | currency | char(3) | NOT NULL DEFAULT `'EUR'`, `CHECK (currency = 'EUR')` en el MVP. Admitir otras monedas será una decisión explícita, con su migración |
 | opening_balance_cents | bigint | NOT NULL DEFAULT 0. Puede ser negativo (descubierto) |
@@ -258,7 +259,7 @@ jobs (infraestructura) ──▶ tasks, notifications, imports, auth (limpiezas 
 | Columna | Tipo | Restricciones y notas |
 |---|---|---|
 | id | uuid | PK |
-| name | text | NOT NULL |
+| name | text | NOT NULL, `CHECK (char_length(name) BETWEEN 1 AND 100)` |
 | kind | text | `CHECK IN ('income','expense')` |
 | archived_at | timestamptz | NULL |
 
@@ -273,34 +274,36 @@ jobs (infraestructura) ──▶ tasks, notifications, imports, auth (limpiezas 
 | first_seen_at, last_seen_at | timestamptz | |
 
 **`movements`** (ingresos y gastos; las transferencias van aparte)
+
+> **Fase 1b frente a fase 2.** La migración `0003_ledger` crea `movements` **sin** las columnas `wallet_card_id`, `device_token_id`, `idempotency_key` y `raw_payload`, porque `wallet_cards` y `device_tokens` son de la fase 2 y todavía no existen (una FK a una tabla inexistente no se puede crear). Allí `source` solo admite `manual` y `reconciliation`. La migración de la fase 2 añadirá esas columnas, el valor `shortcut` en el `CHECK` de `source` y las restricciones marcadas con «(fase 2)». La tabla de abajo es el diseño final.
 | Columna | Tipo | Restricciones y notas |
 |---|---|---|
 | id | uuid | PK |
 | kind | text | `CHECK IN ('income','expense')`. El importe siempre es positivo y el signo lo determina `kind` |
 | amount_cents | bigint | NOT NULL `CHECK (amount_cents >= 0)`. Puede ser 0 solo mientras está pendiente (borrador) |
-| description | text | NULL. El «concepto» |
-| merchant | text | NULL. El comercio |
+| description | text | NULL, `CHECK (char_length(description) <= 500)`. El «concepto» |
+| merchant | text | NULL, `CHECK (char_length(merchant) <= 200)`. El comercio |
 | account_id | uuid | FK `accounts` ON DELETE RESTRICT, NULL solo si está pendiente |
 | category_id | uuid | NULL. FK compuesta `(category_id, kind) → categories(id, kind)`: **la base de datos impide asignar una categoría de ingreso a un gasto** |
 | booked_on | date | NOT NULL. Fecha contable |
-| source | text | `CHECK IN ('manual','shortcut','reconciliation')`. `import` se elimina hasta que existan los extractos bancarios [RESUELTO] |
-| reconciliation_id | uuid | NULL. FK `account_reconciliations` ON DELETE CASCADE, `UNIQUE`. Solo en los movimientos de ajuste |
+| source | text | `CHECK IN ('manual','shortcut','reconciliation')` (en la fase 1b, sin `shortcut`: se añade en la fase 2). `import` se elimina hasta que existan los extractos bancarios [RESUELTO] |
+| reconciliation_id | uuid | NULL. `UNIQUE`. Solo en los movimientos de ajuste. FK **compuesta** `(reconciliation_id, account_id) → account_reconciliations(id, account_id)` ON DELETE CASCADE: **la base de datos impide que un ajuste sea de una cuenta distinta de la que se concilió** (necesita `UNIQUE (id, account_id)` en `account_reconciliations`). Si `reconciliation_id` es NULL, la FK no se comprueba |
 | status | text | `CHECK IN ('pending','confirmed')` |
 | flags | text[] | NOT NULL DEFAULT `'{}'`. `CHECK (flags <@ ARRAY['amount_missing','amount_unparsed','merchant_missing','unknown_card','possible_duplicate','foreign_currency'])` |
-| wallet_card_id | uuid | FK `wallet_cards`, NULL |
-| device_token_id | uuid | FK `device_tokens` ON DELETE RESTRICT, NULL. Los tokens se revocan, no se borran |
-| idempotency_key | text | NULL, longitud ≤ 128 |
-| raw_payload | jsonb | NULL. Lo que envió el atajo, para diagnosticar problemas de formato. **Se borra al confirmar** (minimización de datos) |
+| wallet_card_id | uuid | (fase 2) FK `wallet_cards`, NULL |
+| device_token_id | uuid | (fase 2) FK `device_tokens` ON DELETE RESTRICT, NULL. Los tokens se revocan, no se borran |
+| idempotency_key | text | (fase 2) NULL, longitud ≤ 128 |
+| raw_payload | jsonb | (fase 2) NULL. Lo que envió el atajo, para diagnosticar problemas de formato. **Se borra al confirmar** (minimización de datos) |
 | created_at, updated_at, confirmed_at | timestamptz | |
 
 Restricciones de tabla:
 - `CHECK (status = 'pending' OR (amount_cents > 0 AND account_id IS NOT NULL AND (category_id IS NOT NULL OR source = 'reconciliation') AND flags = '{}'))`: un movimiento confirmado siempre está completo y sin incidencias pendientes. Los ajustes de conciliación no llevan categoría: aparecen en una línea propia, «Ajustes de conciliación».
 - `CHECK ((source = 'reconciliation') = (reconciliation_id IS NOT NULL))` y `CHECK (source <> 'reconciliation' OR status = 'confirmed')`.
 - `CHECK ((status = 'confirmed') = (confirmed_at IS NOT NULL))`
-- `CHECK (source <> 'shortcut' OR (device_token_id IS NOT NULL AND idempotency_key IS NOT NULL))`
-- Índice único parcial `(device_token_id, idempotency_key) WHERE idempotency_key IS NOT NULL`.
+- (fase 2) `CHECK (source <> 'shortcut' OR (device_token_id IS NOT NULL AND idempotency_key IS NOT NULL))`
+- (fase 2) Índice único parcial `(device_token_id, idempotency_key) WHERE idempotency_key IS NOT NULL`.
 
-Índices: `(booked_on)`, `(account_id, booked_on)`, `(category_id, booked_on)`, `(created_at) WHERE status = 'pending'` (bandeja de pendientes) y `(wallet_card_id, created_at)` (detección de duplicados).
+Índices: `(booked_on)`, `(account_id, booked_on)`, `(category_id, booked_on)`, `(created_at) WHERE status = 'pending'` (bandeja de pendientes) y, en la fase 2, `(wallet_card_id, created_at)` (detección de duplicados).
 
 **`transfers`**
 | Columna | Tipo | Restricciones y notas |
@@ -309,7 +312,7 @@ Restricciones de tabla:
 | from_account_id, to_account_id | uuid | FK `accounts` ON DELETE RESTRICT; `CHECK (from_account_id <> to_account_id)` |
 | amount_cents | bigint | `CHECK (amount_cents > 0)` |
 | booked_on | date | NOT NULL |
-| note | text | NULL |
+| note | text | NULL, `CHECK (char_length(note) <= 500)` |
 
 Índices: `(from_account_id, booked_on)` y `(to_account_id, booked_on)`.
 **Por qué una tabla aparte** y no dos movimientos enlazados: así una transferencia **no puede** contar como gasto por accidente. Ninguna consulta de ingresos o gastos toca esta tabla; solo la usa el cálculo de saldos. La alternativa obliga a que todas las consultas recuerden filtrar las transferencias.
@@ -319,12 +322,14 @@ Restricciones de tabla:
 |---|---|---|
 | id | uuid | PK |
 | account_id | uuid | FK `accounts` ON DELETE CASCADE |
-| month | date | `CHECK (month = date_trunc('month', month))`; `UNIQUE (account_id, month)`: **una por cuenta y mes** |
-| as_of | date | Fecha del saldo del banco; `CHECK` de que está dentro de `month` |
+| month | date | Primer día del mes: `CHECK (EXTRACT(DAY FROM month) = 1)`. **No se usa `date_trunc`**: sobre un `date` devuelve un `timestamptz` en la zona horaria de la sesión y la comparación con el `date` dependería de ella. `UNIQUE (account_id, month)`: **una por cuenta y mes** |
+| as_of | date | Fecha del saldo del banco; `CHECK (as_of >= month AND as_of < month + interval '1 month')`: dentro de `month` |
 | statement_balance_cents | bigint | El saldo que muestra el banco |
 | computed_balance_cents | bigint | Saldo calculado **en el momento de conciliar** |
-| note | text | |
+| note | text | `CHECK (char_length(note) <= 500)` |
 | created_at | timestamptz | |
+
+Además, `UNIQUE (id, account_id)`: existe solo para la clave ajena compuesta de `movements`.
 
 - Saldo calculado = `opening_balance + Σ ingresos confirmados − Σ gastos confirmados + Σ transferencias recibidas − Σ transferencias enviadas`, hasta `as_of` incluido.
 - **Excepción documentada a «no guardar derivados»**: `computed_balance_cents` no es una caché, sino el **registro histórico** de lo que la app calculó al conciliar. Si después se edita un movimiento de un periodo ya conciliado, la pantalla muestra el saldo calculado actual junto al registrado y avisa de la discrepancia.
@@ -1284,6 +1289,7 @@ Tamaños relativos (S, M, L, XL). No pongo días porque no conozco tu ritmo y un
     - Runbooks de despliegue, copia y restauración y rotación de secretos.
   - **2c. PWA**: manifiesto, *service worker*, suscripción a push, notificación de prueba y contador en el icono.
   - **2d. Atajo**
+    - Migración con las tablas `device_tokens` y `wallet_cards` y las columnas aplazadas de `movements` (`wallet_card_id`, `device_token_id`, `idempotency_key`, `raw_payload`), el valor `shortcut` en el `CHECK` de `source` y las restricciones marcadas «(fase 2)» en §2.3. Se hace con una migración nueva: la `0003_ledger` no se edita.
     - Tokens de dispositivo (crear y revocar, ambos con reautenticación).
     - `/ingest/wallet-transactions`, correspondencia de tarjetas, bandeja de pendientes y formulario rápido.
     - Prueba T13 (preguntar el concepto y la categoría en el momento).
