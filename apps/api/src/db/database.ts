@@ -4,12 +4,9 @@
 import { Kysely, PostgresDialect } from 'kysely';
 import pg from 'pg';
 
-/**
- * Esquema de la base de datos para Kysely. Vacío en la fase 0 (aún no hay tablas). En la fase 1 se
- * generará a partir de la base de datos real con kysely-codegen.
- */
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type -- se rellena en la fase 1
-export interface Database {}
+import type { Database } from './schema.ts';
+
+export type { Database } from './schema.ts';
 
 /**
  * Crea una instancia de Kysely con un pool de conexiones.
