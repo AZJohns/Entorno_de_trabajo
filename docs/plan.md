@@ -593,10 +593,10 @@ notes *─* tags (note_tags)
 | PATCH, DELETE | `/transfers/:id` | S | |
 | GET | `/wallet-cards` | S | |
 | PATCH | `/wallet-cards/:id` | S | `{ accountId }` |
-| GET | `/reports/monthly?from=YYYY-MM&to=YYYY-MM` | S | Por mes: ingresos, gastos, neto y pendientes (número e importe) |
-| GET | `/reports/monthly/:month/categories` | S | Desglose por categoría |
-| GET | `/reports/balances?at=YYYY-MM-DD` | S | Saldo por cuenta |
-| GET | `/reports/balance-history?from&to` | S | Saldo a fin de cada mes por cuenta (gráfico de líneas) |
+| GET | `/reports/monthly?from=YYYY-MM&to=YYYY-MM` | S | Por mes: ingresos, gastos, neto, ajustes de conciliación (línea propia) y pendientes (número, y **el importe de ingresos y el de gastos por separado**: restarlos no tendría sentido). `from` y `to` son **obligatorios**; máximo 60 meses (422) |
+| GET | `/reports/monthly/:month/categories` | S | Desglose por categoría (confirmados, sin ajustes de conciliación) |
+| GET | `/reports/balances?at=YYYY-MM-DD` | S | Saldo por cuenta, con los ajustes de conciliación en un campo aparte, y el total. `at` es **obligatorio**: el servidor no adivina «hoy» (zona horaria) |
+| GET | `/reports/balance-history?from=YYYY-MM&to=YYYY-MM` | S | Saldo a fin de cada mes por cuenta (`null` antes de abrirse) y el total (gráfico de líneas). `from` y `to` obligatorios |
 | POST | `/ingest/wallet-transactions` | D(`ingest:write`) | Atajo de iPhone (§5.4) |
 | GET | `/ingest/catalog` | D(`ingest:read-catalog`) | Categorías para la mejora opcional del atajo |
 
@@ -799,7 +799,7 @@ Licencias y estado de mantenimiento según lo consultado en noviembre de 2026; h
 | **Lectura del Excel** | **SheetJS CE** · ExcelJS · OOXML a mano (zip + XML) | **Spike de 1 día al empezar la fase 3** con la fixture ficticia. Preselección: **SheetJS CE ≥ 0.20.x** instalado desde su CDN oficial, con la versión fijada y el *tarball* guardado en el repositorio | Lee el texto de las fórmulas (`cellFormula`), las fechas y el sistema 1904. Apache-2.0 | **El paquete `xlsx` del registro npm está anclado en 0.18.5, con CVE conocidos** (p. ej., CVE-2023-30533); las versiones corregidas solo se publican en `cdn.sheetjs.com`. Dependabot no lo vigila → revisión manual trimestral. Comprobar que expande las **fórmulas compartidas** a cada celda y que acepta `.xlsm` |
 | | ExcelJS | Plan B | MIT y en npm | **Sin versiones desde la 4.4.0 (2023) y con muchas incidencias abiertas** (Snyk lo marca como inactivo) [VERIFICAR] |
 | | OOXML a mano | Plan C | Control total y cero dependencias de Excel | Unos cientos de líneas propias; lo más delicado es detectar las fechas (estilos y `numFmt`) |
-| **Gráficos** | **Recharts** · Chart.js + react-chartjs-2 · ECharts · visx | **Recharts** | Declarativo en JSX y suficiente para barras, líneas y tarta. SVG accesible y fácil de probar. MIT | Compatibilidad de la v3 con la versión de React que se use; tamaño del bundle; accesibilidad (textos alternativos o tabla de datos) |
+| **Gráficos** | Recharts · Chart.js + react-chartjs-2 · ECharts · visx · **SVG propio** | **[DECIDIDO en la 1c] SVG propio**, sin librería | Son tres gráficos estáticos (barras agrupadas, barras horizontales y líneas). Recharts 3.10.1 trae 11 dependencias directas y 7,4 MB desempaquetado; el repositorio es público y cada dependencia amplía la superficie. Cada gráfico lleva `role="img"` y una tabla con los mismos datos. Comparación completa y cuándo reconsiderarlo: [`docs/dependencias.md`](dependencias.md#librería-de-gráficos-fase-1c-svg-propio-en-lugar-de-recharts) | Si la fase 3b.3 (dashboard) necesita tooltips, zoom o animaciones, se reevalúa Recharts con esa necesidad delante |
 | **Arrastrar y soltar** | **dnd-kit** · @hello-pangea/dnd · Pragmatic DnD (Atlassian) | **@dnd-kit/core + @dnd-kit/sortable**, con sensores táctiles y de teclado, y un menú «Mover a…» como alternativa | Más actividad de mantenimiento; admite toque, teclado y lectores de pantalla. MIT | **En la PWA instalada en iOS**: el conflicto entre desplazar y arrastrar (retardo de activación). Estado del nuevo `@dnd-kit/react` (no usarlo si es pre-1.0). @hello-pangea/dnd (Apache-2.0) es más simple para kanban, pero muestra **menos actividad** [VERIFICAR]. Pragmatic DnD usa DnD nativo de HTML5, con soporte táctil dudoso en iOS |
 | **PWA** | **vite-plugin-pwa** (Workbox) · *service worker* escrito a mano | **vite-plugin-pwa 1.x, estrategia `injectManifest`** | Genera la lista de archivos a precachear con sus hashes; el *service worker* lo escribes tú (push y clics en notificaciones). MIT | Compatibilidad con la versión de Vite (dependencias *peer*). **No cachear `/api`** (`NetworkOnly`): ni datos financieros obsoletos ni copias en el dispositivo |
 | **Envío de push** | **web-push** · @pushforge/builder · implementación propia (RFC 8291/8292) | **web-push**, detrás de una interfaz `PushSender` para poder cambiarlo | El protocolo (VAPID + cifrado `aes128gcm`) es estable desde 2017, así que «sin versiones» no implica «roto». Es el más usado | **Inactivo desde la 3.6.7 (enero de 2024)** [VERIFICAR]. Licencia **MPL-2.0**: copyleft por archivo; usarlo sin modificarlo no impone obligaciones a tu código y la app no se distribuye. Probar que funciona con `web.push.apple.com` y con la versión LTS de Node |
@@ -1246,8 +1246,9 @@ Tamaños relativos (S, M, L, XL). No pongo días porque no conozco tu ritmo y un
   - **1b. Libro real** — **TERMINADA** (PR #9, #10 y #11)
     - Cuentas (corriente, ahorro y efectivo), categorías, movimientos (alta, edición, confirmación y filtros) y transferencias.
     - **Conciliación mensual con un movimiento de ajuste.**
-  - **1c. Informes**: balance mensual, desglose por categoría, saldo por cuenta (con los ajustes en una línea propia) y 3 gráficos.
-    - Los 3 gráficos: barras de ingresos y gastos por mes, barras de gastos por categoría de un mes y líneas del saldo por cuenta. Se dibujan en **SVG propio**, no con Recharts (comparación en `docs/dependencias.md`).
+  - **1c. Informes** — **TERMINADA** (PR #13): balance mensual, desglose por categoría, saldo por cuenta (con los ajustes en una línea propia) y 3 gráficos.
+    - Los 3 gráficos: **ingresos frente a gastos por mes**, **gastos por categoría de un mes** y **evolución del saldo por cuenta con el total**. Se dibujan en **SVG propio**, no con Recharts ([comparación](dependencias.md#librería-de-gráficos-fase-1c-svg-propio-en-lugar-de-recharts)).
+    - Los pendientes se informan con ingresos y gastos por separado. `from`, `to` y `at` son obligatorios.
   - **1d. Exportación** `GET /export` con reautenticación.
   - Todo **en local**.
 - **Terminado cuando**
