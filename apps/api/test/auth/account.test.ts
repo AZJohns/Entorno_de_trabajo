@@ -196,6 +196,22 @@ describe('cambio de TOTP', () => {
     );
   });
 
+  it('al confirmar el TOTP nuevo se pueden cerrar las demás sesiones (ASVS 7.4.3)', async () => {
+    const ctx = getCtx();
+    const other = await ctx.loggedIn();
+    const client = await ctx.loggedIn();
+    const { secret } = totpEnrollResponseSchema.parse(
+      (await client.post('/api/v1/auth/totp/enroll')).body,
+    );
+    const res = await client.post('/api/v1/auth/totp/confirm', {
+      code: hotp(base32Decode(secret), timeStep(ctx.t.clock.now())),
+      terminateOtherSessions: true,
+    });
+    expect(res.status).toBe(204);
+    expect((await other.get('/api/v1/auth/session')).status).toBe(401);
+    expect((await client.get('/api/v1/auth/session')).status).toBe(200);
+  });
+
   it('confirmar sin un alta en curso: 409', async () => {
     const client = await getCtx().loggedIn();
     expect(
@@ -360,6 +376,15 @@ describe('operaciones de servidor (scripts)', () => {
     expect(
       (await login.post('/api/v1/auth/login/second-factor', { totp: ctx.totp() })).status,
     ).toBe(200);
+  });
+
+  it('revocar todas las sesiones desde el servidor (ASVS 7.4.5)', async () => {
+    const ctx = getCtx();
+    const first = await ctx.loggedIn();
+    const second = await ctx.loggedIn();
+    expect(await ctx.service.revokeAllSessions(USERNAME)).toBe(2);
+    expect((await first.get('/api/v1/auth/session')).status).toBe(401);
+    expect((await second.get('/api/v1/auth/session')).status).toBe(401);
   });
 
   it('deshabilitar la cuenta revoca las sesiones e impide el login (ASVS 7.4.2)', async () => {

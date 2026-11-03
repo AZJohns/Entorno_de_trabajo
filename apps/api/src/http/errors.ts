@@ -44,8 +44,16 @@ const TITLES: Record<ErrorCode, string> = {
   BREACH_CHECK_UNAVAILABLE: 'No se pudo comprobar la contraseña',
 };
 
-/** Errores que indican un posible intento de saltarse un control: se registran (ASVS 16.3.2, 16.3.3). */
-const SECURITY_CODES: ReadonlySet<ErrorCode> = new Set<ErrorCode>([
+/**
+ * Rechazos que indican un posible intento de saltarse un control: se registran como aviso (ASVS
+ * 16.3.2, 16.3.3). La web valida con los mismos esquemas antes de enviar, así que un fallo de
+ * validación o de formato en la API es un cliente manipulado o un error que conviene ver.
+ */
+const LOGGED_REJECTIONS: ReadonlySet<ErrorCode> = new Set<ErrorCode>([
+  'VALIDATION_ERROR',
+  'MALFORMED_JSON',
+  'PAYLOAD_TOO_LARGE',
+  'UNSUPPORTED_MEDIA_TYPE',
   'UNAUTHENTICATED',
   'INVALID_CREDENTIALS',
   'CSRF_FAILED',
@@ -101,8 +109,6 @@ export const errorHandler: ErrorRequestHandler = (err: unknown, req, res, _next)
 
   if (err instanceof AppError) {
     body = problem(err.code, err.status, requestId, err.message, err.errors);
-    // Solo el código y la ruta: nunca el cuerpo de la petición.
-    if (SECURITY_CODES.has(err.code)) req.log.warn({ code: err.code }, 'Petición rechazada');
   } else if (err instanceof z.ZodError) {
     const errors = err.issues.map((issue) => ({
       path: issue.path.join('.'),
@@ -118,5 +124,13 @@ export const errorHandler: ErrorRequestHandler = (err: unknown, req, res, _next)
     body = problem('INTERNAL_ERROR', 500, requestId);
   }
 
+  if (LOGGED_REJECTIONS.has(body.code)) {
+    // Solo el código y, si los hay, los nombres de los campos: nunca sus valores ni el cuerpo.
+    const fields = body.errors?.map((error) => error.path);
+    req.log.warn(
+      { code: body.code, ...(fields === undefined ? {} : { fields }) },
+      'Petición rechazada',
+    );
+  }
   res.status(body.status).type(PROBLEM_CONTENT_TYPE).json(body);
 };

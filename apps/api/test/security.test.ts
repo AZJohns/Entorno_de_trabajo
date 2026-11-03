@@ -59,6 +59,19 @@ describe('registro de las peticiones rechazadas (ASVS 16.3.2, 16.3.3)', () => {
     expect(JSON.stringify(t.logs())).not.toContain('contraseña-que-no-debe-registrarse');
   });
 
+  it('fallo de validación: se registran el código y los campos, no sus valores', async () => {
+    const t = buildTestApp();
+    const res = await request(t.app)
+      .post('/api/v1/auth/login')
+      .set('Origin', TEST_ORIGIN)
+      .send({ username: 'demo', password: 'valor-secreto-de-prueba', extra: 'otro-valor' });
+    expect(res.status).toBe(400);
+    expect(t.logs().find((l) => l.code === 'VALIDATION_ERROR')).toMatchObject({ level: 40 });
+    const logs = JSON.stringify(t.logs());
+    expect(logs).not.toContain('valor-secreto-de-prueba');
+    expect(logs).not.toContain('otro-valor');
+  });
+
   it('el origen correcto no se registra como rechazo', async () => {
     const t = buildTestApp();
     await request(t.app).get('/api/v1/health').set('Origin', TEST_ORIGIN);
