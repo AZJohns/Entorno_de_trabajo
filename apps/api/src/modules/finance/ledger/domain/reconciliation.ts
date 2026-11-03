@@ -82,42 +82,48 @@ export function reconcile(input: ReconcileInput): ReconciliationResult {
 
 /** Lo guardado de una conciliación que hace falta para detectar una discrepancia. */
 export interface RecordedReconciliation {
-  readonly id: string;
   readonly asOf: LocalDate;
-  /** `computed_balance_cents` de la conciliación. */
-  readonly computedBalanceCents: Cents;
+  /** `statement_balance_cents`: el saldo que mostraba el banco. */
+  readonly statementBalanceCents: Cents;
 }
 
 /** Resultado de {@link reconciliationDiscrepancy}. */
 export interface ReconciliationDiscrepancy {
-  /** Lo que se calculó al conciliar. */
-  readonly recordedCents: Cents;
-  /** Lo que se calcularía hoy hasta `asOf`, sin contar el ajuste de esta conciliación. */
+  /** Saldo del banco registrado al conciliar. */
+  readonly statementCents: Cents;
+  /** Saldo calculado hoy hasta `asOf`, **con** el ajuste de la conciliación y los de las demás. */
   readonly currentCents: Cents;
-  /** `currentCents − recordedCents`; 0 si nada cambió. */
+  /** `currentCents − statementCents`; 0 si el libro sigue cuadrando con el banco. */
   readonly differenceCents: Cents;
   readonly hasDiscrepancy: boolean;
 }
 
 /**
- * Compara el saldo calculado **hoy** hasta la fecha de una conciliación con el que se registró al
- * hacerla. Si se edita, borra o añade un movimiento de ese periodo después, el saldo ya no coincide y la
- * pantalla debe avisar.
+ * Compara el saldo calculado **hoy** hasta la fecha de una conciliación con el saldo del banco que se
+ * registró. Tras conciliar son iguales; si después cambia algo que afecta a ese saldo, el libro deja de
+ * cuadrar con el banco y la pantalla debe avisar.
  *
- * Se excluye el ajuste de esta misma conciliación: el registrado se calculó antes de crearlo. Es
- * equivalente a comparar el saldo actual (con el ajuste) con el del banco.
+ * Se compara con el saldo del banco, y no con el calculado al conciliar (`computed_balance_cents`)
+ * quitando el ajuste propio, porque así se detectan también los cambios en el ajuste: uno editado o
+ * borrado deja el saldo lejos del del banco, mientras que si se excluyera no se vería. Detecta, entre
+ * otros:
+ * - un movimiento o una transferencia editados, añadidos o borrados dentro del periodo;
+ * - el ajuste de esta conciliación modificado o borrado;
+ * - una conciliación de un mes **anterior** creada después: su ajuste, con fecha anterior, cambia el
+ *   saldo de esta.
+ *
+ * El `computed_balance_cents` guardado no interviene: es el registro histórico de lo que se calculó al
+ * conciliar y se muestra aparte.
  */
 export function reconciliationDiscrepancy(
   ledger: AccountLedger,
   reconciliation: RecordedReconciliation,
 ): ReconciliationDiscrepancy {
-  const recorded = assertCents(reconciliation.computedBalanceCents);
-  const current = balanceAsOf(ledger, reconciliation.asOf, {
-    excludeReconciliationId: reconciliation.id,
-  });
-  const difference = assertCents(current - recorded);
+  const statement = assertCents(reconciliation.statementBalanceCents);
+  const current = balanceAsOf(ledger, reconciliation.asOf);
+  const difference = assertCents(current - statement);
   return {
-    recordedCents: recorded,
+    statementCents: statement,
     currentCents: current,
     differenceCents: difference,
     hasDiscrepancy: difference !== 0,

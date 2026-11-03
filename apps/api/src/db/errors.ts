@@ -29,3 +29,18 @@ export function isReferencedRowError(error: unknown, constraint?: string): boole
   if (typeof code !== 'string' || !REFERENCED_ROW_ERROR_CODES.includes(code)) return false;
   return constraint === undefined || violated === constraint;
 }
+
+/** SQLSTATE `unique_violation`. */
+const UNIQUE_VIOLATION = '23505';
+
+/**
+ * Indica si el error es PostgreSQL rechazando una fila duplicada.
+ *
+ * @param constraint Si se indica, exige además que la restricción violada sea esa (el nombre del índice
+ *   o de la restricción única), para no confundir un duplicado con otro.
+ */
+export function isUniqueViolation(error: unknown, constraint?: string): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const { code, constraint: violated } = error as { code?: unknown; constraint?: unknown };
+  return code === UNIQUE_VIOLATION && (constraint === undefined || violated === constraint);
+}

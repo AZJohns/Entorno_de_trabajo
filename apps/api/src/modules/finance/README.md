@@ -2,7 +2,7 @@
 
 Cuentas, categorías, movimientos, transferencias y conciliación mensual. Diseño: `docs/plan.md` §2.3. La capa de plan (`plan/`, fase 3) vive en este mismo módulo, pero todavía no existe.
 
-**Estado (fase 1b, PR 1 de 3):** solo hay esquema y lógica pura. Las rutas, los servicios y los repositorios llegan en el PR 2, y la interfaz web en el PR 3.
+**Estado (fase 1b, PR 2 de 3):** esquema, lógica pura, servicio, repositorio y rutas del libro. Los informes (1c), la exportación (1d) y la interfaz web (PR 3) están pendientes.
 
 ## Responsabilidad
 
@@ -15,7 +15,26 @@ Cuentas, categorías, movimientos, transferencias y conciliación mensual. Dise�
 |---|---|---|
 | `ledger/domain/dates.ts` | Fechas contables `YYYY-MM-DD` como texto, sin `Date` ni zona horaria | No |
 | `ledger/domain/balances.ts` | `balanceAsOf` (saldo de una cuenta hasta una fecha) y `monthlyTotals` (ingresos, gastos y ajustes de un mes) | No |
-| `ledger/domain/reconciliation.ts` | `reconcile` (diferencia y ajuste) y `reconciliationDiscrepancy` (aviso si un movimiento cambia después) | No |
+| `ledger/domain/reconciliation.ts` | `reconcile` (diferencia y ajuste) y `reconciliationDiscrepancy` (aviso si el libro deja de cuadrar con el banco) | No |
+| `ledger/ledger.repository.ts` | Consultas de Kysely sobre las cinco tablas; importes ya en céntimos y fechas como texto | Base de datos |
+| `ledger/ledger.service.ts` | Reglas que dependen de otras filas, transacciones y conciliación | — |
+| `ledger/ledger.controller.ts`, `ledger/ledger.routes.ts` | HTTP: validación con los esquemas de `@backoffice/shared` y respuestas | — |
+| `index.ts` | API pública: `createFinanceModule({ db, clock })` → `{ ledger, router }` | — |
+
+## Endpoints (`/api/v1`, sesión activa; sin reautenticación)
+
+`/accounts` (+ `/:id`, `/:id/archive`, `/:id/reconciliations`), `/reconciliations/:id`, `/categories` (+ `/:id`, `/:id/archive`), `/movements` (+ `/pending/count`, `/:id`, `/:id/confirm`) y `/transfers` (+ `/:id`). Detalle en `docs/plan.md` §2.10; esquemas en `packages/shared/src/finance/schemas.ts`.
+
+Códigos de error del libro:
+
+| Código | Cuándo |
+|---|---|
+| 400 | Cuerpo, consulta o identificador no válidos; origen y destino de una transferencia iguales; `asOf` fuera del mes |
+| 404 | El recurso de la URL no existe |
+| 422 | El cuerpo es válido pero incoherente con el libro: **cuenta o categoría inexistente** (se comprueba antes de insertar), categoría de otro tipo, fecha anterior a la apertura de la cuenta (movimientos, transferencias y conciliaciones), importe 0 en un movimiento confirmado |
+| 409 | Cuenta o categoría archivada; ajuste de conciliación (no se edita ni se borra: solo con su conciliación); nombre duplicado; mes ya conciliado; borrador ya confirmado; archivar una cuenta con pendientes |
+
+Una cuenta archivada queda **congelada**: no admite movimientos, transferencias ni conciliaciones nuevos, ni editar o borrar los que tiene (409). Las cuentas y categorías no se borran, se archivan; por eso ninguna ruta de esta versión borra una fila referenciada y `isReferencedRowError` (`src/db/errors.ts`) todavía no se usa. Si algún día lo hace, será solo en el borrado: `23503` al insertar significa referencia inexistente (422), no conflicto.
 
 ## Tablas (migración `0003_ledger`)
 
@@ -32,7 +51,9 @@ Cuentas, categorías, movimientos, transferencias y conciliación mensual. Dise�
 - **Ajuste**: `statement − computed`. Si es 0 no se crea nada; si es positivo, un ingreso; si es negativo, un gasto por el valor absoluto, con `booked_on = as_of` para que entre en el saldo de esa fecha.
 - **Los ajustes van en una línea propia** de los informes (`monthlyTotals.adjustmentsCents`): no son ingresos ni gastos reales.
 - **Totales y saldos**: para las cuentas que ya existían al empezar el mes, la variación de la suma de sus saldos es `netCents + adjustmentsCents`; las transferencias se anulan entre cuentas propias.
-- **Discrepancia**: se compara el saldo actual hasta `as_of`, sin el ajuste de esa conciliación, con el `computed_balance_cents` registrado.
+- **Discrepancia**: se compara el saldo calculado hoy hasta `as_of`, **con** los ajustes, con el `statement_balance_cents` registrado. Detecta movimientos y transferencias cambiados, un ajuste editado o borrado, y una conciliación de un mes anterior creada después. `computed_balance_cents` es solo el registro histórico.
+- **Saldo de apertura**: `opening_balance_cents` es el saldo **al inicio del día** `opening_date`; los movimientos de ese día se suman a él. Por eso se rechazan (422) los anteriores a esa fecha y no se puede adelantar la apertura más allá de la actividad existente.
+- **Altas manuales** nacen confirmadas y completas. Los borradores (`pending`) los creará el atajo de la fase 2; esta API los edita y confirma.
 
 ## Fase 1b frente a fase 2
 

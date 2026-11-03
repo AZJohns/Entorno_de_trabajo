@@ -77,8 +77,8 @@
 | 2.1.2 | L2 | Coherencia de datos combinados documentada | Planificado | Restricciones de `plan.md` §2 (confirmado = completo, categoría del mismo tipo…) | F1+ · finance | Revisión |
 | 2.1.3 | L2 | Límites de negocio documentados | Planificado | `docs/seguridad/limites.md`: tamaños, longitudes, número de sesiones y límites de peticiones · **Auth hecho**: `docs/seguridad/limites.md` §1 y §4 | F1 · todos | Revisión |
 | 2.2.1 | L1 | Validación positiva (listas permitidas, rangos) | Planificado | Zod estricto con enumeraciones, rangos y longitudes | F1+ · todos | Tests de validación |
-| 2.2.2 | L1 | Validación en una capa de servicio de confianza | Planificado | El backend valida siempre, aunque el frontend use los mismos esquemas | F1+ · http | Tests de API |
-| 2.2.3 | L2 | Combinaciones de datos razonables | Planificado | `CHECK` en la base de datos + reglas combinadas de Zod (origen ≠ destino, fecha ≥ apertura…) | F1+ · finance | Tests |
+| 2.2.2 | L1 | Validación en una capa de servicio de confianza | Planificado | El backend valida siempre, aunque el frontend use los mismos esquemas · Libro: esquemas de `packages/shared/src/finance/schemas.ts` en los controladores y reglas entre filas en `ledger.service.ts` (`apps/api/test/finance/api-movements.test.ts`, `api-transfers.test.ts`, `api-reconciliations.test.ts`) | F1+ · http | Tests de API |
+| 2.2.3 | L2 | Combinaciones de datos razonables | Planificado | `CHECK` en la base de datos + reglas combinadas de Zod (origen ≠ destino, fecha ≥ apertura…) · Libro: restricciones de `0003_ledger` (`apps/api/test/finance/ledger-schema.test.ts`) y 422 por categoría de otro tipo, fecha anterior a la apertura o conciliación anterior a ella (`api-movements.test.ts`, `api-transfers.test.ts`, `api-reconciliations.test.ts`) | F1+ · finance | Tests |
 | 2.3.1 | L1 | Flujos en el orden previsto, sin saltar pasos | Planificado | Login `mfa_pending` → `full`; importación vista previa → confirmación; conciliación · **Auth hecho**: `apps/api/test/auth/login.test.ts` («la sesión pendiente no da acceso: solo permite el segundo factor») | F1, F3 · auth, imports | Tests: saltar un paso → rechazo |
 | 2.3.2 | L2 | Límites de negocio implementados | Planificado | Los de 2.1.3 | F1+ · todos | Tests |
 | 2.3.3 | L2 | Transacciones en la lógica de negocio | Planificado | Confirmar una importación, conciliar + ajuste, reordenar tareas | F1, F3, F4 | Tests |
@@ -199,9 +199,9 @@
 |---|---|---|---|---|---|---|
 | 8.1.1 | L1 | Reglas de autorización por función y por dato documentadas | Planificado | Columna Auth de `plan.md` §2.10 + matriz de permisos | F1 · todos | Revisión |
 | 8.1.2 | L2 | Reglas por campo documentadas | Planificado | Esquemas de salida: nunca `password_hash`, `token_hash` ni las semillas; el token del atajo solo escribe los campos de la ingesta | F1 · todos | Revisión |
-| 8.2.1 | L1 | Acceso por función con permisos explícitos | Planificado | Denegar por defecto + permisos de los tokens · Denegar por defecto hecho (`apps/api/test/auth/login.test.ts`, «denegar por defecto»); permisos de los tokens en F2 | F1 · http | Test de la matriz de rutas |
+| 8.2.1 | L1 | Acceso por función con permisos explícitos | Planificado | Denegar por defecto + permisos de los tokens · Denegar por defecto hecho (`apps/api/test/auth/login.test.ts`, «denegar por defecto»; rutas del libro en `apps/api/test/finance/api-permissions.test.ts`: sin sesión, con sesión a medias, sin CSRF y desde otro origen); permisos de los tokens en F2 | F1 · http | Test de la matriz de rutas |
 | 8.2.2 | L1 | Acceso por dato (IDOR) | Planificado | Un solo usuario; el token del atajo no puede leer datos | F1–F2 · todos | Test: token → `GET /movements/:id` → 401/403 |
-| 8.2.3 | L2 | Acceso por campo | Planificado | Esquemas de entrada estrictos y de salida explícitos | F1+ · todos | Test |
+| 8.2.3 | L2 | Acceso por campo | Planificado | Esquemas de entrada estrictos y de salida explícitos · Libro: los ajustes de conciliación no se editan ni se borran por la API y `source`/`status` no se aceptan en las peticiones (`apps/api/test/finance/api-movements.test.ts`) | F1+ · todos | Test |
 | 8.3.1 | L1 | Autorización en una capa de confianza | **Verificado (F1)** | Middleware del backend | F1 · http | Test: `apps/api/test/auth/login.test.ts` («denegar por defecto»: toda ruta sin sesión → 401) |
 
 **No aplica** (1): 8.4.1. Motivo: No es multiinquilino.
@@ -292,7 +292,7 @@
 | 15.2.3 | L2 | En producción, solo lo necesario | Planificado | Imagen sin `devDependencies` ni herramientas de test | F2 · deploy | Revisión |
 | 15.3.1 | L1 | Devolver solo los campos necesarios | Planificado | Esquemas de salida (DTO) | F1+ · todos | Test |
 | 15.3.2 | L2 | No seguir redirecciones en las llamadas salientes | Planificado | `fetch(…, { redirect: "error" })` en HIBP; web-push [VERIFICAR] · HIBP hecho (`infra/hibp.ts`) | F1–F2 | Revisión |
-| 15.3.3 | L2 | Protección contra la asignación masiva | Planificado | Zod estricto (rechaza los campos desconocidos) · Auth: `apps/api/test/auth/login.test.ts` («campos desconocidos: 400») | F1+ · todos | Test |
+| 15.3.3 | L2 | Protección contra la asignación masiva | Planificado | Zod estricto (rechaza los campos desconocidos) · Auth: `apps/api/test/auth/login.test.ts` («campos desconocidos: 400») · Libro: `apps/api/test/finance/api-movements.test.ts` («origen forzado», «estado forzado») | F1+ · todos | Test |
 | 15.3.4 ‡ | L2 | IP original correcta tras el proxy | Planificado | `TRUST_PROXY_HOPS` (0 por defecto; 1 detrás de Caddy en F2). Nunca `trust proxy = true` | F2 · http | Test: `apps/api/test/auth/proxy.test.ts` (F1); configuración real en F2 |
 | 15.3.5 | L2 | Tipos estrictos e igualdad estricta | **Verificado (F0)** | TypeScript estricto + `eqeqeq` | F0 · todos | TypeScript `strict` + lint `eqeqeq` |
 | 15.3.6 | L2 | Sin contaminación de prototipos | Planificado | `Map` u `Object.create(null)` para las claves que vienen del usuario; Zod descarta `__proto__` | F1+ · todos | Test con `__proto__` |

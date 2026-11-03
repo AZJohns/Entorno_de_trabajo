@@ -32,6 +32,11 @@ export class TestClient {
     return this.#capture(body === undefined ? req : req.send(body));
   }
 
+  patch(path: string, body?: object): Promise<Response> {
+    const req = this.#prepare(request(this.#app).patch(path));
+    return this.#capture(body === undefined ? req : req.send(body));
+  }
+
   delete(path: string): Promise<Response> {
     return this.#capture(this.#prepare(request(this.#app).delete(path)));
   }

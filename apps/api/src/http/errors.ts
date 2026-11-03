@@ -33,6 +33,7 @@ const TITLES: Record<ErrorCode, string> = {
   UNSUPPORTED_MEDIA_TYPE: 'Tipo de contenido no admitido',
   NOT_FOUND: 'Recurso no encontrado',
   CONFLICT: 'Conflicto con el estado actual',
+  UNPROCESSABLE: 'Datos incoherentes con el libro',
   INTERNAL_ERROR: 'Error interno',
   UNAUTHENTICATED: 'Sesión no iniciada',
   SESSION_LOCKED: 'Sesión bloqueada por inactividad',

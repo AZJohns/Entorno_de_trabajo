@@ -32,21 +32,15 @@ export interface LedgerTransfer {
 /** Todo lo necesario para calcular el saldo de una cuenta. */
 export interface AccountLedger {
   readonly accountId: string;
-  /** Saldo en la fecha de apertura; puede ser negativo (descubierto). */
+  /**
+   * Saldo **al inicio del día** de apertura (`opening_date`): los movimientos y las transferencias de
+   * ese mismo día se suman a él. Puede ser negativo (descubierto).
+   */
   readonly openingBalanceCents: Cents;
   /** Movimientos de cualquier cuenta: solo cuentan los de `accountId`. */
   readonly movements: readonly LedgerMovement[];
   /** Transferencias de cualquier cuenta: cuentan las que tienen `accountId` como origen o destino. */
   readonly transfers: readonly LedgerTransfer[];
-}
-
-/** Opciones de {@link balanceAsOf}. */
-export interface BalanceOptions {
-  /**
-   * Excluye el ajuste de esta conciliación. Sirve para comparar el saldo actual con el que se calculó
-   * al conciliar, que se obtuvo antes de crear el ajuste.
-   */
-  readonly excludeReconciliationId?: string;
 }
 
 function add(total: Cents, amount: Cents): Cents {
@@ -61,15 +55,12 @@ function add(total: Cents, amount: Cents): Cents {
  * - Los ajustes de conciliación son movimientos confirmados y **sí** cuentan: tras conciliar, el saldo
  *   calculado coincide con el del banco.
  * - Sin `asOf`, se suma todo (saldo actual).
- * - No se filtra por la fecha de apertura: rechazar movimientos anteriores es regla del servicio.
+ * - No se filtra por la fecha de apertura: rechazar movimientos anteriores a ella es regla del servicio,
+ *   así que el saldo de apertura nunca queda «después» de un movimiento.
  *
  * @throws {RangeError} si una fecha o un importe no son válidos o la suma deja de ser un entero seguro.
  */
-export function balanceAsOf(
-  ledger: AccountLedger,
-  asOf: LocalDate | null,
-  options: BalanceOptions = {},
-): Cents {
+export function balanceAsOf(ledger: AccountLedger, asOf: LocalDate | null): Cents {
   if (asOf !== null) assertLocalDate(asOf);
   const included = (bookedOn: LocalDate): boolean => asOf === null || bookedOn <= asOf;
 
@@ -77,12 +68,6 @@ export function balanceAsOf(
   for (const movement of ledger.movements) {
     if (movement.accountId !== ledger.accountId || movement.status !== 'confirmed') continue;
     if (!included(movement.bookedOn)) continue;
-    if (
-      movement.reconciliationId !== null &&
-      movement.reconciliationId === options.excludeReconciliationId
-    ) {
-      continue;
-    }
     balance = add(
       balance,
       movement.kind === 'income' ? movement.amountCents : -movement.amountCents,

@@ -303,9 +303,8 @@ describe('conciliación con la base de datos', () => {
       .where('id', '=', saved.reconciliationId)
       .executeTakeFirstOrThrow();
     const recorded = {
-      id: recordedRow.id,
       asOf: recordedRow.as_of,
-      computedBalanceCents: centsFromDb(recordedRow.computed_balance_cents),
+      statementBalanceCents: centsFromDb(recordedRow.statement_balance_cents),
     };
 
     expect(reconciliationDiscrepancy(await loadLedger(accountId), recorded).hasDiscrepancy).toBe(
@@ -320,8 +319,8 @@ describe('conciliación con la base de datos', () => {
     expect(reconciliationDiscrepancy(await loadLedger(accountId), recorded)).toMatchObject({
       hasDiscrepancy: true,
       differenceCents: 2_000,
-      recordedCents: 285_000,
-      currentCents: 287_000,
+      statementCents: 285_250,
+      currentCents: 287_250,
     });
   });
 

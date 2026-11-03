@@ -7,7 +7,8 @@
  * 3. Cuerpo JSON obligatorio en las peticiones con cuerpo.
  * 4. Sesión: se carga desde la cookie (sin rechazar nada todavía).
  * 5. CSRF: token sincronizado en las peticiones con sesión que modifican datos.
- * 6. Rutas, cada una con su nivel de acceso; las demás exigen una sesión activa (denegar por defecto).
+ * 6. Rutas, cada una con su nivel de acceso; las demás (las de negocio, como el libro) exigen una sesión
+ *    activa (denegar por defecto).
  */
 import express, { type Express } from 'express';
 import type { Kysely } from 'kysely';
@@ -18,6 +19,7 @@ import { createHttpLogger } from './http/logger.ts';
 import { noStore, requireJsonBody, requireSameOrigin, securityHeaders } from './http/security.ts';
 import type { Clock } from './lib/clock.ts';
 import { createAuthModule, type PasswordBreachChecker } from './modules/auth/index.ts';
+import { createFinanceModule } from './modules/finance/index.ts';
 
 /** Dependencias externas de la aplicación (se inyectan para poder sustituirlas en los tests). */
 export interface AppDependencies {
@@ -72,6 +74,7 @@ export function createApp(deps: AppDependencies): Express {
   // Denegar por defecto: cualquier otra ruta exige una sesión activa. Una ruta inexistente responde
   // 401 sin sesión y 404 con ella, así que no se puede descubrir qué rutas existen sin autenticarse.
   api.use(auth.guard('active'));
+  api.use(createFinanceModule({ db: deps.db, clock: deps.clock }).router);
   app.use('/api/v1', api);
 
   app.use(notFoundHandler);

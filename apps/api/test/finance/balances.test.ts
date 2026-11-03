@@ -145,26 +145,6 @@ describe('balanceAsOf', () => {
     expect(balanceAsOf(l, null)).toBe(1_250);
   });
 
-  it('excludeReconciliationId deja fuera solo el ajuste indicado', () => {
-    const l = ledger({
-      movements: [
-        movement({
-          kind: 'income',
-          amountCents: 250,
-          source: 'reconciliation',
-          reconciliationId: 'r1',
-        }),
-        movement({
-          kind: 'expense',
-          amountCents: 40,
-          source: 'reconciliation',
-          reconciliationId: 'r0',
-        }),
-      ],
-    });
-    expect(balanceAsOf(l, null, { excludeReconciliationId: 'r1' })).toBe(-40);
-  });
-
   it('rechaza una fecha inválida y un importe no entero', () => {
     expect(() => balanceAsOf(ledger(), '2026-02-30')).toThrow(RangeError);
     expect(() =>
