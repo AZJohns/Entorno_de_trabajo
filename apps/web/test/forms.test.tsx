@@ -88,6 +88,34 @@ describe('MovementForm (alta)', () => {
     expect(onCreate).not.toHaveBeenCalled();
   });
 
+  it('rechaza «12,345» como ambiguo y no envía', async () => {
+    const { onCreate, user } = setup();
+    await user.type(screen.getByLabelText('Importe'), '12,345');
+    await user.selectOptions(screen.getByLabelText('Cuenta'), A);
+    await user.selectOptions(screen.getByLabelText('Categoría'), C);
+    await user.click(screen.getByRole('button', { name: 'Guardar' }));
+    expect(
+      screen.getByText('Usa la coma para los céntimos (12,34) o escribe el número sin separadores'),
+    ).toBeTruthy();
+    expect(screen.getByLabelText('Importe').getAttribute('aria-invalid')).toBe('true');
+    expect(onCreate).not.toHaveBeenCalled();
+  });
+
+  it('muestra cómo se ha interpretado el importe, ligado al campo', async () => {
+    const { user } = setup();
+    const amount = screen.getByLabelText('Importe');
+    expect(screen.queryByText(/Se guardará/u)).toBeNull();
+    await user.type(amount, '12,5');
+    const preview = screen.getByText(/Se guardará: 12,50/u);
+    expect(amount.getAttribute('aria-describedby')).toContain(preview.id);
+    await user.clear(amount);
+    await user.type(amount, '1.234,56');
+    expect(screen.getByText(/Se guardará: 1234,56/u)).toBeTruthy();
+    await user.clear(amount);
+    await user.type(amount, '12,345');
+    expect(screen.queryByText(/Se guardará/u)).toBeNull();
+  });
+
   it('con datos válidos envía el importe en céntimos, sin decimales de coma flotante', async () => {
     const { onCreate, user } = setup();
     await user.type(screen.getByLabelText('Importe'), '1.234,56');

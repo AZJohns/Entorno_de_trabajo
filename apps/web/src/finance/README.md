@@ -28,4 +28,4 @@ Interfaz de `apps/api/src/modules/finance/ledger`. Diseño y API: `docs/plan.md`
 
 - Las cuentas archivadas y los ajustes de conciliación no se editan ni se borran desde la lista (la API respondería 409); un ajuste se borra con su conciliación.
 - Las listas paginadas usan «Cargar más» con el cursor de la API.
-- Un importe con un único separador y exactamente tres cifras (`12,345`) se interpreta como miles (12.345 €), según `parseEuroAmount`; el campo lo indica en su ayuda.
+- Un importe como `12,345` (coma y exactamente 3 cifras, sin parte decimal) se rechaza con un mensaje que pide aclararlo (`rejectAmbiguousComma` de `parseEuroAmount`); `1.234` (punto como miles) y `1,234,567` se aceptan. Junto al campo se muestra cómo se ha interpretado: «Se guardará: 12,50 €».

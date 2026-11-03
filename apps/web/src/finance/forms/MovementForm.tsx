@@ -126,6 +126,7 @@ export function MovementForm({
       />
       <AmountField
         label="Importe"
+        rules={{ allowZero: pendingDraft === true }}
         value={values.amount}
         onChange={set('amount')}
         error={errors['amount']}

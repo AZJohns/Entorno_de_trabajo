@@ -8,6 +8,8 @@ describe('readAmount', () => {
     ['12,5', 1_250],
     ['12.50', 1_250],
     ['1.234,56', 123_456],
+    ['1.234', 123_400],
+    ['1,234,567', 123_456_700],
     ['  0,01 € ', 1],
     ['0,10', 10],
   ])('lee %s como %i céntimos', (text, cents) => {
@@ -18,6 +20,8 @@ describe('readAmount', () => {
     ['', 'Escribe un importe'],
     ['abc', 'Importe no válido'],
     ['0,001', 'dos decimales'],
+    ['12,345', 'Usa la coma para los céntimos (12,34) o escribe el número sin separadores'],
+    ['1,234', 'Usa la coma'],
     ['-5', 'no puede ser negativo'],
     ['0', 'mayor que 0'],
     ['0,00', 'mayor que 0'],

@@ -4,6 +4,7 @@
  */
 import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { ApiError } from '../api/client.ts';
+import { readAmount, money, type AmountRules } from '../finance/amount.ts';
 import { Button } from './forms.tsx';
 
 const INPUT_CLASS =
@@ -14,6 +15,8 @@ interface ControlProps {
   /** Mensaje de validación del campo, ya en español. */
   error?: string | undefined;
   hint?: string | undefined;
+  /** Texto de apoyo calculado (p. ej. cómo se ha interpretado un importe). */
+  preview?: string | undefined;
 }
 
 /** Etiqueta, control y mensajes de un campo; `render` recibe los atributos de accesibilidad. */
@@ -21,6 +24,7 @@ function Control({
   label,
   error,
   hint,
+  preview,
   render,
 }: ControlProps & {
   render: (attrs: {
@@ -31,7 +35,11 @@ function Control({
 }) {
   const id = useId();
   const describedBy =
-    [hint === undefined ? null : `${id}-hint`, error === undefined ? null : `${id}-error`]
+    [
+      hint === undefined ? null : `${id}-hint`,
+      preview === undefined ? null : `${id}-preview`,
+      error === undefined ? null : `${id}-error`,
+    ]
       .filter((part): part is string => part !== null)
       .join(' ') || undefined;
   return (
@@ -43,6 +51,11 @@ function Control({
       {hint !== undefined && (
         <p id={`${id}-hint`} className="text-xs text-slate-500">
           {hint}
+        </p>
+      )}
+      {preview !== undefined && (
+        <p id={`${id}-preview`} className="text-sm text-slate-700">
+          {preview}
         </p>
       )}
       {error !== undefined && (
@@ -85,14 +98,16 @@ export function TextField(props: TextInputProps) {
 }
 
 /** Importe en euros como texto: se convierte a céntimos con `readAmount` al enviar. */
-export function AmountField(props: TextInputProps) {
+export function AmountField(props: TextInputProps & { rules?: AmountRules }) {
+  // Muestra cómo se ha entendido el texto antes de enviarlo; si no es válido, no muestra nada (el
+  // mensaje de error aparece al enviar).
+  const parsed = props.value.trim() === '' ? null : readAmount(props.value, props.rules);
+  const preview = parsed?.ok === true ? `Se guardará: ${money(parsed.cents)}` : undefined;
   return (
     <Control
       {...props}
-      hint={
-        props.hint ??
-        'En euros. Ejemplos: 12,50 · 1.234,56. Ojo: con tres cifras tras el separador (12,345) se leen como miles'
-      }
+      preview={preview}
+      hint={props.hint ?? 'En euros, con coma para los céntimos. Ejemplos: 12,50 · 1.234,56'}
       render={(attrs) => (
         <input
           {...attrs}

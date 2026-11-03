@@ -25,6 +25,7 @@ const MESSAGES: Record<ParseAmountFailure, string> = {
   empty: 'Escribe un importe',
   invalid_format: 'Importe no válido. Ejemplos: 12,50 · 1.234,56',
   too_many_decimals: 'El importe admite como máximo dos decimales',
+  ambiguous_separator: 'Usa la coma para los céntimos (12,34) o escribe el número sin separadores',
   negative_not_allowed: 'El importe no puede ser negativo',
   out_of_range: 'El importe es demasiado grande',
   too_long: 'El importe es demasiado largo',
@@ -32,7 +33,11 @@ const MESSAGES: Record<ParseAmountFailure, string> = {
 
 /** Convierte el texto de un campo de importe en céntimos, o en un mensaje de error en español. */
 export function readAmount(text: string, rules: AmountRules = {}): AmountInputResult {
-  const parsed = parseEuroAmount(text, { allowNegative: rules.allowNegative === true });
+  // `rejectAmbiguousComma`: «12,345» podría ser un decimal mal escrito; se pide aclararlo.
+  const parsed = parseEuroAmount(text, {
+    allowNegative: rules.allowNegative === true,
+    rejectAmbiguousComma: true,
+  });
   if (!parsed.ok) return { ok: false, message: MESSAGES[parsed.reason] };
   if (parsed.cents === 0 && rules.allowZero !== true) {
     return { ok: false, message: 'El importe debe ser mayor que 0' };

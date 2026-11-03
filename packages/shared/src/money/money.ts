@@ -39,6 +39,7 @@ export type ParseAmountFailure =
   | 'empty'
   | 'invalid_format'
   | 'too_many_decimals'
+  | 'ambiguous_separator'
   | 'negative_not_allowed'
   | 'out_of_range'
   | 'too_long';
@@ -52,6 +53,13 @@ export type ParseAmountResult =
 export interface ParseAmountOptions {
   /** Permite un signo `-` inicial (p. ej., saldo inicial en descubierto). Por defecto, `false`. */
   readonly allowNegative?: boolean;
+  /**
+   * Rechaza (`ambiguous_separator`) una coma seguida de exactamente 3 cifras y sin más separadores
+   * (`12,345`), que por defecto se lee como miles (12.345 €). Para formularios, donde esa entrada
+   * suele ser un decimal mal escrito; el atajo del iPhone mantiene el comportamiento por defecto.
+   * No afecta a `1.234` (el punto como miles es lo habitual en español) ni a `1,234,567`.
+   */
+  readonly rejectAmbiguousComma?: boolean;
 }
 
 /**
@@ -128,7 +136,7 @@ export function parseEuroAmount(
   }
   if (!AMOUNT_BODY.test(text) || /[.,]$/u.test(text)) return fail('invalid_format');
 
-  const split = splitIntegerAndDecimals(text);
+  const split = splitIntegerAndDecimals(text, options.rejectAmbiguousComma === true);
   if (!split.ok) return split;
   const { integerDigits, decimalDigits } = split;
 
@@ -145,7 +153,7 @@ type SplitResult =
   | { readonly ok: true; readonly integerDigits: string; readonly decimalDigits: string }
   | { readonly ok: false; readonly reason: ParseAmountFailure };
 
-function splitIntegerAndDecimals(text: string): SplitResult {
+function splitIntegerAndDecimals(text: string, rejectAmbiguousComma: boolean): SplitResult {
   const hasDot = text.includes('.');
   const hasComma = text.includes(',');
 
@@ -174,6 +182,7 @@ function splitIntegerAndDecimals(text: string): SplitResult {
   if (afterSep.length === 3) {
     // «0,001» no es un separador de miles (un grupo de miles nunca empieza por 0): son 3 decimales.
     if (integerPart.startsWith('0')) return fail('too_many_decimals');
+    if (rejectAmbiguousComma && sep === ',') return fail('ambiguous_separator');
     return { ok: true, integerDigits: integerPart + afterSep, decimalDigits: '' };
   }
   if (afterSep.length <= 2)

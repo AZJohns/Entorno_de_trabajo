@@ -144,3 +144,35 @@ describe('isCents / assertCents', () => {
     expect(() => assertCents(0.1 + 0.2)).toThrow(RangeError);
   });
 });
+
+describe('parseEuroAmount: rejectAmbiguousComma', () => {
+  const strict = { rejectAmbiguousComma: true } as const;
+
+  it('por defecto «12,345» sigue leyéndose como miles (atajo del iPhone)', () => {
+    expect(parseEuroAmount('12,345')).toEqual({ ok: true, cents: 1_234_500 });
+  });
+
+  it('con la opción, una coma seguida de exactamente 3 cifras y sin más separadores es ambigua', () => {
+    for (const text of ['12,345', '1,234', '999,999', '  12,345 €']) {
+      expect(parseEuroAmount(text, strict)).toEqual({ ok: false, reason: 'ambiguous_separator' });
+    }
+  });
+
+  it('con la opción, lo que no es ambiguo se lee igual', () => {
+    expect(parseEuroAmount('12,34', strict)).toEqual({ ok: true, cents: 1_234 });
+    expect(parseEuroAmount('12,3', strict)).toEqual({ ok: true, cents: 1_230 });
+    expect(parseEuroAmount('12', strict)).toEqual({ ok: true, cents: 1_200 });
+    expect(parseEuroAmount('1.234', strict)).toEqual({ ok: true, cents: 123_400 });
+    expect(parseEuroAmount('1.234,56', strict)).toEqual({ ok: true, cents: 123_456 });
+    expect(parseEuroAmount('1,234.56', strict)).toEqual({ ok: true, cents: 123_456 });
+    expect(parseEuroAmount('1,234,567', strict)).toEqual({ ok: true, cents: 123_456_700 });
+    expect(parseEuroAmount('-12,34', { ...strict, allowNegative: true })).toEqual({
+      ok: true,
+      cents: -1_234,
+    });
+  });
+
+  it('«0,001» sigue siendo too_many_decimals', () => {
+    expect(parseEuroAmount('0,001', strict)).toEqual({ ok: false, reason: 'too_many_decimals' });
+  });
+});

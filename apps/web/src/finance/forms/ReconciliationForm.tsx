@@ -67,6 +67,7 @@ export function ReconciliationForm({ onSubmit, pending, error, today }: Props) {
       />
       <AmountField
         label="Saldo según el banco"
+        rules={{ allowNegative: true, allowZero: true }}
         value={values.statementBalance}
         onChange={set('statementBalance')}
         error={errors['statementBalance']}

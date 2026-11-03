@@ -94,6 +94,7 @@ export function AccountForm({ account, onCreate, onUpdate, onCancel, pending, er
       />
       <AmountField
         label="Saldo de apertura"
+        rules={{ allowNegative: true, allowZero: true }}
         value={values.openingBalance}
         onChange={set('openingBalance')}
         error={errors['openingBalance']}
