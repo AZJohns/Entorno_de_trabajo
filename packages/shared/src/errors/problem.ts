@@ -12,8 +12,19 @@ export const ERROR_CODES = [
   'VALIDATION_ERROR',
   'MALFORMED_JSON',
   'PAYLOAD_TOO_LARGE',
+  'UNSUPPORTED_MEDIA_TYPE',
   'NOT_FOUND',
+  'CONFLICT',
   'INTERNAL_ERROR',
+  // Autenticación y sesión (fase 1)
+  'UNAUTHENTICATED',
+  'SESSION_LOCKED',
+  'INVALID_CREDENTIALS',
+  'CSRF_FAILED',
+  'REAUTH_REQUIRED',
+  'RATE_LIMITED',
+  'PASSWORD_REJECTED',
+  'BREACH_CHECK_UNAVAILABLE',
 ] as const;
 
 /** Código de error estable (para que el cliente decida qué hacer sin leer textos). */

@@ -9,11 +9,18 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "db:migrate": "node --env-file-if-exists=../../.env src/db/migrate.ts",
-    "check:migrations": "node scripts/check-migrations-immutable.ts"
+    "check:migrations": "node scripts/check-migrations-immutable.ts",
+    "user:create": "node --env-file-if-exists=../../.env scripts/create-user.ts",
+    "user:reset-password": "node --env-file-if-exists=../../.env scripts/reset-password.ts",
+    "user:revoke-sessions": "node --env-file-if-exists=../../.env scripts/revoke-sessions.ts",
+    "user:disable": "node --env-file-if-exists=../../.env scripts/disable-user.ts",
+    "build:common-passwords": "node scripts/build-common-passwords.ts"
   },
   "dependencies": {
     "@backoffice/shared": "workspace:*",
     "express": "^5.3.0",
+    "express-rate-limit": "^8.7.2",
+    "helmet": "^8.3.0",
     "kysely": "^0.29.7",
     "pg": "^8.23.1",
     "pino": "^10.4.0",

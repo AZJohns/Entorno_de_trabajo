@@ -30,9 +30,36 @@ const TITLES: Record<ErrorCode, string> = {
   VALIDATION_ERROR: 'Datos no válidos',
   MALFORMED_JSON: 'JSON mal formado',
   PAYLOAD_TOO_LARGE: 'Petición demasiado grande',
+  UNSUPPORTED_MEDIA_TYPE: 'Tipo de contenido no admitido',
   NOT_FOUND: 'Recurso no encontrado',
+  CONFLICT: 'Conflicto con el estado actual',
   INTERNAL_ERROR: 'Error interno',
+  UNAUTHENTICATED: 'Sesión no iniciada',
+  SESSION_LOCKED: 'Sesión bloqueada por inactividad',
+  INVALID_CREDENTIALS: 'Credenciales incorrectas',
+  CSRF_FAILED: 'Petición rechazada (CSRF)',
+  REAUTH_REQUIRED: 'Hace falta volver a autenticarse',
+  RATE_LIMITED: 'Demasiados intentos',
+  PASSWORD_REJECTED: 'Contraseña no válida',
+  BREACH_CHECK_UNAVAILABLE: 'No se pudo comprobar la contraseña',
 };
+
+/**
+ * Rechazos que indican un posible intento de saltarse un control: se registran como aviso (ASVS
+ * 16.3.2, 16.3.3). La web valida con los mismos esquemas antes de enviar, así que un fallo de
+ * validación o de formato en la API es un cliente manipulado o un error que conviene ver.
+ */
+const LOGGED_REJECTIONS: ReadonlySet<ErrorCode> = new Set<ErrorCode>([
+  'VALIDATION_ERROR',
+  'MALFORMED_JSON',
+  'PAYLOAD_TOO_LARGE',
+  'UNSUPPORTED_MEDIA_TYPE',
+  'UNAUTHENTICATED',
+  'INVALID_CREDENTIALS',
+  'CSRF_FAILED',
+  'REAUTH_REQUIRED',
+  'RATE_LIMITED',
+]);
 
 function problem(
   code: ErrorCode,
@@ -97,5 +124,13 @@ export const errorHandler: ErrorRequestHandler = (err: unknown, req, res, _next)
     body = problem('INTERNAL_ERROR', 500, requestId);
   }
 
+  if (LOGGED_REJECTIONS.has(body.code)) {
+    // Solo el código y, si los hay, los nombres de los campos: nunca sus valores ni el cuerpo.
+    const fields = body.errors?.map((error) => error.path);
+    req.log.warn(
+      { code: body.code, ...(fields === undefined ? {} : { fields }) },
+      'Petición rechazada',
+    );
+  }
   res.status(body.status).type(PROBLEM_CONTENT_TYPE).json(body);
 };

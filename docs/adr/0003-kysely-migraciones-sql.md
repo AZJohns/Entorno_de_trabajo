@@ -28,6 +28,7 @@ Las reglas de negocio importantes deben estar **también** en la base de datos. 
    - Kysely no guarda checksums de las migraciones aplicadas, así que sin esta comprobación una edición pasaría desapercibida.
 4. **Solo hacia delante en producción.** `down` existe solo si es trivial y sirve para el desarrollo local. Los cambios destructivos siguen el patrón *expand/contract* (añadir, migrar los datos y eliminar en un despliegue posterior).
 5. **Tipos**: en la fase 1, con las primeras tablas, se generarán desde la base de datos real con `kysely-codegen`. La base de datos es la fuente de verdad. Hoy la interfaz `Database` está vacía.
+   - **Sustituido por el ADR 0006 (decisión 9)**: los tipos se escriben a mano en `apps/api/src/db/schema.ts`; los tests de integración contra PostgreSQL real detectan las discrepancias.
 6. **Versión de PostgreSQL**: la referencia es la 18 (CI y `compose.yaml`, imagen fijada por *digest*). Mientras no se diga lo contrario en la migración, solo se usan funciones disponibles desde la 13. La primera migración (`unaccent`, `es_unaccent`) cumple esa regla.
 
 ## Alternativas descartadas
