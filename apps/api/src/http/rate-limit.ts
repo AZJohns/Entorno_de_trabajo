@@ -9,9 +9,7 @@
  * fuera al propietario (ASVS 6.1.1). Los intentos de segundo factor se limitan además por sesión.
  */
 import type { RequestHandler } from 'express';
-// Importación por defecto (la misma función que la exportación `rateLimit`): es la que reconoce el
-// modelo de CodeQL para `express-rate-limit` (consulta js/missing-rate-limiting).
-import rateLimit from 'express-rate-limit';
+import { rateLimit } from 'express-rate-limit';
 import { AppError } from './errors.ts';
 
 const FIFTEEN_MINUTES = 15 * 60 * 1000;
