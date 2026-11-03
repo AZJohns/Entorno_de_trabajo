@@ -39,6 +39,16 @@ Cada dependencia directa tiene que estar aquí con su justificación. **Antes de
 | `tailwindcss`, `@tailwindcss/vite` | 4.3.3 (2026-07-16) | web | Estilos con utilidades; la v4 se configura en CSS | CSS propio | MIT |
 | `@types/node` (^24), `@types/express`, `@types/pg`, `@types/supertest`, `@types/react`, `@types/react-dom` | 24.19.2, 5.0.6, 8.23.1, 7.2.1, 19.3.0, 19.3.0 | varios | Tipos de TypeScript. **`@types/node` sigue a la versión mínima de Node soportada (24, por `engines` y `.nvmrc`)**: con los tipos de una versión posterior, TypeScript aceptaría APIs que no existen en Node 24 y el fallo aparecería al ejecutar. Dependabot ignora sus actualizaciones major (`.github/dependabot.yml`); se suben a mano a la vez que el mínimo de `engines`, con su ADR | — | MIT |
 
+## Overrides (versiones forzadas de dependencias transitivas)
+
+Un override fuerza la versión de una dependencia que no instalamos directamente. Cada uno tiene que llevar el motivo y un criterio para retirarlo, aquí y en un comentario en `pnpm-workspace.yaml`.
+
+| Paquete | Override | Motivo | Ámbito | Retirar cuando | Licencia |
+|---|---|---|---|---|---|
+| `minimatch` | `^11.0.1` (instalada: 11.0.3) | [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249), gravedad **moderada**: denegación de servicio por amplificación de patrones glob, en versiones < 11.0.1. `eslint` 10.14 (vía `@eslint/config-array`) y `@typescript-eslint/typescript-estree` 8.72 declaran `^10.x`, así que Dependabot no puede actualizarla (la última instalable sería la 10.2.6) | Solo **desarrollo** (lint): no llega a producción. Los patrones que procesa son los de nuestra configuración de ESLint, no datos externos: el riesgo real es bajo, pero el override es barato y elimina la alerta | `eslint` y `typescript-eslint` acepten `minimatch >= 11.0.1` en su rango | BlueOak-1.0.0 (también su nueva dependencia `@isaacs/nonrecursive-glob-match`) |
+
+Verificación del override: ESLint analiza los mismos 31 archivos con los mismos resultados que con la 10.2.6; la regla `module-boundaries` sigue detectando violaciones; pasan lint, typecheck, los 87 tests y el build. `minimumReleaseAge` no bloquea la versión corregida: las 11.0.1–11.0.3 tienen más de 3 días (solo la 11.0.4, del 2026-11-02, queda fuera por ahora).
+
 ## Herramientas fuera de npm
 
 | Herramienta | Versión | Para qué | Cómo se instala | Licencia |
