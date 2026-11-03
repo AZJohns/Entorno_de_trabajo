@@ -39,7 +39,7 @@ La columna «Estado» distingue lo que ya cumple el código de lo que depende de
 | **Logs** | Prohibido registrarlos, enteros o parciales. Pino sustituye por `[REDACTED]` las cabeceras `Cookie`, `Authorization`, `X-CSRF-Token` y `Set-Cookie` y los campos de contraseña y código. Un test lo comprueba (`apps/api/test/logger.test.ts`) | Prohibido registrar importes, conceptos, comercios y cuerpos de petición. Se registran los **nombres** de los campos inválidos, no sus valores (`logs.md` §2) | Permitido; sin cuerpos ni cookies | Libre |
 | **Exportación** | **Nunca** se exporta, ni siquiera con reautenticación | Solo con `GET /export`: exige sesión completa y reautenticación reciente (S+), `Content-Disposition: attachment`, nombre generado y registro `data.exported` en la auditoría **con recuentos, sin importes** (`api-export.test.ts`) | Sin exportación; se consulta por la base de datos o los logs | Libre |
 | **Acceso** | Solo el proceso de la API (variables de entorno) y el propietario en el host. Nunca en respuestas de la API | Solo con sesión completa. Un token de dispositivo (fase 2) solo llega a `/ingest/*` | Con sesión completa (la lista de sesiones) o desde el host | Cualquiera |
-| **Retención** | Sesión: 24 h absolutas y 1 h de inactividad (`limites.md` §4); limpieza de las caducadas, sin implementar (§4). Tokens de dispositivo: ≤ 366 días y revocables. Códigos de recuperación: regenerarlos borra los anteriores | Mientras el propietario los conserve; se borran al pedirlo. Las copias: 7 diarias, 4 semanales, 12 mensuales y 3 anuales (`plan.md` §6.3). `raw_payload` se borra al confirmar el pendiente (fase 2) | `audit_events`: 1 año (pregunta 35, respuesta propuesta). Logs técnicos: 30 días | Indefinida |
+| **Retención** | Sesión: 24 h absolutas y 1 h de inactividad (`limites.md` §4); caducadas: se borran a los 30 días (§4, sin implementar). Tokens de dispositivo: ≤ 366 días y revocables. Códigos de recuperación: regenerarlos borra los anteriores | Mientras el propietario los conserve; se borran al pedirlo. Las copias: 7 diarias, 4 semanales, 12 mensuales y 3 anuales (`plan.md` §6.3). `raw_payload` se borra al confirmar el pendiente (fase 2) | `audit_events`: 1 año (pregunta 35, resuelta). Logs técnicos: 30 días | Indefinida |
 | **Minimización** | Un secreto no se copia a otro sitio «por comodidad» | No se guardan números de tarjeta ni credenciales bancarias: de cada tarjeta, solo su nombre en Wallet. No se guardan datos derivados (saldos, totales) | `metadata` de auditoría sin importes, tokens ni contraseñas | — |
 | **Rotación y revocación** | Contraseña: cambio con reautenticación. Semilla TOTP: reemplazo con reautenticación. `TOTP_ENCRYPTION_KEY`: rotación por `key_version` (ADR 0006). Si se filtra un secreto, se **rota primero** y luego se limpia (`docs/runbooks/github.md` §8) | No aplica | No aplica | No aplica |
 
@@ -47,8 +47,17 @@ La columna «Estado» distingue lo que ya cumple el código de lo que depende de
 
 - **Hecho en la fase 1**: hashes y cifrado de la semilla TOTP, redacción de logs, cookie `__Host-`, `no-store` en `/api`, reautenticación para exportar y auditoría de la exportación.
 - **Depende de la fase 2** (despliegue): HTTPS, HSTS, decisión sobre el cifrado de disco, copias restic, cuentas del sistema y el borrado de `raw_payload`. Hasta entonces, N2 y N3 solo existen en el equipo de desarrollo, con datos ficticios.
-- **Sin implementar**: la limpieza periódica de sesiones caducadas y de `audit_events` (1 año). La tabla `sessions` tiene el índice en `expires_at` para hacerla; hoy no se borra nada. Se hará con la retención de la fase 2 y se verificará con un test.
-- **Pendiente de decidir**: la retención definitiva de `audit_events` y de los logs (pregunta 35 de `plan.md`).
+- **Sin implementar**: la limpieza automática (ver «Retención» más abajo). La tabla `sessions` tiene el índice en `expires_at` para hacerla; hoy no se borra nada. Se hará en la fase 2 y se verificará con un test.
+
+## Retención (pregunta 35, resuelta)
+
+| Dato | Retención | Estado |
+|---|---|---|
+| `audit_events` | 1 año | Hoy no se borra nada. Limpieza automática en la **fase 2** |
+| Sesiones caducadas (`sessions`) | 30 días desde la caducidad | Hoy no se borran. Limpieza automática en la **fase 2** |
+| Logs técnicos | 30 días (y en las copias según su retención, `plan.md` §6.3) | Fase 2, con los destinos de producción |
+
+- **Atención al borrado de `audit_events`:** un trigger rechaza `UPDATE`, `DELETE` y `TRUNCATE` (migración `0002_auth`). La purga de la fase 2 necesita un camino explícito y separado del rol de la aplicación; se decide con los roles de la base de datos (ASVS 16.4.2).
 
 ## 5. Cómo se mantiene
 

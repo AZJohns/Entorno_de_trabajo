@@ -61,6 +61,12 @@ Settings → **Advanced Security**:
 
 Las actualizaciones de versión (no solo las de seguridad) se configuran en la fase 0 con `.github/dependabot.yml` (npm, GitHub Actions y Docker).
 
+**SBOM (ASVS 15.1.2):** con el *dependency graph* activado, el inventario de dependencias se exporta en formato SPDX cuando haga falta (no se guarda en el repositorio):
+
+```bash
+gh api repos/AZJohns/Entorno_de_trabajo/dependency-graph/sbom > sbom.spdx.json
+```
+
 ---
 
 ## 4. Code scanning (CodeQL)

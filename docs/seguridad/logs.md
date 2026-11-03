@@ -7,7 +7,7 @@
 | Destino | Qué contiene | Formato | Retención |
 |---|---|---|---|
 | Salida estándar (pino) | Una línea por petición, rechazos de seguridad (`warn`) y errores inesperados (`error`) | JSON, una línea por evento, hora ISO 8601 en UTC | Desarrollo: la terminal. Fase 2: logs de Docker y copia diaria al almacén de solo añadir (`plan.md` §6.2) |
-| Tabla `audit_events` (PostgreSQL) | Eventos de autenticación y de cambios de seguridad (§3) | Filas con columnas fijas y `metadata` JSON | Pendiente de decidir (pregunta 35 de `plan.md`; **R:** 1 año). Hoy no se borra nada. **Solo inserción**: un trigger rechaza `UPDATE`, `DELETE` y `TRUNCATE` |
+| Tabla `audit_events` (PostgreSQL) | Eventos de autenticación y de cambios de seguridad (§3) | Filas con columnas fijas y `metadata` JSON | 1 año (pregunta 35 de `plan.md`, resuelta). **Hoy no se borra nada**: la limpieza automática se implementa en la fase 2 (ver `datos.md` §Retención). **Solo inserción**: un trigger rechaza `UPDATE`, `DELETE` y `TRUNCATE` |
 
 ## 2. Log de peticiones (pino + pino-http)
 
@@ -57,5 +57,5 @@ Tests: `apps/api/test/auth/account.test.ts` («registra los eventos de autentica
 
 ## 4. Pendiente en fases posteriores
 
-- Fase 2: roles separados de la base de datos (la app solo con `INSERT` y `SELECT` en `audit_events`), destinos de producción, copia diaria y eventos de los tokens de dispositivo.
+- Fase 2: limpieza automática de `audit_events` (1 año; el trigger de solo inserción obliga a decidir cómo se purga), roles separados de la base de datos (la app solo con `INSERT` y `SELECT` en `audit_events`), destinos de producción, copia diaria y eventos de los tokens de dispositivo.
 - Fases 1b–3: eventos de negocio relevantes para la seguridad (confirmación de importaciones, `authz.denied` cuando haya permisos distintos de la sesión).
