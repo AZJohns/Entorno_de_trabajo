@@ -35,8 +35,8 @@ Autenticación del único usuario con dos factores (contraseña + TOTP), sesione
 
 | Método y ruta | Acceso | Límite | Respuesta |
 |---|---|---|---|
-| `POST /login` | `public` | 5/15 min por IP y 20/h en total | 200 `{ next, csrfToken, expiresAt }` + cookie de una sesión `pending` (5 min) |
-| `POST /login/second-factor` | `mfa_pending` | 10/15 min por IP; 5 fallos por sesión | 200 estado de la sesión + **cookie nueva** |
+| `POST /login` | `public` | 5/15 min por IP y, después, 20/h en total | 200 `{ next, csrfToken, expiresAt }` + cookie de una sesión `pending` (5 min) |
+| `POST /login/second-factor` | `mfa_pending` | 10/15 min por IP (contador común con `/unlock` y `/reauth`); 5 fallos por sesión | 200 estado de la sesión + **cookie nueva** |
 | `POST /unlock` | `locked` | Igual | 200 estado + cookie nueva. Solo contraseña |
 | `POST /reauth` | `active` | Igual | 200 estado + cookie nueva. Contraseña + TOTP; vale 10 min |
 | `POST /logout` | `session` | — | 204, cookie borrada y `Clear-Site-Data` |
@@ -78,4 +78,4 @@ Se ejecutan en el servidor con el `.env` cargado. Leen la contraseña sin mostra
 
 ## Tests
 
-`apps/api/test/auth/`: unitarios del dominio y la criptografía (sin base de datos) e integración con PostgreSQL real, reloj simulado y HIBP falso (`login.test.ts`, `account.test.ts`, `proxy.test.ts`). Ningún test sale a la red.
+`apps/api/test/auth/`: unitarios del dominio y la criptografía (sin base de datos) e integración con PostgreSQL real, reloj simulado y HIBP falso (`login.test.ts`, `account.test.ts`, `rate-limit.test.ts`, `proxy.test.ts`). Ningún test sale a la red.

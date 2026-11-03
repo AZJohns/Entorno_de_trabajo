@@ -9,15 +9,21 @@ Implementados con `express-rate-limit` (`apps/api/src/http/rate-limit.ts`). Al s
 | Qué | Límite | Clave | Motivo |
 |---|---|---|---|
 | `POST /auth/login` | 5 cada 15 min | IP | Frena la fuerza bruta desde un origen. Con un solo usuario, 5 intentos bastan para equivocarse al escribir |
-| `POST /auth/login` | 20 por hora | Global (todas las IP) | Frena un ataque repartido entre muchas IP (*credential stuffing* con *botnet*) |
-| `POST /auth/login/second-factor`, `/auth/unlock`, `/auth/reauth` | 10 cada 15 min | IP | Frena la prueba de códigos TOTP (10⁶ combinaciones) |
+| `POST /auth/login` | 20 por hora | Global (todas las IP) | Frena un ataque repartido entre muchas IP (*credential stuffing* con *botnet*). Se aplica **después** del límite por IP: las peticiones que este rechaza no gastan el cupo global |
+| `POST /auth/login/second-factor`, `/auth/unlock`, `/auth/reauth` | 10 cada 15 min, **en total entre las tres rutas** (un solo contador por IP) | IP | Frena la prueba de códigos TOTP (10⁶ combinaciones) y de contraseñas en una sesión robada |
 | Segundo factor, desbloqueo y reautenticación | 5 fallos | Sesión (`failed_attempts` en la base de datos) | Al quinto fallo, la sesión se revoca y hay que volver a empezar. Sobrevive a un reinicio |
 
 - **Sin bloqueo de cuenta** (ASVS 6.1.1): con un solo usuario, bloquear la cuenta permitiría a cualquiera dejar fuera al propietario.
-- **Contrapartida del límite global** ‡: quien pueda llegar a la API puede gastar los 20 intentos de cada hora e impedir **nuevos** inicios de sesión durante esa hora. No afecta a las sesiones abiertas ni al desbloqueo (que usa otro límite). En la opción de despliegue D (privada, Tailscale) solo llegan los dispositivos propios; si se pasa a la A (pública), hay que revisarlo (p. ej., límite global más alto o retardo creciente en lugar de corte).
+- **Orden**: en `/auth/login` el límite por IP va **antes** que el global. Con el orden inverso, el global contaba también las peticiones que luego rechazaba el límite por IP, y una sola IP agotaba el cupo global con 20 peticiones en unos segundos (corregido; test: «las peticiones que rechaza el límite por IP no gastan el cupo global…»).
+- **Riesgo residual del límite global** ‡: quien pueda llegar a la API puede gastar los 20 intentos de cada hora e impedir **nuevos** inicios de sesión durante esa hora.
+  - Desde **una sola IP**, al ritmo máximo que permite el límite por IP (5 cada 15 min), tarda **1 h** en agotarlo; con varias IP, antes.
+  - No afecta a las sesiones abiertas ni al desbloqueo, que usan otro límite.
+  - **Aceptable con la opción de despliegue D** (privada, Tailscale): solo llegan los dispositivos propios. Si se pasa a la A (pública), hay que revisarlo (p. ej., límite global más alto o retardo creciente en lugar de corte).
 - **IPv6**: las direcciones se agrupan por prefijo /56 (valor por defecto de `express-rate-limit` 8), porque una sola conexión suele disponer de muchas direcciones del mismo prefijo.
 - **Almacén en memoria**: hay una sola instancia de la API. Al reiniciarla, los contadores por IP y el global vuelven a cero; los fallos por sesión no, porque están en la base de datos.
-- Tests: `apps/api/test/auth/login.test.ts` («límites de peticiones»: sexto login → 429; undécimo segundo factor → 429; «5 fallos de segundo factor revocan la sesión pendiente»; «5 intentos fallidos revocan la sesión» en el desbloqueo).
+- Tests:
+  - `apps/api/test/auth/rate-limit.test.ts` (con varias IP simuladas): sexto login desde una IP → 429; el límite por IP no gasta el cupo global; intento 21 de la hora desde IP distintas → 429; y en el segundo factor, `/unlock` y `/reauth`, tras 10 fallos desde una IP el undécimo intento **con credenciales correctas y la sesión válida** → 429, y desde otra IP se acepta.
+  - `apps/api/test/auth/login.test.ts`: «5 fallos de segundo factor revocan la sesión pendiente» y «5 intentos fallidos revocan la sesión» (desbloqueo); `apps/api/test/auth/account.test.ts`: «la reautenticación exige los dos factores».
 
 ## 2. IP de la petición: `TRUST_PROXY_HOPS` (ASVS 4.1.3, 15.3.4)
 

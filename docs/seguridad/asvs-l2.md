@@ -82,7 +82,7 @@
 | 2.3.2 | L2 | Límites de negocio implementados | Planificado | Los de 2.1.3 | F1+ · todos | Tests |
 | 2.3.3 | L2 | Transacciones en la lógica de negocio | Planificado | Confirmar una importación, conciliar + ajuste, reordenar tareas | F1, F3, F4 | Tests |
 | 2.3.4 | L2 | Bloqueos para recursos limitados | Planificado | Bloqueo consultivo por mes al importar; cronómetro único; `SKIP LOCKED` en los recordatorios | F3, F4 | Tests de concurrencia |
-| 2.4.1 ‡ | L2 | Controles contra la automatización | Planificado | Límites de peticiones (login, segundo factor, ingesta, API) · **Login y segundos factores hechos** (`apps/api/test/auth/login.test.ts`, «límites de peticiones») | F1–F2 · http | Tests |
+| 2.4.1 ‡ | L2 | Controles contra la automatización | Planificado | Límites de peticiones (login, segundo factor, ingesta, API) · **Login y segundos factores hechos** (`apps/api/test/auth/rate-limit.test.ts`: por IP y global en el login; 429 en el segundo factor, `/unlock` y `/reauth`) | F1–F2 · http | Tests |
 
 ## V3 — Seguridad del frontend web
 
@@ -138,13 +138,13 @@
 
 | ID | Nivel | Requisito (resumen) | Estado | Cómo se cumple | Fase · módulo | Verificación |
 |---|---|---|---|---|---|---|
-| 6.1.1 ‡ | L1 | Límites de peticiones y defensas contra la fuerza bruta documentados, sin bloqueos maliciosos | **Verificado (F1)** | `docs/seguridad/limites.md` §1: límites por IP y global, 5 fallos por sesión, **sin bloqueo de cuenta** | F1 · auth | Documento + test: `apps/api/test/auth/login.test.ts` («límites de peticiones») |
+| 6.1.1 ‡ | L1 | Límites de peticiones y defensas contra la fuerza bruta documentados, sin bloqueos maliciosos | **Verificado (F1)** | `docs/seguridad/limites.md` §1: límites por IP y global, 5 fallos por sesión, **sin bloqueo de cuenta** | F1 · auth | Documento + test: `apps/api/test/auth/rate-limit.test.ts` (todos los límites por ruta y el global) y `login.test.ts` («5 fallos de segundo factor revocan la sesión pendiente», «5 intentos fallidos revocan la sesión») |
 | 6.1.2 | L2 | Lista documentada de palabras del contexto | **Verificado (F1)** | `docs/seguridad/limites.md` §5: lista fija + usuario + etiquetas del dominio de `PUBLIC_ORIGIN`, calculadas al arrancar | F1 · auth | Documento + test: `apps/api/test/auth/password-policy.test.ts` («el dominio del origen público aporta sus etiquetas…») |
 | 6.1.3 | L2 | Vías de autenticación documentadas | **Verificado (F1)** | `plan.md` §6.2 | F1 · auth | Documento: `plan.md` §6.2 y `apps/api/src/modules/auth/README.md` |
 | 6.2.1 | L1 | Longitud mínima (8; se recomiendan 15) | **Verificado (F1)** | 15 | F1 · auth | Test: `apps/api/test/auth/password-policy.test.ts` («exige 15 caracteres…») |
 | 6.2.2 | L1 | Se puede cambiar la contraseña | **Verificado (F1)** | `POST /auth/password` | F1 · auth | Test: `apps/api/test/auth/account.test.ts` («cambia la contraseña…») |
 | 6.2.3 | L1 | El cambio exige la contraseña actual y la nueva | **Verificado (F1)** | Sí | F1 · auth | Test: `apps/api/test/auth/account.test.ts` («exige la contraseña actual») |
-| 6.2.4 | L1 | Comprobar contra las 3.000 contraseñas más comunes | **Verificado (F1)** | Lista local de las 3.000 más frecuentes de ≥ 15 caracteres (SecLists, `docs/dependencias.md`) | F1 · auth | Test: `apps/api/test/auth/password-policy.test.ts` y `apps/api/test/auth/account.test.ts` («rechaza una contraseña común») |
+| 6.2.4 | L1 | Comprobar contra las 3.000 contraseñas más comunes | **Verificado (F1)** | Lista local de las 3.000 más frecuentes de ≥ 15 caracteres (SecLists, `docs/dependencias.md`) | F1 · auth | Test: `apps/api/test/auth/password-policy.test.ts` y `apps/api/test/auth/account.test.ts` («rechaza una contraseña %s», caso «común (lista local de 15+ caracteres)») |
 | 6.2.5 | L1 | Sin reglas de composición | **Verificado (F1)** | Sí | F1 · auth | Test: `apps/api/test/auth/password-policy.test.ts` («acepta una contraseña larga sin reglas de composición») |
 | 6.2.6 | L1 | `type=password` con la opción de verla | **Verificado (F1)** | Campos `type=password` con botón «Mostrar» (`apps/web/src/ui/forms.tsx`) | F1 · web | Revisión + prueba manual en Chromium (2026-11-03) |
 | 6.2.7 | L1 | Se permite pegar y usar gestores de contraseñas | **Verificado (F1)** | `autocomplete` correcto (`current-password`, `new-password`, `one-time-code`) | F1 · web | Revisión: `autocomplete` en `apps/web/src/pages/*` y `ui/forms.tsx`; sin bloqueo de pegado |
@@ -153,7 +153,7 @@
 | 6.2.10 | L2 | Sin rotación periódica obligatoria | **Verificado (F1)** | Sí | F1 · auth | Revisión: no existe caducidad de contraseña en el código ni en el esquema |
 | 6.2.11 | L2 | Usar la lista de palabras del contexto | **Verificado (F1)** | Sí | F1 · auth | Test: `apps/api/test/auth/password-policy.test.ts` y `apps/api/test/auth/account.test.ts` (usuario, nombre de la app y dominio rechazados) |
 | 6.2.12 | L2 | Comprobar contra contraseñas filtradas | **Verificado (F1)** | API de rangos de Pwned Passwords; si falla, se rechaza el cambio | F1 · auth | Test: `apps/api/test/auth/hibp.test.ts` (k-anonimato, relleno, fallo cerrado) y `apps/api/test/auth/account.test.ts` («rechaza una contraseña filtrada», «si HIBP no responde, NO se cambia») |
-| 6.3.1 ‡ | L1 | Controles contra el relleno de credenciales y la fuerza bruta | **Verificado (F1)** | Límites de peticiones en el login y en el segundo factor | F1 · auth | Test: `apps/api/test/auth/login.test.ts` («límites de peticiones») |
+| 6.3.1 ‡ | L1 | Controles contra el relleno de credenciales y la fuerza bruta | **Verificado (F1)** | Límites de peticiones en el login (por IP y global) y en el segundo factor, el desbloqueo y la reautenticación; 5 fallos por sesión | F1 · auth | Test: `apps/api/test/auth/rate-limit.test.ts` («límite global: el intento 21…», «segundo factor / desbloqueo / reautenticación: tras 10 fallos desde una IP, el undécimo intento… recibe 429») |
 | 6.3.2 | L1 | Sin cuentas por defecto | **Verificado (F1)** | El usuario lo crea el script; no hay semillas de usuarios | F1 · auth | Revisión + test: `apps/api/test/auth/account.test.ts` («solo puede existir un usuario») |
 | 6.3.3 | L2 | Autenticación multifactor obligatoria | **Verificado (F1)** | Contraseña + TOTP (o código de recuperación). Passkey: se evalúa en F2 | F1 · auth | Test: `apps/api/test/auth/login.test.ts` («la sesión pendiente no da acceso…», «la sesión pendiente caduca a los 5 minutos») |
 | 6.3.4 | L2 | Sin vías de autenticación no documentadas | **Verificado (F1)** | Test que enumera las rutas de autenticación registradas | F1 · auth | Test: `apps/api/test/auth/login.test.ts` («las únicas rutas públicas son GET /health y POST /auth/login») |
