@@ -13,6 +13,13 @@ updates:
     cooldown:
       default-days: 3
     open-pull-requests-limit: 5
+    ignore:
+      # Los tipos de Node siguen a la versión MÍNIMA soportada (Node 24: engines y .nvmrc), no a la
+      # última. Con @types/node 26, TypeScript aceptaría APIs que no existen en Node 24 y el error solo
+      # aparecería al ejecutar. Se siguen recibiendo las minor y patch de la línea 24; la major se sube
+      # a mano junto con el mínimo de engines, con su ADR (docs/dependencias.md).
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
     groups:
       minor-and-patch:
         update-types: [minor, patch]

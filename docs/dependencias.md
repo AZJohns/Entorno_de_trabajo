@@ -37,7 +37,7 @@ Cada dependencia directa tiene que estar aquí con su justificación. **Antes de
 | `vite` | 8.3.5 (2026-10-21) | web | Servidor de desarrollo y empaquetado | — (decisión del stack) | MIT |
 | `@vitejs/plugin-react` | 6.1.2 (2026-10-05) | web | Soporte de React (JSX, recarga en caliente) en Vite | — | MIT |
 | `tailwindcss`, `@tailwindcss/vite` | 4.3.3 (2026-07-16) | web | Estilos con utilidades; la v4 se configura en CSS | CSS propio | MIT |
-| `@types/node` (^24), `@types/express`, `@types/pg`, `@types/supertest`, `@types/react`, `@types/react-dom` | 24.19.2, 5.0.6, 8.23.1, 7.2.1, 19.3.0, 19.3.0 | varios | Tipos de TypeScript. `@types/node` en la línea 24, la versión de Node fijada | — | MIT |
+| `@types/node` (^24), `@types/express`, `@types/pg`, `@types/supertest`, `@types/react`, `@types/react-dom` | 24.19.2, 5.0.6, 8.23.1, 7.2.1, 19.3.0, 19.3.0 | varios | Tipos de TypeScript. **`@types/node` sigue a la versión mínima de Node soportada (24, por `engines` y `.nvmrc`)**: con los tipos de una versión posterior, TypeScript aceptaría APIs que no existen en Node 24 y el fallo aparecería al ejecutar. Dependabot ignora sus actualizaciones major (`.github/dependabot.yml`); se suben a mano a la vez que el mínimo de `engines`, con su ADR | — | MIT |
 
 ## Herramientas fuera de npm
 
