@@ -8,6 +8,7 @@ import { Gate } from './auth/Gate.tsx';
 import { AccountsPage } from './finance/pages/AccountsPage.tsx';
 import { CategoriesPage } from './finance/pages/CategoriesPage.tsx';
 import { MovementsPage } from './finance/pages/MovementsPage.tsx';
+import { ReportsPage } from './finance/pages/ReportsPage.tsx';
 import { ReconciliationPage } from './finance/pages/ReconciliationPage.tsx';
 import { TransfersPage } from './finance/pages/TransfersPage.tsx';
 import { forgetSession, SESSION_QUERY_KEY } from './auth/session.ts';
@@ -65,6 +66,7 @@ const router = createBrowserRouter([
       { path: 'categorias', element: <CategoriesPage /> },
       { path: 'movimientos', element: <MovementsPage /> },
       { path: 'transferencias', element: <TransfersPage /> },
+      { path: 'informes', element: <ReportsPage /> },
       { path: 'ajustes/seguridad', element: <SecuritySettingsPage /> },
     ],
   },

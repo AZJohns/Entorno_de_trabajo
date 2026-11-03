@@ -3,11 +3,12 @@
  * de la aplicación (sesión activa), igual que cualquier ruta que no sea de `/auth`.
  */
 import { Router } from 'express';
-import type { createLedgerController } from './ledger.controller.ts';
+import type { createLedgerController, createReportsController } from './ledger.controller.ts';
 
 type Controller = ReturnType<typeof createLedgerController>;
+type ReportsController = ReturnType<typeof createReportsController>;
 
-export function createLedgerRouter(c: Controller): Router {
+export function createLedgerRouter(c: Controller, reports: ReportsController): Router {
   const router = Router();
 
   router.get('/accounts', c.listAccounts);
@@ -38,6 +39,11 @@ export function createLedgerRouter(c: Controller): Router {
   router.get('/transfers/:id', c.getTransfer);
   router.patch('/transfers/:id', c.updateTransfer);
   router.delete('/transfers/:id', c.deleteTransfer);
+
+  router.get('/reports/monthly', reports.monthly);
+  router.get('/reports/monthly/:month/categories', reports.categories);
+  router.get('/reports/balances', reports.balances);
+  router.get('/reports/balance-history', reports.balanceHistory);
 
   return router;
 }

@@ -1247,6 +1247,7 @@ Tamaños relativos (S, M, L, XL). No pongo días porque no conozco tu ritmo y un
     - Cuentas (corriente, ahorro y efectivo), categorías, movimientos (alta, edición, confirmación y filtros) y transferencias.
     - **Conciliación mensual con un movimiento de ajuste.**
   - **1c. Informes**: balance mensual, desglose por categoría, saldo por cuenta (con los ajustes en una línea propia) y 3 gráficos.
+    - Los 3 gráficos: barras de ingresos y gastos por mes, barras de gastos por categoría de un mes y líneas del saldo por cuenta. Se dibujan en **SVG propio**, no con Recharts (comparación en `docs/dependencias.md`).
   - **1d. Exportación** `GET /export` con reautenticación.
   - Todo **en local**.
 - **Terminado cuando**
@@ -1298,7 +1299,7 @@ Tamaños relativos (S, M, L, XL). No pongo días porque no conozco tu ritmo y un
     - **Menús servidos por la API**: las cuentas, las categorías y los pagos habituales los devuelve un `GET` protegido con el token del dispositivo (la base es `GET /ingest/catalog`, §5.8). **Nunca van escritos a mano en el atajo**, para que un cambio en la app no obligue a editarlo.
     - **Opción «Otro»** en los menús: el concepto se escribe a mano. Si falta la categoría, el movimiento entra como pendiente.
     - **Pagos habituales** (Spotify, gimnasio…): cada uno con nombre, categoría y cuenta por defecto, e importe típico opcional. El atajo pregunta «Único / Recurrente».
-    - **Acceso desde el móvil: la PWA instalada; no habrá app nativa.** Motivos (inferencia mía, no medida): una app nativa exige cuenta de desarrollador de Apple (de pago), firma y distribución (TestFlight o App Store) y mantener otra base de código; la PWA ya cubre la interfaz, las notificaciones push (en iOS, solo con la PWA instalada) y el atajo llama a la API sin necesitar una app. Lo que no da la PWA (acceso directo a Wallet) tampoco lo daría una app propia: lo resuelve la automatización de Atajos [VERIFICAR si cambia la política de Apple].
+    - **Acceso desde el móvil: la PWA instalada; no habrá app nativa.** Motivos comprobados: (1) Xcode solo funciona en macOS y el desarrollo se hace en Windows. (2) Con una cuenta gratuita de Apple (Personal Team), la app instalada **caduca a los 7 días** y hay que recompilarla e instalarla de nuevo; el máximo es de **3 apps por dispositivo**, según la [documentación de Apple](https://developer.apple.com/support/compare-memberships/) (consultada el 2026-11-03). (3) Para evitar la caducidad hace falta el programa de desarrolladores **de pago**. Además (inferencia, no medida): una app nativa exigiría firma, distribución (TestFlight o App Store) y mantener otra base de código, mientras que la PWA ya cubre la interfaz y las notificaciones push (en iOS, solo con la PWA instalada), y el atajo llama a la API sin necesitar una app. Lo que no da la PWA (acceso directo a Wallet) tampoco lo daría una app propia: lo resuelve la automatización de Atajos.
   - **2e. Evaluación de passkeys y usabilidad de la sesión**
     - T18 (passkey en la PWA) y T19 (autorrelleno de la contraseña y del TOTP).
     - Si T18 funciona: alta de passkeys con @simplewebauthn y su ADR.

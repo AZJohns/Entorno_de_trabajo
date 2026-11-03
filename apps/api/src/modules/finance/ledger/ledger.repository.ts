@@ -21,6 +21,7 @@ import type {
 } from '../../../db/schema.ts';
 import type { AccountLedger, LedgerMovement, LedgerTransfer } from './domain/balances.ts';
 import type { LocalDate } from './domain/dates.ts';
+import type { CategorizedMovement } from './domain/reports.ts';
 
 export interface AccountRecord {
   readonly id: string;
@@ -617,6 +618,40 @@ export class LedgerRepository {
       if (row.reconciliation_id !== null) ids.set(row.reconciliation_id, row.id);
     }
     return ids;
+  }
+
+  // --- informes ---------------------------------------------------------------------------------
+
+  /**
+   * Todos los movimientos (de cualquier cuenta, también archivada, y pendientes) con fecha contable
+   * entre `from` y `to`, ambos incluidos. Solo lee filas: las sumas las hace `domain/reports.ts`.
+   */
+  async listMovementsBetween(from: LocalDate, to: LocalDate): Promise<CategorizedMovement[]> {
+    const rows = await this.#db
+      .selectFrom('movements')
+      .select([
+        'account_id',
+        'category_id',
+        'kind',
+        'amount_cents',
+        'booked_on',
+        'status',
+        'source',
+        'reconciliation_id',
+      ])
+      .where('booked_on', '>=', from)
+      .where('booked_on', '<=', to)
+      .execute();
+    return rows.map((row) => ({
+      accountId: row.account_id,
+      categoryId: row.category_id,
+      kind: row.kind,
+      amountCents: centsFromDb(row.amount_cents),
+      bookedOn: row.booked_on,
+      status: row.status,
+      source: row.source,
+      reconciliationId: row.reconciliation_id,
+    }));
   }
 
   // --- saldos -----------------------------------------------------------------------------------

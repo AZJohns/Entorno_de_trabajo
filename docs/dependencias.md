@@ -71,6 +71,22 @@ Verificación del override: ESLint analiza los mismos 31 archivos con los mismos
 |---|---|---|---|---|
 | `apps/api/src/modules/auth/data/common-passwords.txt` | [SecLists](https://github.com/danielmiessler/SecLists), `Passwords/Common-Credentials/xato-net-10-million-passwords-1000000.txt`, fijado en el commit `ac8a76c5ddfb31385195448f501d7b915b307e4b` y verificado por SHA-256 | Las 3.000 contraseñas más frecuentes de 15 o más caracteres, en orden de frecuencia, sin duplicados (sin distinguir mayúsculas) y **sin las que contienen «@»** (algunas parecían derivadas de correos; el repositorio es público). ASVS 6.2.4: con un mínimo de 15 caracteres, las 3.000 más comunes en general casi no aplican | `pnpm --filter @backoffice/api build:common-passwords` (falla si el SHA-256 no coincide) | MIT (verificada en el `LICENSE` del repositorio de SecLists) |
 
+## Librería de gráficos (fase 1c): SVG propio en lugar de Recharts
+
+`docs/plan.md` §4.2 recomendaba **Recharts** de forma provisional. Al implementar los tres gráficos de la fase 1c se comparó con dibujarlos en SVG y se **descartó**:
+
+| | Recharts | SVG propio (`apps/web/src/finance/charts/`) |
+|---|---|---|
+| Qué dibuja la fase 1c | Barras agrupadas, barras horizontales y líneas con ejes | Lo mismo |
+| Dependencias | Consultado en npm el 2026-11-03: 3.10.1, MIT, **11 dependencias directas** (`@reduxjs/toolkit`, `react-redux`, `immer`, `reselect`, `es-toolkit`, `victory-vendor`, `decimal.js-light`, `eventemitter3`, `clsx`, `tiny-invariant`, `use-sync-external-store`), 7,4 MB desempaquetado, y exige además `react-is` | Ninguna |
+| Código propio | Pequeño: JSX declarativo | ~425 líneas en 6 archivos (3 gráficos, tabla de datos, paleta, escala de ejes); la escala (`scale.ts`) tiene tests |
+| Accesibilidad | Hay que añadir la alternativa textual a mano | Cada gráfico lleva `role="img"` con descripción y una tabla con los mismos datos |
+| Superficie de cadena de suministro | Mayor: el repositorio es público y cada dependencia nueva sube la superficie (política de actualizaciones de arriba) | Nula |
+
+**Criterio de la regla 1** (¿lo resuelve la plataforma en unas 50 líneas que se puedan probar?): cada gráfico cabe en unas 100 líneas. No cumple «50», pero los tres son sencillos, estáticos y sin interacción, que es donde SVG gana. **Cuándo reconsiderarlo**: si más adelante hacen falta tooltips, zoom, animaciones o gráficos que no sean barras ni líneas (el dashboard de la fase 3b.3), se vuelve a evaluar Recharts con esa necesidad concreta delante.
+
+No comprobado: el tamaño que añadiría Recharts al paquete de la web ni su comportamiento con la CSP del servidor (`style-src 'self'`); no hizo falta para decidir.
+
 ## Dependencias descartadas en la fase 1
 
 - **`argon2`, `bcrypt`** (npm): Node ≥ 24.12 trae `crypto.argon2` y no hacen falta binarios nativos (ADR 0006).
