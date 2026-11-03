@@ -19,7 +19,7 @@ import type {
   MovementsTable,
   TransfersTable,
 } from '../../../db/schema.ts';
-import type { AccountLedger } from './domain/balances.ts';
+import type { AccountLedger, LedgerMovement, LedgerTransfer } from './domain/balances.ts';
 import type { LocalDate } from './domain/dates.ts';
 
 export interface AccountRecord {
@@ -626,20 +626,33 @@ export class LedgerRepository {
    * movimientos y las transferencias que la tocan. Los pendientes se incluyen: el dominio los ignora.
    */
   async loadLedger(account: AccountRecord): Promise<AccountLedger> {
+    const ledgers = await this.loadLedgers([account]);
+    return ledgers.get(account.id) ?? emptyLedger(account);
+  }
+
+  /**
+   * Igual que {@link loadLedger} para varias cuentas, con DOS consultas en total (movimientos y
+   * transferencias) sea cual sea su número, para no lanzar una por cuenta. Cada transferencia se
+   * reparte entre sus dos cuentas, si ambas están en la lista.
+   */
+  async loadLedgers(accounts: readonly AccountRecord[]): Promise<Map<string, AccountLedger>> {
+    const result = new Map<string, AccountLedger>();
+    if (accounts.length === 0) return result;
+    const ids = accounts.map((account) => account.id);
     const [movements, transfers] = await Promise.all([
-      this.#db.selectFrom('movements').selectAll().where('account_id', '=', account.id).execute(),
+      this.#db.selectFrom('movements').selectAll().where('account_id', 'in', ids).execute(),
       this.#db
         .selectFrom('transfers')
         .selectAll()
-        .where((eb) =>
-          eb.or([eb('from_account_id', '=', account.id), eb('to_account_id', '=', account.id)]),
-        )
+        .where((eb) => eb.or([eb('from_account_id', 'in', ids), eb('to_account_id', 'in', ids)]))
         .execute(),
     ]);
-    return {
-      accountId: account.id,
-      openingBalanceCents: account.openingBalanceCents,
-      movements: movements.map((row) => ({
+
+    const movementsOf = new Map<string, LedgerMovement[]>();
+    for (const row of movements) {
+      if (row.account_id === null) continue;
+      const list = movementsOf.get(row.account_id) ?? [];
+      list.push({
         accountId: row.account_id,
         kind: row.kind,
         amountCents: centsFromDb(row.amount_cents),
@@ -647,13 +660,40 @@ export class LedgerRepository {
         status: row.status,
         source: row.source,
         reconciliationId: row.reconciliation_id,
-      })),
-      transfers: transfers.map((row) => ({
+      });
+      movementsOf.set(row.account_id, list);
+    }
+    const transfersOf = new Map<string, LedgerTransfer[]>();
+    for (const row of transfers) {
+      const transfer: LedgerTransfer = {
         fromAccountId: row.from_account_id,
         toAccountId: row.to_account_id,
         amountCents: centsFromDb(row.amount_cents),
         bookedOn: row.booked_on,
-      })),
-    };
+      };
+      for (const id of new Set([row.from_account_id, row.to_account_id])) {
+        const list = transfersOf.get(id) ?? [];
+        list.push(transfer);
+        transfersOf.set(id, list);
+      }
+    }
+    for (const account of accounts) {
+      result.set(account.id, {
+        accountId: account.id,
+        openingBalanceCents: account.openingBalanceCents,
+        movements: movementsOf.get(account.id) ?? [],
+        transfers: transfersOf.get(account.id) ?? [],
+      });
+    }
+    return result;
   }
+}
+
+function emptyLedger(account: AccountRecord): AccountLedger {
+  return {
+    accountId: account.id,
+    openingBalanceCents: account.openingBalanceCents,
+    movements: [],
+    transfers: [],
+  };
 }

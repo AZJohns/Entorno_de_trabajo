@@ -15,23 +15,25 @@
  * referencia inexistente, no un conflicto.
  */
 import type { Kysely } from 'kysely';
-import type {
-  CreateAccountRequest,
-  CreateCategoryRequest,
-  CreateMovementRequest,
-  CreateReconciliationRequest,
-  CreateTransferRequest,
-  ListMovementsQuery,
-  ListTransfersQuery,
-  UpdateAccountRequest,
-  UpdateMovementRequest,
-  UpdateTransferRequest,
+import {
+  formatCents,
+  type CreateAccountRequest,
+  type CreateCategoryRequest,
+  type CreateMovementRequest,
+  type CreateReconciliationRequest,
+  type CreateTransferRequest,
+  type ListMovementsQuery,
+  type ListTransfersQuery,
+  type UpdateAccountRequest,
+  type UpdateMovementRequest,
+  type UpdateTransferRequest,
 } from '@backoffice/shared';
 import type { Database } from '../../../db/schema.ts';
 import { isUniqueViolation } from '../../../db/errors.ts';
 import { AppError } from '../../../http/errors.ts';
 import type { Clock } from '../../../lib/clock.ts';
 import type { LocalDate } from './domain/dates.ts';
+import { balanceAsOf } from './domain/balances.ts';
 import { reconcile, reconciliationDiscrepancy } from './domain/reconciliation.ts';
 import {
   LedgerRepository,
@@ -116,6 +118,12 @@ function toPage<T extends { bookedOn: LocalDate; id: string }>(rows: T[], limit:
   };
 }
 
+/** Una cuenta con su saldo actual (calculado al leer, no guardado). */
+export interface AccountView extends AccountRecord {
+  /** Saldo hoy, sin fecha: todos los movimientos confirmados y las transferencias, incluidos los futuros. */
+  readonly balanceCents: number;
+}
+
 export class LedgerService {
   readonly #deps: LedgerServiceDeps;
   readonly #repo: LedgerRepository;
@@ -123,6 +131,11 @@ export class LedgerService {
   constructor(deps: LedgerServiceDeps) {
     this.#deps = deps;
     this.#repo = new LedgerRepository(deps.db);
+  }
+
+  /** Añade a la cuenta su saldo actual. Si la cuenta se acaba de modificar, léela ya modificada. */
+  async #withBalance(repo: LedgerRepository, account: AccountRecord): Promise<AccountView> {
+    return { ...account, balanceCents: balanceAsOf(await repo.loadLedger(account), null) };
   }
 
   /** Ejecuta `work` en una transacción con un repositorio ligado a ella. */
@@ -181,19 +194,29 @@ export class LedgerService {
 
   // --- cuentas ----------------------------------------------------------------------------------
 
-  listAccounts(includeArchived: boolean): Promise<AccountRecord[]> {
-    return this.#repo.listAccounts(includeArchived);
+  async listAccounts(includeArchived: boolean): Promise<AccountView[]> {
+    const accounts = await this.#repo.listAccounts(includeArchived);
+    // Dos consultas para todas las cuentas, no una por cuenta.
+    const ledgers = await this.#repo.loadLedgers(accounts);
+    return accounts.map((account) => {
+      const ledger = ledgers.get(account.id);
+      return {
+        ...account,
+        balanceCents:
+          ledger === undefined ? account.openingBalanceCents : balanceAsOf(ledger, null),
+      };
+    });
   }
 
-  async getAccount(id: string): Promise<AccountRecord> {
+  async getAccount(id: string): Promise<AccountView> {
     const account = await this.#repo.findAccount(id);
     if (account === undefined) throw notFound('La cuenta');
-    return account;
+    return this.#withBalance(this.#repo, account);
   }
 
-  async createAccount(input: CreateAccountRequest): Promise<AccountRecord> {
+  async createAccount(input: CreateAccountRequest): Promise<AccountView> {
     try {
-      return await this.#repo.insertAccount(input);
+      return await this.#withBalance(this.#repo, await this.#repo.insertAccount(input));
     } catch (error) {
       if (isUniqueViolation(error, NAME_IN_USE_ACCOUNT)) {
         throw conflict('Ya existe una cuenta activa con ese nombre');
@@ -202,7 +225,7 @@ export class LedgerService {
     }
   }
 
-  async updateAccount(id: string, input: UpdateAccountRequest): Promise<AccountRecord> {
+  async updateAccount(id: string, input: UpdateAccountRequest): Promise<AccountView> {
     return this.#transaction(async (repo) => {
       const account = await repo.findAccount(id);
       if (account === undefined) throw notFound('La cuenta');
@@ -221,7 +244,7 @@ export class LedgerService {
       try {
         const updated = await repo.updateAccount(id, input, this.#deps.clock.now());
         if (updated === undefined) throw notFound('La cuenta');
-        return updated;
+        return await this.#withBalance(repo, updated);
       } catch (error) {
         if (isUniqueViolation(error, NAME_IN_USE_ACCOUNT)) {
           throw conflict('Ya existe una cuenta activa con ese nombre');
@@ -231,21 +254,34 @@ export class LedgerService {
     });
   }
 
-  /** Archiva la cuenta (idempotente). Con movimientos pendientes, 409: hay que confirmarlos o borrarlos. */
-  async archiveAccount(id: string): Promise<AccountRecord> {
+  /**
+   * Archiva la cuenta (idempotente). Una cuenta archivada queda congelada, así que solo se archiva si
+   * no deja nada vivo: sin movimientos pendientes (hay que confirmarlos o borrarlos) y con saldo 0.
+   *
+   * El saldo es el actual, sin fecha: cuentan todos los movimientos confirmados y las transferencias,
+   * también los de fecha futura. Un ajuste de conciliación que lo deje en 0 vale igual que cualquier
+   * otro movimiento. Se lee dentro de la transacción junto con el recuento de pendientes.
+   */
+  async archiveAccount(id: string): Promise<AccountView> {
     return this.#transaction(async (repo) => {
       const account = await repo.findAccount(id);
       if (account === undefined) throw notFound('La cuenta');
-      if (account.archivedAt !== null) return account;
+      if (account.archivedAt !== null) return this.#withBalance(repo, account);
       if ((await repo.countPendingMovements(id)) > 0) {
         throw conflict(
           'La cuenta tiene movimientos pendientes: confírmalos o bórralos antes de archivarla',
         );
       }
+      const balance = (await this.#withBalance(repo, account)).balanceCents;
+      if (balance !== 0) {
+        throw conflict(
+          `Para archivar la cuenta, su saldo debe ser 0 (ahora: ${formatCents(balance)}). Vacíala antes con una transferencia`,
+        );
+      }
       await repo.archiveAccount(id, this.#deps.clock.now());
       const archived = await repo.findAccount(id);
       if (archived === undefined) throw notFound('La cuenta');
-      return archived;
+      return this.#withBalance(repo, archived);
     });
   }
 

@@ -2,7 +2,7 @@
 
 Cuentas, categorías, movimientos, transferencias y conciliación mensual. Diseño: `docs/plan.md` §2.3. La capa de plan (`plan/`, fase 3) vive en este mismo módulo, pero todavía no existe.
 
-**Estado (fase 1b, PR 2 de 3):** esquema, lógica pura, servicio, repositorio y rutas del libro. Los informes (1c), la exportación (1d) y la interfaz web (PR 3) están pendientes.
+**Estado (fase 1b, PR 3 de 3):** esquema, lógica pura, servicio, repositorio y rutas del libro, y sus pantallas web (`apps/web/src/finance/`). Los informes (1c) y la exportación (1d) están pendientes.
 
 ## Responsabilidad
 
@@ -32,7 +32,9 @@ Códigos de error del libro:
 | 400 | Cuerpo, consulta o identificador no válidos; origen y destino de una transferencia iguales; `asOf` fuera del mes |
 | 404 | El recurso de la URL no existe |
 | 422 | El cuerpo es válido pero incoherente con el libro: **cuenta o categoría inexistente** (se comprueba antes de insertar), categoría de otro tipo, fecha anterior a la apertura de la cuenta (movimientos, transferencias y conciliaciones), importe 0 en un movimiento confirmado |
-| 409 | Cuenta o categoría archivada; ajuste de conciliación (no se edita ni se borra: solo con su conciliación); nombre duplicado; mes ya conciliado; borrador ya confirmado; archivar una cuenta con pendientes |
+| 409 | Cuenta o categoría archivada; ajuste de conciliación (no se edita ni se borra: solo con su conciliación); nombre duplicado; mes ya conciliado; borrador ya confirmado; archivar una cuenta con pendientes o con saldo distinto de 0 |
+
+**Archivar exige saldo 0**: el saldo actual (`balanceAsOf` sin fecha: todos los movimientos confirmados y las transferencias, también los de fecha futura) debe ser 0 y no puede haber movimientos pendientes en la cuenta; si no, 409 con el saldo en el mensaje (p. ej. «Para archivar la cuenta, su saldo debe ser 0 (ahora: 125,40 €). Vacíala antes con una transferencia»). Un ajuste de conciliación que lleve el saldo a 0 vale como cualquier otro movimiento. Así una cuenta archivada no deja dinero «escondido» en los saldos totales.
 
 Una cuenta archivada queda **congelada**: no admite movimientos, transferencias ni conciliaciones nuevos, ni editar o borrar los que tiene (409). Las cuentas y categorías no se borran, se archivan; por eso ninguna ruta de esta versión borra una fila referenciada y `isReferencedRowError` (`src/db/errors.ts`) todavía no se usa. Si algún día lo hace, será solo en el borrado: `23503` al insertar significa referencia inexistente (422), no conflicto.
 
@@ -48,6 +50,7 @@ Una cuenta archivada queda **congelada**: no admite movimientos, transferencias 
 ## Decisiones
 
 - **Saldo** hasta `as_of` incluido = apertura + ingresos confirmados − gastos confirmados + transferencias recibidas − enviadas. Los pendientes no cuentan; los ajustes sí.
+- **`balanceCents` en las cuentas** (`GET /accounts`, `/accounts/:id` y las respuestas de alta, edición y archivado): saldo **actual**, sin fecha: `balanceAsOf(ledger, null)`, es decir, todos los movimientos confirmados y las transferencias, **también los de fecha futura**; los pendientes no cuentan. Se calcula al leer y no se guarda. La lista usa `loadLedgers`: dos consultas (movimientos y transferencias) para todas las cuentas, y el dominio calcula cada saldo; no se duplica la lógica con `SUM` en SQL. Es el mismo saldo que exige 0 para archivar.
 - **Ajuste**: `statement − computed`. Si es 0 no se crea nada; si es positivo, un ingreso; si es negativo, un gasto por el valor absoluto, con `booked_on = as_of` para que entre en el saldo de esa fecha.
 - **Los ajustes van en una línea propia** de los informes (`monthlyTotals.adjustmentsCents`): no son ingresos ni gastos reales.
 - **Totales y saldos**: para las cuentas que ya existían al empezar el mes, la variación de la suma de sus saldos es `netCents + adjustmentsCents`; las transferencias se anulan entre cuentas propias.

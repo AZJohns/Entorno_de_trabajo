@@ -24,17 +24,12 @@ import {
   type ReconciliationResponse,
   type TransferResponse,
 } from '@backoffice/shared';
-import type {
-  AccountRecord,
-  CategoryRecord,
-  MovementRecord,
-  TransferRecord,
-} from './ledger.repository.ts';
-import type { LedgerService, ReconciliationView } from './ledger.service.ts';
+import type { CategoryRecord, MovementRecord, TransferRecord } from './ledger.repository.ts';
+import type { AccountView, LedgerService, ReconciliationView } from './ledger.service.ts';
 
 const idSchema = z.uuid();
 
-function accountDto(account: AccountRecord): AccountResponse {
+function accountDto(account: AccountView): AccountResponse {
   return {
     id: account.id,
     name: account.name,
@@ -42,6 +37,7 @@ function accountDto(account: AccountRecord): AccountResponse {
     currency: 'EUR',
     openingBalanceCents: account.openingBalanceCents,
     openingDate: account.openingDate,
+    balanceCents: account.balanceCents,
     archived: account.archivedAt !== null,
   };
 }

@@ -575,9 +575,9 @@ notes *─* tags (note_tags)
 **finance: capa real**
 | Método | Ruta | Auth | Descripción |
 |---|---|---|---|
-| GET, POST | `/accounts` | S | |
-| GET, PATCH | `/accounts/:id` | S | |
-| POST | `/accounts/:id/archive` | S | 409 si tiene movimientos pendientes |
+| GET, POST | `/accounts` | S | Cada cuenta lleva `balanceCents`: el saldo **actual**, calculado al leer y sin guardarlo (`balanceAsOf` sin fecha: todos los movimientos confirmados y las transferencias, también los de fecha futura; los pendientes no cuentan). La lista lo calcula con dos consultas para todas las cuentas, no una por cuenta |
+| GET, PATCH | `/accounts/:id` | S | Con `balanceCents`, igual que la lista |
+| POST | `/accounts/:id/archive` | S | 409 si tiene movimientos pendientes o si su saldo actual no es 0 (cuentan todos los movimientos confirmados y las transferencias, también los de fecha futura). El mensaje dice el saldo: «Para archivar la cuenta, su saldo debe ser 0 (ahora: 125,40 €). Vacíala antes con una transferencia» |
 | GET | `/accounts/:id/reconciliations` | S | Historial con la discrepancia actual, si la hay |
 | POST | `/accounts/:id/reconciliations` | S | `{ month, asOf, statementBalanceCents }` → 201 `{ computedBalanceCents, differenceCents, adjustmentMovementId? }`. 409 si ya existe la de ese mes |
 | DELETE | `/reconciliations/:id` | S | Borra la conciliación y su ajuste |

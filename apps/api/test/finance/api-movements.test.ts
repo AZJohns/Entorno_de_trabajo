@@ -3,6 +3,7 @@ import type { MovementResponse } from '@backoffice/shared';
 import { useAuthTestContext } from '../support/auth.ts';
 import type { TestClient } from '../support/client.ts';
 import {
+  archiveEmptied,
   createAccount,
   createCategory,
   createMovement,
@@ -214,7 +215,7 @@ describe('alta de movimientos', () => {
     it('no admiten movimientos nuevos (409)', async () => {
       const client = await getCtx().loggedIn();
       const { account, category } = await setup(client);
-      await client.post(`/api/v1/accounts/${account.id}/archive`);
+      await archiveEmptied(client, getCtx().database.db, account);
       expectProblem(
         await client.post('/api/v1/movements', {
           kind: 'expense',
@@ -249,7 +250,7 @@ describe('alta de movimientos', () => {
         accountId: account.id,
         categoryId: category.id,
       });
-      await client.post(`/api/v1/accounts/${account.id}/archive`);
+      await archiveEmptied(client, getCtx().database.db, account);
       expectProblem(
         await client.patch(`/api/v1/movements/${movement.id}`, { amountCents: 1 }),
         409,

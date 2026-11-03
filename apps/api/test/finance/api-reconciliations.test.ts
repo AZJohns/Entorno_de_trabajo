@@ -8,6 +8,7 @@ import { LedgerRepository } from '../../src/modules/finance/ledger/ledger.reposi
 import { useAuthTestContext } from '../support/auth.ts';
 import type { TestClient } from '../support/client.ts';
 import {
+  archiveEmptied,
   createAccount,
   createCategory,
   createMovement,
@@ -227,7 +228,7 @@ describe('conciliar', () => {
   it('cuenta archivada: 409; cuenta inexistente: 404', async () => {
     const client = await getCtx().loggedIn();
     const account = await createAccount(client);
-    await client.post(`/api/v1/accounts/${account.id}/archive`);
+    await archiveEmptied(client, getCtx().database.db, account);
     expectProblem(await reconcile(client, account), 409, 'CONFLICT');
     expectProblem(await reconcile(client, { id: MISSING }), 404, 'NOT_FOUND');
     expectProblem(
@@ -262,7 +263,7 @@ describe('borrar la conciliación', () => {
     const { id } = created.body as { id: string };
     expectProblem(await client.delete(`/api/v1/reconciliations/${MISSING}`), 404, 'NOT_FOUND');
 
-    await client.post(`/api/v1/accounts/${account.id}/archive`);
+    await archiveEmptied(client, getCtx().database.db, account);
     expectProblem(await client.delete(`/api/v1/reconciliations/${id}`), 409, 'CONFLICT');
   });
 });

@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { useAuthTestContext } from '../support/auth.ts';
-import { createAccount, expectProblem, resetLedger, type Created } from '../support/ledger.ts';
+import {
+  archiveEmptied,
+  createAccount,
+  expectProblem,
+  resetLedger,
+  type Created,
+} from '../support/ledger.ts';
 import type { TestClient } from '../support/client.ts';
 
 const getCtx = useAuthTestContext();
@@ -108,7 +114,7 @@ describe('transferencias', () => {
     ];
     const existing = (await createTransfer(client, a, b)).body as Created;
 
-    await client.post(`/api/v1/accounts/${b.id}/archive`);
+    await archiveEmptied(client, getCtx().database.db, b);
     expectProblem(await createTransfer(client, a, b), 409, 'CONFLICT');
     expectProblem(await createTransfer(client, b, a), 409, 'CONFLICT');
     expectProblem(
