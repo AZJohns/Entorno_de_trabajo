@@ -39,7 +39,7 @@ export function isApiError(error: unknown, ...codes: ErrorCode[]): error is ApiE
 }
 
 interface RequestOptions<T> {
-  method?: 'GET' | 'POST' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
   body?: unknown;
   /** Esquema de la respuesta. Sin él, se espera una respuesta vacía (204). */
   schema?: z.ZodType<T>;

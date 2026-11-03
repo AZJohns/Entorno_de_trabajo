@@ -12,10 +12,22 @@ export function Layout() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800">
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3">
-        <nav className="flex items-center gap-4">
+        <nav aria-label="Principal" className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <span className="font-semibold">Backoffice</span>
           <NavLink to="/" end className={linkClass}>
             Inicio
+          </NavLink>
+          <NavLink to="/cuentas" className={linkClass}>
+            Cuentas
+          </NavLink>
+          <NavLink to="/movimientos" className={linkClass}>
+            Movimientos
+          </NavLink>
+          <NavLink to="/transferencias" className={linkClass}>
+            Transferencias
+          </NavLink>
+          <NavLink to="/categorias" className={linkClass}>
+            Categorías
           </NavLink>
           <NavLink to="/ajustes/seguridad" className={linkClass}>
             Seguridad
@@ -28,7 +40,7 @@ export function Layout() {
           </Button>
         </div>
       </header>
-      <main className="mx-auto max-w-3xl p-4">
+      <main className="mx-auto max-w-4xl p-4">
         <Outlet />
       </main>
     </div>

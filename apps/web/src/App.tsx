@@ -5,6 +5,11 @@ import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from '@ta
 import { createBrowserRouter, RouterProvider } from 'react-router';
 import { ApiError, isApiError } from './api/client.ts';
 import { Gate } from './auth/Gate.tsx';
+import { AccountsPage } from './finance/pages/AccountsPage.tsx';
+import { CategoriesPage } from './finance/pages/CategoriesPage.tsx';
+import { MovementsPage } from './finance/pages/MovementsPage.tsx';
+import { ReconciliationPage } from './finance/pages/ReconciliationPage.tsx';
+import { TransfersPage } from './finance/pages/TransfersPage.tsx';
 import { forgetSession, SESSION_QUERY_KEY } from './auth/session.ts';
 import { HomePage, Layout, NotFoundPage } from './pages/Layout.tsx';
 import { LoginPage } from './pages/LoginPage.tsx';
@@ -55,6 +60,11 @@ const router = createBrowserRouter([
     ),
     children: [
       { index: true, element: <HomePage /> },
+      { path: 'cuentas', element: <AccountsPage /> },
+      { path: 'cuentas/:id/conciliacion', element: <ReconciliationPage /> },
+      { path: 'categorias', element: <CategoriesPage /> },
+      { path: 'movimientos', element: <MovementsPage /> },
+      { path: 'transferencias', element: <TransfersPage /> },
       { path: 'ajustes/seguridad', element: <SecuritySettingsPage /> },
     ],
   },

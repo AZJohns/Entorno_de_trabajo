@@ -2,7 +2,7 @@
 
 Cuentas, categorías, movimientos, transferencias y conciliación mensual. Diseño: `docs/plan.md` §2.3. La capa de plan (`plan/`, fase 3) vive en este mismo módulo, pero todavía no existe.
 
-**Estado (fase 1b, PR 2 de 3):** esquema, lógica pura, servicio, repositorio y rutas del libro. Los informes (1c), la exportación (1d) y la interfaz web (PR 3) están pendientes.
+**Estado (fase 1b, PR 3 de 3):** esquema, lógica pura, servicio, repositorio y rutas del libro, y sus pantallas web (`apps/web/src/finance/`). Los informes (1c) y la exportación (1d) están pendientes.
 
 ## Responsabilidad
 
