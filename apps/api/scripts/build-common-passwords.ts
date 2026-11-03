@@ -2,6 +2,10 @@
  * Regenera `src/modules/auth/data/common-passwords.txt`: las 3000 contraseñas más frecuentes de 15 o
  * más caracteres de la lista de un millón de SecLists (licencia MIT, Daniel Miessler).
  *
+ * Se excluyen las que contienen «@»: algunas parecen derivadas de direcciones de correo y el
+ * repositorio es público (nunca correos de terceros, ni siquiera incompletos). Perderlas apenas
+ * debilita la comprobación: siguen detrás de ellas las siguientes en frecuencia.
+ *
  * El origen está fijado por commit y comprobado por SHA-256: si el archivo cambia, el script falla.
  * Uso: `node scripts/build-common-passwords.ts`.
  */
@@ -26,7 +30,7 @@ const selected: string[] = [];
 for (const line of raw.toString('utf8').split('\n')) {
   const password = line.replace(/\r$/u, '');
   const key = password.toLowerCase();
-  if ([...password].length >= MIN_LENGTH && !seen.has(key)) {
+  if ([...password].length >= MIN_LENGTH && !password.includes('@') && !seen.has(key)) {
     seen.add(key);
     selected.push(password);
     if (selected.length === COUNT) break;
@@ -34,7 +38,7 @@ for (const line of raw.toString('utf8').split('\n')) {
 }
 
 const header = [
-  `# ${COUNT} contraseñas más frecuentes de ${MIN_LENGTH} o más caracteres.`,
+  `# ${COUNT} contraseñas más frecuentes de ${MIN_LENGTH} o más caracteres, sin las que contienen «@».`,
   '# Origen: SecLists (MIT, Daniel Miessler), xato-net-10-million-passwords-1000000.txt',
   `# Commit ${COMMIT}, SHA-256 ${SOURCE_SHA256}`,
   '# Generado con apps/api/scripts/build-common-passwords.ts. No editar a mano.',

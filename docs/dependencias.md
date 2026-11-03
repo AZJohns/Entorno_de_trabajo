@@ -66,7 +66,7 @@ Verificación del override: ESLint analiza los mismos 31 archivos con los mismos
 
 | Datos | Origen | Para qué | Cómo se actualiza | Licencia |
 |---|---|---|---|---|
-| `apps/api/src/modules/auth/data/common-passwords.txt` | [SecLists](https://github.com/danielmiessler/SecLists), `Passwords/Common-Credentials/xato-net-10-million-passwords-1000000.txt`, fijado en el commit `ac8a76c5ddfb31385195448f501d7b915b307e4b` y verificado por SHA-256 | Las 3.000 contraseñas más frecuentes de 15 o más caracteres, en orden de frecuencia y sin duplicados (sin distinguir mayúsculas). ASVS 6.2.4: con un mínimo de 15 caracteres, las 3.000 más comunes en general casi no aplican | `pnpm --filter @backoffice/api build:common-passwords` (falla si el SHA-256 no coincide) | MIT (verificada en el `LICENSE` del repositorio de SecLists) |
+| `apps/api/src/modules/auth/data/common-passwords.txt` | [SecLists](https://github.com/danielmiessler/SecLists), `Passwords/Common-Credentials/xato-net-10-million-passwords-1000000.txt`, fijado en el commit `ac8a76c5ddfb31385195448f501d7b915b307e4b` y verificado por SHA-256 | Las 3.000 contraseñas más frecuentes de 15 o más caracteres, en orden de frecuencia, sin duplicados (sin distinguir mayúsculas) y **sin las que contienen «@»** (algunas parecían derivadas de correos; el repositorio es público). ASVS 6.2.4: con un mínimo de 15 caracteres, las 3.000 más comunes en general casi no aplican | `pnpm --filter @backoffice/api build:common-passwords` (falla si el SHA-256 no coincide) | MIT (verificada en el `LICENSE` del repositorio de SecLists) |
 
 ## Dependencias descartadas en la fase 1
 
