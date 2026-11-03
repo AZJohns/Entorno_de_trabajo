@@ -1290,6 +1290,7 @@ Tamaños relativos (S, M, L, XL). No pongo días porque no conozco tu ritmo y un
     - Copias **3-2-1** automáticas con restic y la **primera prueba de restauración documentada**.
     - Monitorización de disponibilidad y de las copias.
     - Runbooks de despliegue, copia y restauración y rotación de secretos.
+    - **Limpieza automática** (pregunta 35): borrar las sesiones caducadas hace más de 30 días y los `audit_events` de más de 1 año. El trigger de solo inserción de `audit_events` rechaza `DELETE`; la purga necesita un camino explícito (rol de mantenimiento o función dedicada), que se decide con los roles separados de la base de datos (ASVS 16.4.2) y se anota en un ADR.
   - **2c. PWA**: manifiesto, *service worker*, suscripción a push, notificación de prueba y contador en el icono.
   - **2d. Atajo**
     - Migración con las tablas `device_tokens` y `wallet_cards` y las columnas aplazadas de `movements` (`wallet_card_id`, `device_token_id`, `idempotency_key`, `raw_payload`), el valor `shortcut` en el `CHECK` de `source` y las restricciones marcadas «(fase 2)» en §2.3. Se hace con una migración nueva: la `0003_ledger` no se edita.
@@ -1310,6 +1311,7 @@ Tamaños relativos (S, M, L, XL). No pongo días porque no conozco tu ritmo y un
   - Protocolo T1–T19 pasado y documentado con la versión de iOS.
   - Medición de 2 semanas con al menos 20 pagos, completada y **decisión D/A tomada con el criterio de §7.3**.
   - Primera restauración completa hecha y anotada; la tercera copia (`restic copy`) verificada.
+  - La limpieza automática funciona y tiene tests: las sesiones caducadas hace más de 30 días se borran y las más recientes no; los `audit_events` de más de 1 año se borran y los demás no; la aplicación sigue sin poder modificar ni borrar eventos fuera de la purga.
   - Cabeceras verificadas: sin errores de CSP en la consola; HSTS presente.
   - Revocar un token → el atajo recibe 401 y muestra la notificación local.
   - Hay tests de la ingesta (idempotencia, huella, marcas, importes con los formatos **reales** de T3 reescritos con cifras inventadas, permisos del token).
@@ -1489,7 +1491,7 @@ Estado tras la revisión 2: **RESUELTA** (con la decisión tomada) o **PENDIENTE
 | 32 | ¿Segundo destino de las copias (la tercera copia)? | PENDIENTE (fase 2) | **R:** un segundo proveedor de almacén de objetos si cuesta menos de ~1 €/mes con este volumen [VERIFICAR]; si no, un disco externo cifrado actualizado cada mes |
 | 33 | ¿Ampliar la inactividad a 8 h si fallan la passkey y el autorrelleno? | RESUELTA: **ya no hace falta** | El desbloqueo tras inactividad pide solo la contraseña (o una passkey), sin TOTP, como permite NIST. El coste de usabilidad que justificaba las 8 h desaparece y se mantiene 1 h sin desviación |
 | 34 | ¿Adoptar passkeys? | PENDIENTE (fase 2, tras T18) | **R:** sí, si funcionan en la PWA; el TOTP se mantiene como respaldo |
-| 35 | ¿Retención de `audit_events` y de los logs técnicos? | PENDIENTE (fase 1) | **R:** `audit_events`, 1 año; logs técnicos, 30 días (y en las copias según su retención) |
+| 35 | ¿Retención de `audit_events` y de los logs técnicos? | RESUELTA | `audit_events` se conserva **1 año** y las sesiones caducadas se borran a los **30 días**. La limpieza automática se implementa en la **fase 2** (hoy no se borra nada). Logs técnicos: 30 días, como se proponía (y en las copias según su retención); la decisión no se ha reabierto |
 | 36 | ¿TOTP con HMAC-SHA-256 en lugar de HMAC-SHA-1? | PENDIENTE (fase 2, **antes** de dar de alta el TOTP de producción) | HMAC-SHA-1 es *Legacy* en el apéndice C de ASVS 5.0 (desviación documentada de 11.4.1). **R:** probar con la app de autenticación del usuario un alta con `algorithm=SHA256` y comprobar que genera códigos correctos; si funciona, usar HMAC-SHA-256 en producción y cerrar la desviación. Exige guardar el algoritmo junto a la semilla y un test con los vectores SHA-256 de RFC 6238 |
 
 **Producto**

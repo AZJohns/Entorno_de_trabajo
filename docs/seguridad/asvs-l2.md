@@ -25,8 +25,8 @@
 | Estado | Requisitos |
 |---|---|
 | Verificado (fase 0) | 9 |
-| Verificado (fase 1) | 73 |
-| Planificado | 93 |
+| Verificado (fase 1) | 83 |
+| Planificado | 83 |
 | Desviación documentada | 8 |
 | No aplica | 70 |
 | **Total L1 + L2** | **253** |
@@ -42,30 +42,32 @@
 - **13.3.1**: Gestor de secretos (*vault*).
 - **16.4.3**: Logs enviados a un sistema separado.
 
+**Fase 1 (revisión de las filas de F0):** se cierran 1.1.1, 1.2.3, 1.2.5, 1.3.7, 1.3.10, 1.5.2, 3.7.1, 14.2.3 y 15.1.2 (revisión del código del 2026-11-03, más una regla de lint nueva para 1.2.5 y la comprobación del SBOM) y 16.1.1 (inventario `logs.md`). Ninguna fila asignada solo a F0 queda sin cerrar (las que tienen un rango, como «F0+» o «F0–F1», siguen su regla).
+
 **Fase 1 (cierre con la exportación):** las filas de V6, V7 y V8 asignadas solo a la fase 1 están verificadas (V8: 8.1.1, 8.1.2, 8.2.1 y 8.3.1); 8.2.2 y 8.2.3 siguen «Planificado» porque su rango acaba en F2 (tokens de dispositivo). También se cierran 3.2.1 y 5.4.2 con la exportación. **Fase 1, autenticación (PR de la parte 3a):** las filas de V6 y V7 asignadas a la fase 1 están verificadas. Las filas «F1 · todos», «F1+» o con un rango que acaba después siguen «Planificado» hasta su última fase; en «Cómo se cumple» se anota la parte ya hecha. Las filas de V8 asignadas a F1 se cierran con el resto de la fase 1 (cuentas, movimientos y exportación), salvo 8.3.1, que ya no depende de ellas.
 
 ## V1 — Codificación y saneamiento
 
 | ID | Nivel | Requisito (resumen) | Estado | Cómo se cumple | Fase · módulo | Verificación |
 |---|---|---|---|---|---|---|
-| 1.1.1 | L2 | Decodificar a forma canónica una sola vez y antes de validar | Planificado | Express parsea el JSON una sola vez; Zod valida después; no hay decodificaciones manuales | F0 · http | Revisión |
+| 1.1.1 | L2 | Decodificar a forma canónica una sola vez y antes de validar | **Verificado (F1)** | Express parsea el JSON una sola vez (`express.json`, `apps/api/src/app.ts`) y Zod valida después; no hay decodificaciones manuales | F0 · http | Revisión (2026-11-03): sin `decodeURI*`, `decodeURIComponent` ni `unescape` en `apps/` ni `packages/`. Test: `apps/api/test/app.test.ts` («JSON mal formado → 400 MALFORMED_JSON») |
 | 1.1.2 | L2 | Codificar la salida como último paso, para el intérprete de destino | Planificado | React escapa al renderizar; la API solo emite JSON serializado por Express | F1 · web | Revisión |
 | 1.2.1 | L1 | Codificación de salida según el contexto (HTML, atributos, cabeceras) | Planificado | React; las cabeceras solo llevan valores generados por el servidor | F1 · web, http | Test XSS (F5) + revisión |
 | 1.2.2 | L1 | Codificar los datos al construir URLs | Planificado | El cliente de la API usa `URL` y `encodeURIComponent`; nunca concatena | F1 · web/lib | Revisión |
-| 1.2.3 | L1 | Codificar al generar JavaScript o JSON dinámico | Planificado | No se genera JavaScript; el JSON sale de `res.json` | F0 · http | Revisión |
+| 1.2.3 | L1 | Codificar al generar JavaScript o JSON dinámico | **Verificado (F1)** | No se genera JavaScript; el JSON sale de `res.json` | F0 · http | Revisión (2026-11-03): sin JSONP, `<script>` dinámico ni `innerHTML` en `apps/`; lint: `no-eval`, `no-new-func` y `dangerouslySetInnerHTML` prohibido (`eslint.config.js`) |
 | 1.2.4 | L1 | Consultas parametrizadas | Planificado | Kysely parametriza; `sql.raw` prohibido salvo justificación (regla de lint) | F0–F5 · repositorios | Lint + revisión |
-| 1.2.5 | L1 | Sin inyección de comandos del sistema | Planificado | La app no ejecuta comandos; las copias las hace el host con argumentos fijos | F0 · — | Revisión |
+| 1.2.5 | L1 | Sin inyección de comandos del sistema | **Verificado (F1)** | La app no ejecuta comandos; las copias las hace el host con argumentos fijos. Solo los scripts de desarrollo y CI (`scripts/`, `apps/api/scripts/`) usan `execFileSync` con argumentos fijos | F0 · — | Lint: `no-restricted-imports` de `child_process` en `apps/api/src`, `apps/web/src` y `packages/*/src` (`eslint.config.js`) |
 | 1.2.9 | L2 | Escapar los metacaracteres al construir expresiones regulares | Planificado | La búsqueda usa la búsqueda de texto completo de PostgreSQL; si se construye alguna regex con entrada del usuario, se escapa | F5 · notes | Revisión |
 | 1.3.1 | L1 | Sanitizar el HTML de editores WYSIWYG | Planificado | No hay WYSIWYG ni HTML del usuario; Markdown sin HTML crudo | F5 · notes | Test XSS |
 | 1.3.2 | L1 | Sin `eval` ni ejecución dinámica de código | **Verificado (F0)** | Reglas de ESLint `no-eval` y `no-implied-eval`; CSP sin `unsafe-eval` | F0 · todos | Lint: `no-eval`, `no-new-func`, `@typescript-eslint/no-implied-eval` (`eslint.config.js`) |
 | 1.3.3 | L2 | Sanitizar los datos que van a contextos peligrosos | Planificado | Nombre de archivo de la exportación generado (hecho en F1, `apps/api/test/finance/api-export.test.ts`); textos de push sin HTML (F2) | F1–F2 · finance, notifications | Revisión |
 | 1.3.5 | L2 | Sanitizar o desactivar contenido de plantillas o Markdown | Planificado | react-markdown sin `rehype-raw`; solo enlaces `http`, `https` y `mailto` | F5 · notes | Test XSS (`javascript:`, `<img onerror>`) |
 | 1.3.6 | L2 | Protección contra SSRF | Planificado | **Lista de hosts permitidos para los endpoints de push** (servicios de push de Apple, Google y Mozilla) al suscribirse y al enviar; solo `https`. El resto de destinos salientes es fijo | F2 · notifications | Test: suscripción con un endpoint interno → 400 |
-| 1.3.7 | L2 | Sin inyección de plantillas | Planificado | No se construyen plantillas con entrada del usuario | F0 · — | Revisión |
-| 1.3.10 | L2 | Sanitizar las cadenas de formato | Planificado | Logs estructurados (pino con objetos); sin `printf` con entrada del usuario | F0 · http | Revisión |
+| 1.3.7 | L2 | Sin inyección de plantillas | **Verificado (F1)** | No se construyen plantillas con entrada del usuario | F0 · — | Revisión (2026-11-03): sin motor de plantillas entre las dependencias ni `res.render`; lint: `no-eval`, `no-new-func` |
+| 1.3.10 | L2 | Sanitizar las cadenas de formato | **Verificado (F1)** | Logs estructurados (pino con objetos); sin `printf` con entrada del usuario | F0 · http | Revisión (2026-11-03): los mensajes de log son literales y los datos van en el objeto (`apps/api/src/http/errors.ts`, `apps/api/src/server.ts`); test de la redacción: `apps/api/test/logger.test.ts` |
 | 1.4.2 | L2 | Evitar desbordamientos de enteros | Planificado | Importes `bigint`; `Number.isSafeInteger` en la conversión; límites en Zod | F0–F1 · shared/money | Test |
 | 1.5.1 | L1 | Analizadores XML sin entidades externas (XXE) | Planificado | El lector OOXML no debe resolver entidades externas [VERIFICAR en el spike] | F3 · imports | Test con un XLSX que declara una entidad externa |
-| 1.5.2 | L2 | Deserialización segura | Planificado | Solo JSON validado con Zod; no se reconstruyen tipos de objeto | F0 · http | Revisión |
+| 1.5.2 | L2 | Deserialización segura | **Verificado (F1)** | Solo JSON validado con Zod; no se reconstruyen tipos de objeto | F0 · http | Revisión (2026-11-03): sin `JSON.parse` de entrada ni deserializadores de objetos en `apps/api/src`; el test con `__proto__` llega con 15.3.6. El importador del Excel (F3) tiene sus propias filas |
 
 **No aplica** (9): 1.2.6, 1.2.7, 1.2.8, 1.3.4, 1.3.8, 1.3.9, 1.3.11, 1.4.1, 1.4.3. Motivo: No hay LDAP, XPath, LaTeX, SVG subidos, JNDI, memcache ni envío de correo; el runtime gestiona la memoria y no hay código nativo propio.
 
@@ -106,7 +108,7 @@
 | 3.5.3 | L1 | Métodos HTTP adecuados para las funciones sensibles | Planificado | Ningún GET con efectos · Auth: ningún GET modifica datos (solo `GET /auth/session` y `GET /auth/sessions`, sin efectos salvo `last_seen_at`) | F1+ · todos | Revisión + test |
 | 3.5.4 | L2 | Aplicaciones distintas en hosts distintos | Planificado | El backoffice tiene su propio host; el portfolio está en otro dominio (GitHub Pages) | F2 · deploy | Revisión |
 | 3.5.5 | L2 | Descartar `postMessage` de origen no fiable o mal formados | Planificado | El mensaje SW → ventana (navegación desde una notificación) se valida con un esquema y por su origen | F2 · web/sw | Test unitario |
-| 3.7.1 | L2 | Tecnologías de cliente soportadas | Planificado | Navegadores actuales; sin plugins | F0 · web | Revisión |
+| 3.7.1 | L2 | Tecnologías de cliente soportadas | **Verificado (F1)** | Navegadores actuales; sin plugins | F0 · web | Revisión (2026-11-03): `apps/web/index.html` solo carga el módulo propio (sin `<object>`/`<embed>`); test: `apps/api/test/security.test.ts` («CSP estricta…»: `object-src 'none'`) |
 | 3.7.2 | L2 | Redirigir a otros dominios solo con aviso | **Verificado (F1)** | La app no redirige a dominios externos; el parámetro `volver` de las pantallas de acceso solo admite rutas internas (`safeInternalPath`) | F0 · web | Test: `apps/web/test/session.test.ts` (rechaza `//dominio`, `https://…`, `javascript:` y `/\…`) |
 
 ## V4 — API y servicios web
@@ -274,7 +276,7 @@
 | 14.1.2 | L2 | Requisitos de protección por nivel | Planificado | El mismo documento | F1 | Revisión |
 | 14.2.1 | L1 | Datos sensibles solo en el cuerpo o en cabeceras, nunca en la URL | Planificado | Tokens en cabeceras. La búsqueda `q` va en la URL: los logs de Caddy y de pino **no registran la query string** | F1–F2 · http, deploy | Test (redacción) + revisión |
 | 14.2.2 | L2 | Sin caché de datos sensibles en componentes del servidor | Planificado | `Cache-Control: no-store`; Caddy sin caché · `no-store` en `/api` desde F1 (test: `apps/api/test/security.test.ts`) | F1–F2 | Test |
-| 14.2.3 | L2 | Sin envío de datos a terceros (rastreadores) | Planificado | Sin analíticas ni CDN de terceros; la CSP lo impone | F0 · web | Revisión |
+| 14.2.3 | L2 | Sin envío de datos a terceros (rastreadores) | **Verificado (F1)** | Sin analíticas ni CDN de terceros; la CSP lo impone. Única llamada a un tercero: la API consulta los rangos de HIBP al fijar la contraseña (solo 5 caracteres del SHA-1, *k-anonymity*) | F0 · web | Revisión (2026-11-03): sin URL externas en `apps/web/src`; test: `apps/api/test/security.test.ts` («CSP estricta…»: `default-src`, `script-src` y `connect-src 'self'`) |
 | 14.2.4 | L2 | Controles por nivel de protección implementados | Planificado | Según 14.1.2 | F1+ | Revisión |
 | 14.3.1 | L1 | Limpiar los datos del cliente al terminar la sesión | Planificado | `Clear-Site-Data` + vaciado de la caché de TanStack Query; el SW no cachea `/api` · F1: `Clear-Site-Data` (test: `apps/api/test/auth/account.test.ts`) y caché de consultas vaciada al salir (`forgetSession`, prueba manual) | F1–F2 · web | Test e2e |
 | 14.3.2 | L2 | `Cache-Control: no-store` | **Verificado (F1)** | En todo `/api` | F1 · http | Test: `apps/api/test/security.test.ts` y `apps/api/test/auth/login.test.ts` |
@@ -285,7 +287,7 @@
 | ID | Nivel | Requisito (resumen) | Estado | Cómo se cumple | Fase · módulo | Verificación |
 |---|---|---|---|---|---|---|
 | 15.1.1 | L1 | Plazos de corrección de dependencias documentados | **Verificado (F0)** | 7, 30 y 90 días (`plan.md` §6.2) | F0 | Documento: `docs/dependencias.md` (plazos 7/30/90 días) |
-| 15.1.2 | L2 | Inventario de dependencias (SBOM) | Planificado | Exportación del *dependency graph* de GitHub (SPDX) | F0 | Revisión |
+| 15.1.2 | L2 | Inventario de dependencias (SBOM) | **Verificado (F1)** | Exportación del *dependency graph* de GitHub (SPDX) con `gh api repos/{owner}/{repo}/dependency-graph/sbom` ([`docs/runbooks/github.md`](../runbooks/github.md) §3) | F0 | Comprobado el 2026-11-03: devuelve SPDX-2.3 con 458 paquetes |
 | 15.1.3 | L2 | Funciones costosas documentadas | Planificado | Importación del Excel, búsqueda e informes, en `docs/seguridad/limites.md` · Auth hecho: `docs/seguridad/limites.md` §6 | F1–F3 | Revisión |
 | 15.2.1 | L1 | Componentes dentro de los plazos | Planificado | Dependabot + revisión mensual | F0+ | Revisión |
 | 15.2.2 | L2 | Defensas contra la pérdida de disponibilidad en funciones costosas | Planificado | Límites de tamaño, de peticiones y `statement_timeout` en PostgreSQL. **Expresiones regulares sin retroceso polinómico (ReDoS)**: el análisis de importes (`parseEuroAmount`, que procesa datos del atajo y del Excel) limita la entrada a 64 caracteres antes de procesarla y quita el prefijo y el sufijo de moneda con operaciones lineales. La regex anterior era cuadrática: 40.000 espacios costaban unos 2,8 s de CPU (alerta #1 de CodeQL, `js/polynomial-redos`). CodeQL vigila nuevas regex en cada PR | F1–F3 | Test: `packages/shared/test/money.test.ts` («una cadena enorme de espacios falla rápido y por el motivo correcto»: 1.000.000 de espacios → `too_long` en < 50 ms); resto, en F1–F3 |
@@ -302,7 +304,7 @@
 
 | ID | Nivel | Requisito (resumen) | Estado | Cómo se cumple | Fase · módulo | Verificación |
 |---|---|---|---|---|---|---|
-| 16.1.1 | L2 | Inventario de logs | Planificado | `docs/seguridad/logs.md` · Auth hecho (F1) | F1 | Revisión |
+| 16.1.1 | L2 | Inventario de logs | **Verificado (F1)** | `docs/seguridad/logs.md`: destinos, log de peticiones y eventos de `audit_events` · Los destinos de producción se cierran en la F2 (16.2.3) | F1 | [`docs/seguridad/logs.md`](logs.md) §1–§3; tests citados en §3 (`apps/api/test/auth/account.test.ts`, `apps/api/test/security.test.ts`, `apps/api/test/finance/api-export.test.ts`) |
 | 16.2.1 | L2 | Metadatos: cuándo, dónde, quién y qué | **Verificado (F1)** | pino + `requestId` + `audit_events` | F1 · http | Documento: `docs/seguridad/logs.md` + test: `apps/api/test/auth/account.test.ts` («registra los eventos de autenticación…») |
 | 16.2.2 | L2 | Relojes sincronizados y marcas de tiempo en UTC | Planificado | NTP en el host; ISO 8601 en UTC | F2 · deploy | Revisión |
 | 16.2.3 | L2 | Solo los destinos de log documentados | Planificado | stdout → logs de Docker → copia diaria | F2 | Revisión |

@@ -48,6 +48,22 @@ export default tseslint.config(
     },
   },
   {
+    // La aplicación no ejecuta procesos del sistema (ASVS 1.2.5). Los scripts de `scripts/` y
+    // `apps/api/scripts/` (herramientas de desarrollo y CI) sí pueden, con argumentos fijos.
+    files: ['apps/api/src/**/*.ts', 'apps/web/src/**/*.{ts,tsx}', 'packages/*/src/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: ['child_process', 'node:child_process'].map((name) => ({
+            name,
+            message: 'La aplicación no ejecuta comandos del sistema (ASVS 1.2.5).',
+          })),
+        },
+      ],
+    },
+  },
+  {
     files: ['apps/web/**/*.{ts,tsx}'],
     languageOptions: { globals: globals.browser },
     plugins: { 'react-hooks': reactHooks },
