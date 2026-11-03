@@ -15,6 +15,7 @@ export const ERROR_CODES = [
   'UNSUPPORTED_MEDIA_TYPE',
   'NOT_FOUND',
   'CONFLICT',
+  'UNPROCESSABLE',
   'INTERNAL_ERROR',
   // Autenticación y sesión (fase 1)
   'UNAUTHENTICATED',

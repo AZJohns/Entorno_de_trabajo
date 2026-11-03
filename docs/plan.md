@@ -251,7 +251,7 @@ jobs (infraestructura) ──▶ tasks, notifications, imports, auth (limpiezas 
 | name | text | NOT NULL, `CHECK (char_length(name) BETWEEN 1 AND 100)`; único sobre `lower(name)` `WHERE archived_at IS NULL` |
 | type | text | `CHECK IN ('checking','savings','cash')`: corriente, ahorro y efectivo [RESUELTO: no hay tarjetas de crédito; si algún día hacen falta, se deciden en un ADR] |
 | currency | char(3) | NOT NULL DEFAULT `'EUR'`, `CHECK (currency = 'EUR')` en el MVP. Admitir otras monedas será una decisión explícita, con su migración |
-| opening_balance_cents | bigint | NOT NULL DEFAULT 0. Puede ser negativo (descubierto) |
+| opening_balance_cents | bigint | NOT NULL DEFAULT 0. Puede ser negativo (descubierto). **Es el saldo al inicio del día `opening_date`**: los movimientos y las transferencias de ese mismo día se suman a él (por eso se admite la fecha de apertura y no una anterior) |
 | opening_date | date | NOT NULL. El servicio rechaza movimientos anteriores a esta fecha |
 | archived_at | timestamptz | NULL |
 
@@ -332,7 +332,7 @@ Restricciones de tabla:
 Además, `UNIQUE (id, account_id)`: existe solo para la clave ajena compuesta de `movements`.
 
 - Saldo calculado = `opening_balance + Σ ingresos confirmados − Σ gastos confirmados + Σ transferencias recibidas − Σ transferencias enviadas`, hasta `as_of` incluido.
-- **Excepción documentada a «no guardar derivados»**: `computed_balance_cents` no es una caché, sino el **registro histórico** de lo que la app calculó al conciliar. Si después se edita un movimiento de un periodo ya conciliado, la pantalla muestra el saldo calculado actual junto al registrado y avisa de la discrepancia.
+- **Excepción documentada a «no guardar derivados»**: `computed_balance_cents` no es una caché, sino el **registro histórico** de lo que la app calculó al conciliar. **Discrepancia**: la pantalla compara el saldo calculado **hoy** hasta `as_of` (incluidos los ajustes, el propio y los de otras conciliaciones) con `statement_balance_cents`, y avisa si ya no coinciden. Así se detectan un movimiento o una transferencia editados, añadidos o borrados en el periodo, un ajuste modificado o borrado, y una conciliación de un mes anterior creada después (su ajuste cambia este saldo). `computed_balance_cents` no interviene en esa comparación: se muestra aparte como lo que se calculó al conciliar.
 - **Ajuste explícito**: si `statement − computed ≠ 0`, en la **misma transacción** se crea un movimiento confirmado con `source = 'reconciliation'`, `kind` según el signo, `amount_cents = |diferencia|`, `booked_on = as_of` y `description` = «Ajuste de conciliación». Así, tras conciliar, saldo calculado = saldo del banco. El ajuste es visible y reversible: borrar la conciliación lo borra en cascada.
 
 ### 2.4 Módulo `finance` — capa de plan (`plan`)
@@ -343,7 +343,7 @@ Solo guarda **entradas** de la plantilla. No hay columnas de totales, proyeccion
 | Columna | Tipo | Restricciones y notas |
 |---|---|---|
 | id | uuid | PK |
-| month | date | `CHECK (month = date_trunc('month', month))` |
+| month | date | `CHECK (EXTRACT(DAY FROM month) = 1)`: primer día del mes. No se usa `date_trunc` por el mismo motivo que en `account_reconciliations` |
 | import_batch_id | uuid | FK `import_batches`, NOT NULL UNIQUE |
 | content_hash | bytea | NOT NULL |
 | template_version | smallint | NOT NULL |
@@ -541,7 +541,8 @@ notes *─* tags (note_tags)
 - Errores con RFC 9457: `{ type, title, status, detail, code, errors?: [...], requestId }`.
 - Códigos de estado:
   - `400` validación · `401` sin autenticar · `403` CSRF o permiso insuficiente · `404` no existe
-  - `409` conflicto (p. ej., archivar una cuenta con un movimiento pendiente o confirmar una importación caducada)
+  - `409` conflicto con el estado actual (p. ej., archivar una cuenta con un movimiento pendiente, operar con una cuenta o categoría archivada, editar o borrar un ajuste de conciliación, conciliar un mes ya conciliado o confirmar una importación caducada)
+  - `422` en el libro: el cuerpo es válido pero incoherente con los datos (cuenta o categoría inexistente, categoría de otro tipo, fecha anterior a la apertura de la cuenta). Las referencias se comprueban **antes** de insertar; un error de clave ajena de PostgreSQL no se traduce a 409 (`isReferencedRowError` es solo para los borrados)
   - `413` archivo demasiado grande · `415` tipo de contenido no admitido · `422` el archivo no cumple la plantilla · `429` límite de peticiones
 - Columna **Auth**:
   - **P**: público.
@@ -584,8 +585,8 @@ notes *─* tags (note_tags)
 | PATCH | `/categories/:id` | S | |
 | POST | `/categories/:id/archive` | S | |
 | GET | `/movements` | S | Filtros: `from`, `to`, `accountId`, `categoryId`, `status`, `kind`, `source` (`manual`, `shortcut` o `reconciliation`), `q`, con cursor |
-| POST | `/movements` | S | Alta manual (formulario rápido) |
-| GET, PATCH, DELETE | `/movements/:id` | S | |
+| POST | `/movements` | S | Alta manual (formulario rápido): siempre completa y confirmada. Los borradores (`pending`) los crea el atajo en la fase 2 |
+| GET, PATCH, DELETE | `/movements/:id` | S | Los ajustes de conciliación no se editan ni se borran (409): desaparecen al borrar su conciliación. Una cuenta archivada queda congelada (409) |
 | POST | `/movements/:id/confirm` | S | Valida que esté completo, limpia `flags` y `raw_payload` y lo pasa a confirmado |
 | GET | `/movements/pending/count` | S | Para el contador del icono y el aviso en la pantalla de inicio |
 | GET, POST | `/transfers` | S | |

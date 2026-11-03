@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   balanceAsOf,
   type AccountLedger,
+  type LedgerMovement,
 } from '../../src/modules/finance/ledger/domain/balances.ts';
 import {
   RECONCILIATION_ADJUSTMENT_DESCRIPTION,
@@ -134,11 +135,10 @@ describe('reconcile', () => {
 });
 
 describe('reconciliationDiscrepancy', () => {
-  /** Concilia octubre con una diferencia y devuelve el libro con el ajuste y lo registrado. */
-  function reconciled(statement: number): {
-    l: AccountLedger;
-    recorded: { id: string; asOf: string; computedBalanceCents: number };
-  } {
+  type Recorded = { asOf: string; statementBalanceCents: number };
+
+  /** Concilia octubre con el saldo del banco indicado y devuelve el libro con su ajuste. */
+  function reconciled(statement: number): { l: AccountLedger; recorded: Recorded } {
     const result = reconcile({
       ledger: baseLedger(),
       month,
@@ -149,15 +149,24 @@ describe('reconciliationDiscrepancy', () => {
       result.adjustment === null
         ? baseLedger()
         : withAdjustment(baseLedger(), result.adjustment, 'r1');
-    return { l, recorded: { id: 'r1', asOf, computedBalanceCents: result.computedBalanceCents } };
+    return { l, recorded: { asOf, statementBalanceCents: statement } };
   }
+
+  /** Aplica `change` a las filas del libro. */
+  function mapMovements(
+    l: AccountLedger,
+    change: (m: LedgerMovement) => LedgerMovement | null,
+  ): AccountLedger {
+    return { ...l, movements: l.movements.flatMap((m) => change(m) ?? []) };
+  }
+  const isAdjustment = (m: LedgerMovement): boolean => m.source === 'reconciliation';
 
   it('recién conciliada no hay discrepancia, con ajuste o sin él', () => {
     for (const statement of [85_000, 85_250, 84_100]) {
       const { l, recorded } = reconciled(statement);
       expect(reconciliationDiscrepancy(l, recorded)).toEqual({
-        recordedCents: 85_000,
-        currentCents: 85_000,
+        statementCents: statement,
+        currentCents: statement,
         differenceCents: 0,
         hasDiscrepancy: false,
       });
@@ -167,19 +176,15 @@ describe('reconciliationDiscrepancy', () => {
   it('un movimiento editado después del periodo produce un aviso de discrepancia', () => {
     const { l, recorded } = reconciled(85_250);
     // El gasto del 5 de octubre pasa de 20.000 a 18.000: el saldo calculado sube 2.000.
-    const edited: AccountLedger = {
-      ...l,
-      movements: l.movements.map((m) =>
-        m.amountCents === 20_000 ? { ...m, amountCents: 18_000 } : m,
-      ),
-    };
-    const result = reconciliationDiscrepancy(edited, recorded);
-    expect(result.hasDiscrepancy).toBe(true);
-    expect(result.differenceCents).toBe(2_000);
-    expect(result.recordedCents).toBe(85_000);
-    expect(result.currentCents).toBe(87_000);
-    // Es lo mismo que comparar el saldo actual (con el ajuste) con el del banco.
-    expect(balanceAsOf(edited, asOf) - 85_250).toBe(2_000);
+    const edited = mapMovements(l, (m) =>
+      m.amountCents === 20_000 ? { ...m, amountCents: 18_000 } : m,
+    );
+    expect(reconciliationDiscrepancy(edited, recorded)).toEqual({
+      statementCents: 85_250,
+      currentCents: 87_250,
+      differenceCents: 2_000,
+      hasDiscrepancy: true,
+    });
   });
 
   it('un movimiento añadido o borrado dentro del periodo también se detecta', () => {
@@ -189,7 +194,7 @@ describe('reconciliationDiscrepancy', () => {
       movements: [...l.movements, movement({ bookedOn: '2026-10-10', amountCents: 300 })],
     };
     expect(reconciliationDiscrepancy(added, recorded).differenceCents).toBe(-300);
-    const deleted = { ...l, movements: l.movements.filter((m) => m.amountCents !== 20_000) };
+    const deleted = mapMovements(l, (m) => (m.amountCents === 20_000 ? null : m));
     expect(reconciliationDiscrepancy(deleted, recorded).differenceCents).toBe(20_000);
   });
 
@@ -200,5 +205,59 @@ describe('reconciliationDiscrepancy', () => {
       movements: [...l.movements, movement({ bookedOn: '2026-10-16', amountCents: 300 })],
     };
     expect(reconciliationDiscrepancy(later, recorded).hasDiscrepancy).toBe(false);
+  });
+
+  it('un ajuste editado se detecta', () => {
+    const { l, recorded } = reconciled(85_250); // ajuste de +250
+    const edited = mapMovements(l, (m) => (isAdjustment(m) ? { ...m, amountCents: 400 } : m));
+    expect(reconciliationDiscrepancy(edited, recorded)).toMatchObject({
+      currentCents: 85_400,
+      differenceCents: 150,
+      hasDiscrepancy: true,
+    });
+    // Cambiar su signo también.
+    const flipped = mapMovements(l, (m) => (isAdjustment(m) ? { ...m, kind: 'expense' } : m));
+    expect(reconciliationDiscrepancy(flipped, recorded).differenceCents).toBe(-500);
+  });
+
+  it('un ajuste borrado se detecta', () => {
+    const { l, recorded } = reconciled(85_250);
+    const deleted = mapMovements(l, (m) => (isAdjustment(m) ? null : m));
+    expect(reconciliationDiscrepancy(deleted, recorded)).toMatchObject({
+      currentCents: 85_000,
+      differenceCents: -250,
+      hasDiscrepancy: true,
+    });
+  });
+
+  it('una conciliación de un mes anterior creada después produce una discrepancia en la posterior', () => {
+    // Octubre se concilia primero (sin ajuste: el banco coincide) y después se concilia septiembre.
+    const { l, recorded } = reconciled(85_000);
+    const september = reconcile({
+      ledger: l,
+      month: '2026-09-01',
+      asOf: '2026-09-30',
+      statementBalanceCents: 100_100,
+    });
+    expect(september.adjustment).toMatchObject({
+      kind: 'income',
+      amountCents: 100,
+      bookedOn: '2026-09-30',
+    });
+    const withSeptember = withAdjustment(l, september.adjustment as AdjustmentDraft, 'r-sep');
+
+    // El ajuste de septiembre (+100) entra en el saldo de octubre, que ya no cuadra con el banco…
+    expect(reconciliationDiscrepancy(withSeptember, recorded)).toMatchObject({
+      currentCents: 85_100,
+      differenceCents: 100,
+      hasDiscrepancy: true,
+    });
+    // …y la propia septiembre sí cuadra.
+    expect(
+      reconciliationDiscrepancy(withSeptember, {
+        asOf: '2026-09-30',
+        statementBalanceCents: 100_100,
+      }).hasDiscrepancy,
+    ).toBe(false);
   });
 });
