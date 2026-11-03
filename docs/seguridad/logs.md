@@ -7,7 +7,7 @@
 | Destino | Qué contiene | Formato | Retención |
 |---|---|---|---|
 | Salida estándar (pino) | Una línea por petición, rechazos de seguridad (`warn`) y errores inesperados (`error`) | JSON, una línea por evento, hora ISO 8601 en UTC | Desarrollo: la terminal. Fase 2: logs de Docker y copia diaria al almacén de solo añadir (`plan.md` §6.2) |
-| Tabla `audit_events` (PostgreSQL) | Eventos de autenticación y de cambios de seguridad (§3) | Filas con columnas fijas y `metadata` JSON | Indefinida. **Solo inserción**: un trigger rechaza `UPDATE`, `DELETE` y `TRUNCATE` |
+| Tabla `audit_events` (PostgreSQL) | Eventos de autenticación y de cambios de seguridad (§3) | Filas con columnas fijas y `metadata` JSON | Pendiente de decidir (pregunta 35 de `plan.md`; **R:** 1 año). Hoy no se borra nada. **Solo inserción**: un trigger rechaza `UPDATE`, `DELETE` y `TRUNCATE` |
 
 ## 2. Log de peticiones (pino + pino-http)
 

@@ -29,6 +29,7 @@ La fase 1 necesita autenticación para un único usuario con nivel NIST AAL2 y O
    - Si el usuario no existe, se verifica contra un hash ficticio con los mismos parámetros: el tiempo de respuesta no revela si existe.
 5. **TOTP implementado en el proyecto** (`domain/totp.ts`, RFC 6238/4226): HMAC-SHA1, 6 cifras, pasos de 30 s.
    - Se acepta el paso actual y el anterior (desfase de reloj). Desviación documentada de ASVS 6.5.5 (`asvs-l2.md`).
+   - HMAC-SHA-1 es *Legacy* según el apéndice C de ASVS 5.0: desviación documentada de 11.4.1, por compatibilidad con las apps de autenticación. Antes del alta de producción se probará HMAC-SHA-256 (pregunta 36 de `plan.md`).
    - **Cada código vale una vez**: `last_used_step` se actualiza con una sentencia condicional atómica (`claimTotpStep`), así que dos peticiones simultáneas con el mismo código no pueden ganar las dos.
    - La semilla (20 bytes) se cifra con **AES-256-GCM** (`TOTP_ENCRYPTION_KEY`, nonce de 12 bytes) y se guarda con `key_version`. No puede ir con hash porque hay que recalcular los códigos.
    - Se prueba con los vectores oficiales del apéndice B de RFC 6238.

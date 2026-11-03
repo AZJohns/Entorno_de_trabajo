@@ -26,14 +26,15 @@
 |---|---|
 | Verificado (fase 0) | 9 |
 | Verificado (fase 1, parte de autenticación) | 68 |
-| Planificado | 99 |
-| Desviación documentada | 7 |
+| Planificado | 98 |
+| Desviación documentada | 8 |
 | No aplica | 70 |
 | **Total L1 + L2** | **253** |
 
 **Desviaciones documentadas:**
 
 - **6.5.5**: TOTP con una vida máxima de 30 s.
+- **11.4.1**: Solo funciones hash aprobadas (el TOTP usa HMAC-SHA-1, *Legacy*).
 - **12.3.1**: TLS en todas las conexiones entrantes y salientes, también internas y de monitorización.
 - **12.3.3**: TLS entre servicios HTTP internos.
 - **12.3.4**: Certificados de confianza en los servicios internos.
@@ -225,7 +226,7 @@
 | 11.3.1 | L1 | Sin ECB ni rellenos débiles | **Verificado (F1)** | AES-GCM | F1 · auth | Revisión: `crypto/secret-box.ts` |
 | 11.3.2 | L1 | Solo cifrados aprobados (AES-GCM) | **Verificado (F1)** | Sí | F1 · auth | Revisión: `crypto/secret-box.ts` |
 | 11.3.3 | L2 | Cifrado autenticado | **Verificado (F1)** | GCM | F1 · auth | Test: `crypto.test.ts` («detecta una modificación del texto cifrado o una clave incorrecta») |
-| 11.4.1 | L1 | Solo funciones hash aprobadas | Planificado | SHA-256. El TOTP usa HMAC-SHA1 por compatibilidad con las apps de autenticación (RFC 6238); NIST admite SHA-1 dentro de HMAC [VERIFICAR] | F1 · auth | Revisión |
+| 11.4.1 | L1 | Solo funciones hash aprobadas | **Desviación** | SHA-256 y HMAC-SHA-256 en todo lo propio (tokens, CSRF). **Desviación**: el TOTP usa HMAC-SHA-1, que el apéndice C de ASVS 5.0 clasifica como *Legacy* (L): admitido solo por compatibilidad y «no se considera una vulnerabilidad en sí», pero no aprobado. Motivo: es el algoritmo por defecto de RFC 6238 y el único que garantizan todas las apps de autenticación. Mitigación: semilla aleatoria de 160 bits cifrada, códigos de un solo uso, intentos limitados. Pendiente: probar HMAC-SHA-256 con la app del usuario antes del alta del TOTP de producción (pregunta 36 de `plan.md`). El SHA-1 de la consulta a Pwned Passwords no protege nada: lo impone el protocolo de rangos y no se guarda | F1 · auth | Revisión: `domain/totp.ts`; apéndice C de ASVS 5.0 (`5.0/en/0x92-Appendix-C_Cryptography.md`, consultado el 2026-11-03: HMAC-SHA-1 = L) |
 | 11.4.2 | L2 | Contraseñas con una función costosa de derivación | **Verificado (F1)** | Argon2id 64 MiB, t = 3, p = 4 (RFC 9106), por encima del mínimo de OWASP | F1 · auth | Test: `crypto.test.ts` («Argon2id (formato PHC)») + revisión de `PASSWORD_ARGON2` |
 | 11.4.3 | L2 | Hashes resistentes a colisiones para la integridad | Planificado | SHA-256 (`content_hash`, `file_sha256`) | F3 · imports | Revisión |
 | 11.4.4 | L2 | KDF con estiramiento al derivar claves de contraseñas | Planificado | La app no deriva claves de contraseñas; restic sí, con su KDF | F2 · copias | Revisión |

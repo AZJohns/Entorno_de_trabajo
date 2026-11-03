@@ -982,7 +982,7 @@ La matriz requisito a requisito, con su fase, módulo y test, está en [`docs/se
 ### 6.2 Controles
 
 **Autenticación (NIST AAL2 · ASVS V6)**
-- **Dos factores obligatorios**: contraseña + **TOTP** (RFC 6238; 6 dígitos; 30 s). **No existe ninguna sesión completa sin segundo factor.** El script `create-user` da de alta la contraseña **y** el TOTP a la vez: muestra una sola vez el enlace `otpauth://` y los códigos de recuperación.
+- **Dos factores obligatorios**: contraseña + **TOTP** (RFC 6238; 6 dígitos; 30 s; HMAC-SHA-1, desviación documentada de ASVS 11.4.1 y pregunta 36). **No existe ninguna sesión completa sin segundo factor.** El script `create-user` da de alta la contraseña **y** el TOTP a la vez: muestra una sola vez el enlace `otpauth://` y los códigos de recuperación.
 - **Códigos de recuperación**: 10, de un solo uso, de 80 bits y guardados con Argon2id (ASVS 6.5.2). Regenerarlos invalida los anteriores.
 - **Cada código TOTP vale una sola vez** (`last_used_step`, ASVS 6.5.1). Se acepta el paso actual y el anterior para tolerar el desfase de reloj (RFC 6238 §5.2). **Desviación documentada** frente a una lectura estricta de ASVS 6.5.5 (vida máxima de 30 s): en el peor caso, un código vale hasta 60 s. Mitigación: los códigos son de un solo uso y el número de intentos está limitado.
 - **Passkey** (WebAuthn, un autenticador multifactor resistente al *phishing*): **se evalúa en la fase 2** (prueba T18). Si funciona dentro de la web app de pantalla de inicio de iOS, se ofrece **como alternativa** al par contraseña + TOTP, con el TOTP siempre disponible como respaldo. Hay que verificar cómo trata NIST SP 800-63B-4 las passkeys sincronizadas en AAL2 [VERIFICAR].
@@ -1471,6 +1471,7 @@ Estado tras la revisión 2: **RESUELTA** (con la decisión tomada) o **PENDIENTE
 | 33 | ¿Ampliar la inactividad a 8 h si fallan la passkey y el autorrelleno? | RESUELTA: **ya no hace falta** | El desbloqueo tras inactividad pide solo la contraseña (o una passkey), sin TOTP, como permite NIST. El coste de usabilidad que justificaba las 8 h desaparece y se mantiene 1 h sin desviación |
 | 34 | ¿Adoptar passkeys? | PENDIENTE (fase 2, tras T18) | **R:** sí, si funcionan en la PWA; el TOTP se mantiene como respaldo |
 | 35 | ¿Retención de `audit_events` y de los logs técnicos? | PENDIENTE (fase 1) | **R:** `audit_events`, 1 año; logs técnicos, 30 días (y en las copias según su retención) |
+| 36 | ¿TOTP con HMAC-SHA-256 en lugar de HMAC-SHA-1? | PENDIENTE (fase 2, **antes** de dar de alta el TOTP de producción) | HMAC-SHA-1 es *Legacy* en el apéndice C de ASVS 5.0 (desviación documentada de 11.4.1). **R:** probar con la app de autenticación del usuario un alta con `algorithm=SHA256` y comprobar que genera códigos correctos; si funciona, usar HMAC-SHA-256 en producción y cerrar la desviación. Exige guardar el algoritmo junto a la semilla y un test con los vectores SHA-256 de RFC 6238 |
 
 **Producto**
 
@@ -1480,7 +1481,7 @@ Estado tras la revisión 2: **RESUELTA** (con la decisión tomada) o **PENDIENTE
 | 26 | ¿Cómo se publica en el portfolio? | RESUELTA | Commits mediante la API de GitHub a Portfolio-v2 |
 | 27 | ¿Interfaz solo en español? | RESUELTA | Sí |
 
-Los números 29–35 son preguntas nuevas de esta revisión (la 30 se fusionó con la 18).
+Los números 29–35 son preguntas nuevas de esta revisión (la 30 se fusionó con la 18). La 36 surge en la fase 1 (autenticación).
 
 ---
 
