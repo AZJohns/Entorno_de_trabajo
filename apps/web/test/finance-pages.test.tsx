@@ -67,9 +67,9 @@ function stubApi(routes: Record<string, unknown>): ReturnType<typeof vi.fn> {
   return fetchMock;
 }
 
-function renderAt(path: string, element: React.ReactNode, route: string): void {
+function renderAt(path: string, element: React.ReactNode, route: string) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(
+  return render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[path]}>
         <Routes>
@@ -81,6 +81,22 @@ function renderAt(path: string, element: React.ReactNode, route: string): void {
 }
 
 describe('ReconciliationPage', () => {
+  it('codifica el id de la ruta del navegador al construir la URL de la API (ASVS 1.2.2)', async () => {
+    const fetchMock = stubApi({});
+    renderAt(
+      '/cuentas/..%2Freports%3Fx=1/conciliacion',
+      <ReconciliationPage />,
+      '/cuentas/:id/conciliacion',
+    );
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const urls = fetchMock.mock.calls.map((call) => String(call[0]));
+    expect(urls.length).toBeGreaterThan(0);
+    for (const url of urls) {
+      expect(url).toContain('/accounts/..%2Freports%3Fx%3D1');
+      expect(url).not.toContain('/accounts/../');
+    }
+  });
+
   it('avisa cuando una conciliación ya no cuadra con el banco', async () => {
     stubApi({
       [`/accounts/${A}`]: accountA,
@@ -123,6 +139,21 @@ const movement = {
 };
 
 describe('MovementsPage', () => {
+  it('una descripción con <script> se muestra como texto, sin crear elementos (ASVS 1.2.1)', async () => {
+    const payload = '<script>alert(1)</script><img src=x onerror=alert(2)>';
+    stubApi({
+      '/accounts': { items: [accountA] },
+      '/categories': { items: [] },
+      '/movements': { items: [{ ...movement, description: payload }], nextCursor: null },
+    });
+    const { container } = renderAt('/movimientos', <MovementsPage />, '/movimientos');
+    const titles = await screen.findAllByText(payload);
+    expect(titles.length).toBeGreaterThan(0);
+    for (const title of titles) expect(title.textContent).toContain(payload);
+    expect(container.querySelector('script')).toBeNull();
+    expect(container.querySelector('img')).toBeNull();
+  });
+
   it('lista con importe, cuenta y categoría; los ajustes no tienen editar ni borrar', async () => {
     stubApi({
       '/accounts': { items: [accountA, accountB] },
