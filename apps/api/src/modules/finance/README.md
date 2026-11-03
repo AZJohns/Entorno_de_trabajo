@@ -31,8 +31,13 @@ Cuentas, categorías, movimientos, transferencias y conciliación mensual. Dise�
 - **Saldo** hasta `as_of` incluido = apertura + ingresos confirmados − gastos confirmados + transferencias recibidas − enviadas. Los pendientes no cuentan; los ajustes sí.
 - **Ajuste**: `statement − computed`. Si es 0 no se crea nada; si es positivo, un ingreso; si es negativo, un gasto por el valor absoluto, con `booked_on = as_of` para que entre en el saldo de esa fecha.
 - **Los ajustes van en una línea propia** de los informes (`monthlyTotals.adjustmentsCents`): no son ingresos ni gastos reales.
+- **Totales y saldos**: para las cuentas que ya existían al empezar el mes, la variación de la suma de sus saldos es `netCents + adjustmentsCents`; las transferencias se anulan entre cuentas propias.
 - **Discrepancia**: se compara el saldo actual hasta `as_of`, sin el ajuste de esa conciliación, con el `computed_balance_cents` registrado.
 
-## Diferencias con el plan hasta la fase 2
+## Fase 1b frente a fase 2
 
-`wallet_cards` y `device_tokens` son de la fase 2 y todavía no existen. Por eso `movements` no tiene `wallet_card_id`, `device_token_id`, `idempotency_key` ni `raw_payload`, y `source` solo admite `manual` y `reconciliation`. La migración de la fase 2 añadirá las columnas, el valor `shortcut` y sus restricciones.
+`wallet_cards` y `device_tokens` son de la fase 2 y todavía no existen. Por eso `movements` no tiene `wallet_card_id`, `device_token_id`, `idempotency_key` ni `raw_payload`, y `source` solo admite `manual` y `reconciliation`. La migración de la fase 2 añadirá las columnas, el valor `shortcut` y sus restricciones (`docs/plan.md` §2.3 lo marca con «(fase 2)»).
+
+## Errores de la base de datos
+
+Borrar una fila referenciada (FK `ON DELETE RESTRICT`) da `23503` en PostgreSQL 17 y anteriores y `23001` en la 18. `isReferencedRowError` (`src/db/errors.ts`) reconoce los dos y es lo que debe usarse para responder 409.

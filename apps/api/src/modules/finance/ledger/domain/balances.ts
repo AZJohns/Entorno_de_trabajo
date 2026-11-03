@@ -104,7 +104,7 @@ export interface MonthlyTotals {
   readonly incomeCents: Cents;
   /** Gastos confirmados del mes, sin los ajustes de conciliación. */
   readonly expenseCents: Cents;
-  /** `incomeCents − expenseCents`. */
+  /** `incomeCents − expenseCents`. No incluye los ajustes de conciliación. */
   readonly netCents: Cents;
   /**
    * Ajustes de conciliación del mes, con signo (ingreso positivo, gasto negativo). Van en una línea
@@ -119,6 +119,12 @@ export interface MonthlyTotals {
  * **Las transferencias no se pasan aquí ni se pueden pasar**: la función solo acepta movimientos, que es
  * lo que impide que una transferencia cuente como gasto (por eso viven en otra tabla). Solo el cálculo de
  * saldos ({@link balanceAsOf}) las usa.
+ *
+ * Relación con los saldos (se comprueba en test/finance/balances.test.ts): para las cuentas que ya
+ * existían al empezar el mes, la variación de la **suma de sus saldos** durante el mes es
+ * `netCents + adjustmentsCents`. Las transferencias no aparecen porque entre cuentas propias lo que
+ * resta una lo suma la otra. Dos condiciones: hay que pasar los movimientos de todas esas cuentas, y una
+ * cuenta abierta dentro del mes no cumple la igualdad, porque su saldo de apertura entra en la variación.
  *
  * @param month Primer día del mes (`YYYY-MM-01`); basta con cualquier día de ese mes.
  * @throws {RangeError} si `month` no es una fecha válida o un importe no es un entero seguro.

@@ -5,6 +5,7 @@
  */
 import { sql, type Kysely } from 'kysely';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { isReferencedRowError } from '../../src/db/errors.ts';
 import type { Database } from '../../src/db/schema.ts';
 import { DB_TIMEOUT_MS, createTestDatabase, type TestDatabase } from '../support/database.ts';
 
@@ -79,6 +80,22 @@ async function expectViolation(
   constraint: string,
 ): Promise<void> {
   await expect(action).rejects.toMatchObject({ code, constraint });
+}
+
+/**
+ * Comprueba que borrar una fila referenciada falla por la restricción indicada.
+ *
+ * Las FK son `ON DELETE RESTRICT` y el código SQLSTATE depende de la versión de PostgreSQL: la 17 y
+ * anteriores devuelven 23503 (`foreign_key_violation`) y la 18 devuelve 23001 (`restrict_violation`).
+ * `isReferencedRowError` acepta los dos; el nombre de la restricción sigue distinguiendo una FK de otra.
+ */
+async function expectReferencedRow(action: Promise<unknown>, constraint: string): Promise<void> {
+  const error = await action.then(
+    () => null,
+    (caught: unknown) => caught,
+  );
+  expect(error, 'el borrado debía fallar').not.toBeNull();
+  expect(isReferencedRowError(error, constraint)).toBe(true);
 }
 
 describe('accounts', () => {
@@ -325,14 +342,12 @@ describe('movements', () => {
     const acc = await account();
     const cat = await category('expense');
     await insertMovement(confirmedExpense(acc, cat));
-    await expectViolation(
+    await expectReferencedRow(
       db.deleteFrom('accounts').where('id', '=', acc).execute(),
-      '23503',
       'movements_account_id_fkey',
     );
-    await expectViolation(
+    await expectReferencedRow(
       db.deleteFrom('categories').where('id', '=', cat).execute(),
-      '23503',
       'movements_category_kind_fkey',
     );
   });
@@ -496,9 +511,8 @@ describe('transfers', () => {
       'transfers_to_account_id_fkey',
     );
     await insertTransfer({ from_account_id: from, to_account_id: to });
-    await expectViolation(
+    await expectReferencedRow(
       db.deleteFrom('accounts').where('id', '=', to).execute(),
-      '23503',
       'transfers_to_account_id_fkey',
     );
   });

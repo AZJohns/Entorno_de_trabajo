@@ -252,6 +252,64 @@ describe('monthlyTotals', () => {
     expect(monthlyTotals(withTransfer.movements, october).expenseCents).toBe(20_000);
   });
 
+  it('variación del saldo total en el mes = netCents + adjustmentsCents (las transferencias se anulan)', () => {
+    const [a, b, c] = ['account-a', 'account-b', 'account-c'];
+    const movements = [
+      // Dentro de octubre, en varias cuentas, con un ajuste de cada signo.
+      movement({ accountId: a, kind: 'income', amountCents: 250_000, bookedOn: '2026-10-01' }),
+      movement({ accountId: a, kind: 'expense', amountCents: 41_999, bookedOn: '2026-10-12' }),
+      movement({ accountId: b, kind: 'expense', amountCents: 3_333, bookedOn: '2026-10-31' }),
+      movement({ accountId: c, kind: 'income', amountCents: 1_000, bookedOn: '2026-10-15' }),
+      movement({
+        accountId: a,
+        kind: 'income',
+        amountCents: 250,
+        bookedOn: '2026-10-20',
+        source: 'reconciliation',
+        reconciliationId: 'r1',
+      }),
+      movement({
+        accountId: b,
+        kind: 'expense',
+        amountCents: 900,
+        bookedOn: '2026-10-25',
+        source: 'reconciliation',
+        reconciliationId: 'r2',
+      }),
+      // Fuera del mes o sin confirmar: no cuentan ni en los saldos ni en los totales.
+      movement({ accountId: a, kind: 'expense', amountCents: 7_000, bookedOn: '2026-09-30' }),
+      movement({ accountId: b, kind: 'income', amountCents: 8_000, bookedOn: '2026-11-01' }),
+      movement({ accountId: c, kind: 'expense', amountCents: 9_000, status: 'pending' }),
+    ];
+    const transfers = [
+      // Dentro del mes, en cadena y en ambos sentidos.
+      transfer({ fromAccountId: a, toAccountId: b, amountCents: 100_000, bookedOn: '2026-10-05' }),
+      transfer({ fromAccountId: b, toAccountId: c, amountCents: 12_345, bookedOn: '2026-10-06' }),
+      transfer({ fromAccountId: c, toAccountId: a, amountCents: 1, bookedOn: '2026-10-31' }),
+      // Fuera del mes.
+      transfer({ fromAccountId: a, toAccountId: c, amountCents: 5_000, bookedOn: '2026-09-30' }),
+    ];
+    const accounts = [
+      ledger({ accountId: a, openingBalanceCents: 500_000, movements, transfers }),
+      ledger({ accountId: b, openingBalanceCents: 20_000, movements, transfers }),
+      ledger({ accountId: c, openingBalanceCents: -3_000, movements, transfers }),
+    ];
+    const total = (asOf: string): number =>
+      accounts.reduce((sum, account) => sum + balanceAsOf(account, asOf), 0);
+
+    const totals = monthlyTotals(movements, october);
+    expect(total('2026-10-31') - total('2026-09-30')).toBe(
+      totals.netCents + totals.adjustmentsCents,
+    );
+    // Y no es una igualdad trivial: el mes tiene ingresos, gastos y ajustes de verdad.
+    expect(totals).toEqual({
+      incomeCents: 251_000,
+      expenseCents: 45_332,
+      netCents: 205_668,
+      adjustmentsCents: -650,
+    });
+  });
+
   it('rechaza un mes inválido', () => {
     expect(() => monthlyTotals([], '2026-10-32')).toThrow(RangeError);
   });
