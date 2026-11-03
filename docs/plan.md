@@ -1249,7 +1249,7 @@ Tamaños relativos (S, M, L, XL). No pongo días porque no conozco tu ritmo y un
   - **1c. Informes** — **TERMINADA** (PR #13): balance mensual, desglose por categoría, saldo por cuenta (con los ajustes en una línea propia) y 3 gráficos.
     - Los 3 gráficos: **ingresos frente a gastos por mes**, **gastos por categoría de un mes** y **evolución del saldo por cuenta con el total**. Se dibujan en **SVG propio**, no con Recharts ([comparación](dependencias.md#librería-de-gráficos-fase-1c-svg-propio-en-lugar-de-recharts)).
     - Los pendientes se informan con ingresos y gastos por separado. `from`, `to` y `at` son obligatorios.
-  - **1d. Exportación** `GET /export` con reautenticación.
+  - **1d. Exportación** — **TERMINADA** (PR #14): `GET /export` con reautenticación (S+). JSON versionado (`format`, `version`) con cuentas, categorías, movimientos, transferencias y conciliaciones, importes en céntimos; sin datos de autenticación. Registra `data.exported` en la auditoría con recuentos. Botón «Exportar datos» en `/informes`.
   - Todo **en local**.
 - **Terminado cuando**
   - Hay tests de:

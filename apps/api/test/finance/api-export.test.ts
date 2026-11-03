@@ -102,6 +102,7 @@ describe('GET /export', () => {
       /^attachment; filename="backoffice-export-\d{4}-\d{2}-\d{2}\.json"$/u,
     );
     expect(res.headers['cache-control']).toContain('no-store');
+    expect(res.headers['x-content-type-options']).toBe('nosniff');
 
     const file = exportResponseSchema.parse(res.body);
     expect(file.accounts.map((x) => x.name).sort()).toEqual(['A', 'B', 'Vieja']);

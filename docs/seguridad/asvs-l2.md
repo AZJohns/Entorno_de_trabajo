@@ -25,8 +25,8 @@
 | Estado | Requisitos |
 |---|---|
 | Verificado (fase 0) | 9 |
-| Verificado (fase 1, parte de autenticación) | 68 |
-| Planificado | 98 |
+| Verificado (fase 1) | 73 |
+| Planificado | 93 |
 | Desviación documentada | 8 |
 | No aplica | 70 |
 | **Total L1 + L2** | **253** |
@@ -42,7 +42,7 @@
 - **13.3.1**: Gestor de secretos (*vault*).
 - **16.4.3**: Logs enviados a un sistema separado.
 
-**Fase 1, autenticación (PR de la parte 3a):** las filas de V6 y V7 asignadas a la fase 1 están verificadas. Las filas «F1 · todos», «F1+» o con un rango que acaba después siguen «Planificado» hasta su última fase; en «Cómo se cumple» se anota la parte ya hecha. Las filas de V8 asignadas a F1 se cierran con el resto de la fase 1 (cuentas, movimientos y exportación), salvo 8.3.1, que ya no depende de ellas.
+**Fase 1 (cierre con la exportación):** las filas de V6, V7 y V8 asignadas solo a la fase 1 están verificadas (V8: 8.1.1, 8.1.2, 8.2.1 y 8.3.1); 8.2.2 y 8.2.3 siguen «Planificado» porque su rango acaba en F2 (tokens de dispositivo). También se cierran 3.2.1 y 5.4.2 con la exportación. **Fase 1, autenticación (PR de la parte 3a):** las filas de V6 y V7 asignadas a la fase 1 están verificadas. Las filas «F1 · todos», «F1+» o con un rango que acaba después siguen «Planificado» hasta su última fase; en «Cómo se cumple» se anota la parte ya hecha. Las filas de V8 asignadas a F1 se cierran con el resto de la fase 1 (cuentas, movimientos y exportación), salvo 8.3.1, que ya no depende de ellas.
 
 ## V1 — Codificación y saneamiento
 
@@ -58,7 +58,7 @@
 | 1.2.9 | L2 | Escapar los metacaracteres al construir expresiones regulares | Planificado | La búsqueda usa la búsqueda de texto completo de PostgreSQL; si se construye alguna regex con entrada del usuario, se escapa | F5 · notes | Revisión |
 | 1.3.1 | L1 | Sanitizar el HTML de editores WYSIWYG | Planificado | No hay WYSIWYG ni HTML del usuario; Markdown sin HTML crudo | F5 · notes | Test XSS |
 | 1.3.2 | L1 | Sin `eval` ni ejecución dinámica de código | **Verificado (F0)** | Reglas de ESLint `no-eval` y `no-implied-eval`; CSP sin `unsafe-eval` | F0 · todos | Lint: `no-eval`, `no-new-func`, `@typescript-eslint/no-implied-eval` (`eslint.config.js`) |
-| 1.3.3 | L2 | Sanitizar los datos que van a contextos peligrosos | Planificado | Nombre de archivo de la exportación generado; textos de push sin HTML | F1–F2 · finance, notifications | Revisión |
+| 1.3.3 | L2 | Sanitizar los datos que van a contextos peligrosos | Planificado | Nombre de archivo de la exportación generado (hecho en F1, `apps/api/test/finance/api-export.test.ts`); textos de push sin HTML (F2) | F1–F2 · finance, notifications | Revisión |
 | 1.3.5 | L2 | Sanitizar o desactivar contenido de plantillas o Markdown | Planificado | react-markdown sin `rehype-raw`; solo enlaces `http`, `https` y `mailto` | F5 · notes | Test XSS (`javascript:`, `<img onerror>`) |
 | 1.3.6 | L2 | Protección contra SSRF | Planificado | **Lista de hosts permitidos para los endpoints de push** (servicios de push de Apple, Google y Mozilla) al suscribirse y al enviar; solo `https`. El resto de destinos salientes es fijo | F2 · notifications | Test: suscripción con un endpoint interno → 400 |
 | 1.3.7 | L2 | Sin inyección de plantillas | Planificado | No se construyen plantillas con entrada del usuario | F0 · — | Revisión |
@@ -89,7 +89,7 @@
 
 | ID | Nivel | Requisito (resumen) | Estado | Cómo se cumple | Fase · módulo | Verificación |
 |---|---|---|---|---|---|---|
-| 3.2.1 | L1 | Evitar renderizar en un contexto incorrecto | Planificado | La API responde siempre JSON con `nosniff`; la exportación con `Content-Disposition: attachment` | F1 · http | Test de cabeceras |
+| 3.2.1 | L1 | Evitar renderizar en un contexto incorrecto | **Verificado (F1)** | La API responde siempre JSON con `nosniff`; la exportación con `Content-Disposition: attachment` | F1 · http | Test: `apps/api/test/security.test.ts` («HSTS de 1 año, nosniff…») y `apps/api/test/finance/api-export.test.ts` («exporta todo el libro…»: `application/json`, `attachment` y `nosniff`) |
 | 3.2.2 | L1 | Mostrar texto con funciones seguras | **Verificado (F1)** | React escapa el texto; `dangerouslySetInnerHTML` prohibido por lint | F1 · web | Lint: `no-restricted-syntax` sobre `dangerouslySetInnerHTML` en `apps/web` (`eslint.config.js`) |
 | 3.3.1 | L1 | Cookies `Secure` con prefijo | **Verificado (F1)** | `__Host-sid` | F1 · auth | Test: `apps/api/test/auth/login.test.ts` («correcto: crea una sesión pendiente… con cookie segura»: `__Host-sid; Path=/; HttpOnly; Secure; SameSite=Lax`) |
 | 3.3.2 | L2 | `SameSite` según el propósito | **Verificado (F1)** | `Lax`, justificado en `plan.md` §6.2 y ADR 0006 | F1 · auth | Test: `apps/api/test/auth/login.test.ts` (misma aserción que 3.3.1) |
@@ -130,8 +130,8 @@
 | 5.2.3 | L2 | Comprimidos: tamaño descomprimido y número de entradas antes de descomprimir | Planificado | Límites del ZIP | F3 · imports | Test con un *zip bomb* sintético |
 | 5.3.1 | L1 | Los archivos subidos no se ejecutan desde una carpeta pública | Planificado | Nunca se escriben en disco | F3 · imports | Revisión |
 | 5.3.2 | L1 | Rutas de archivo con datos internos | Planificado | No se usan nombres del usuario en rutas | F3 · imports | Revisión |
-| 5.4.1 | L2 | Ignorar el nombre de archivo del usuario y fijarlo en `Content-Disposition` | Planificado | El nombre del Excel solo se muestra, saneado; la exportación usa un nombre generado | F1, F3 | Test |
-| 5.4.2 | L2 | Nombres de archivo servidos y codificados (RFC 6266) | Planificado | Nombre ASCII generado | F1 · export | Test |
+| 5.4.1 | L2 | Ignorar el nombre de archivo del usuario y fijarlo en `Content-Disposition` | Planificado | El nombre del Excel solo se muestra, saneado; la exportación usa un nombre generado · **Exportación hecha (F1)**: `apps/api/test/finance/api-export.test.ts`; falta la subida del Excel (F3) | F1, F3 | Test |
+| 5.4.2 | L2 | Nombres de archivo servidos y codificados (RFC 6266) | **Verificado (F1)** | Nombre ASCII generado por el servidor (`backoffice-export-AAAA-MM-DD.json`), entre comillas | F1 · export | Test: `apps/api/test/finance/api-export.test.ts` («exporta todo el libro…», expresión regular sobre `Content-Disposition`) |
 
 **No aplica** (1): 5.4.3. Motivo: Los archivos subidos nunca se sirven ni se guardan; solo los sube el usuario autenticado y se leen en memoria sin ejecutar nada. Un antivirus no reduciría ningún riesgo real.
 
@@ -197,9 +197,9 @@
 
 | ID | Nivel | Requisito (resumen) | Estado | Cómo se cumple | Fase · módulo | Verificación |
 |---|---|---|---|---|---|---|
-| 8.1.1 | L1 | Reglas de autorización por función y por dato documentadas | Planificado | Columna Auth de `plan.md` §2.10 + matriz de permisos | F1 · todos | Revisión |
-| 8.1.2 | L2 | Reglas por campo documentadas | Planificado | Esquemas de salida: nunca `password_hash`, `token_hash` ni las semillas; el token del atajo solo escribe los campos de la ingesta | F1 · todos | Revisión |
-| 8.2.1 | L1 | Acceso por función con permisos explícitos | Planificado | Denegar por defecto + permisos de los tokens · Denegar por defecto hecho (`apps/api/test/auth/login.test.ts`, «denegar por defecto»; rutas del libro en `apps/api/test/finance/api-permissions.test.ts`: sin sesión, con sesión a medias, sin CSRF y desde otro origen); permisos de los tokens en F2 | F1 · http | Test de la matriz de rutas |
+| 8.1.1 | L1 | Reglas de autorización por función y por dato documentadas | **Verificado (F1)** | Columna Auth de `plan.md` §2.10 + matriz de permisos. Un solo usuario: no hay reglas por dato distintas de «sesión activa». Las rutas de cada fase se añaden a la matriz en el mismo PR | F1 · todos | Test: `apps/api/test/finance/api-permissions.test.ts` (la lista coincide con las rutas registradas del libro, informes y exportación; cada una probada sin sesión, con sesión a medias, sin CSRF y, las S+, sin reautenticación) y `apps/api/test/auth/login.test.ts` («denegar por defecto») |
+| 8.1.2 | L2 | Reglas por campo documentadas | **Verificado (F1)** | Esquemas de salida explícitos: nunca `password_hash`, `token_hash` ni las semillas (la exportación se construye campo a campo). El token del atajo solo escribe los campos de la ingesta (F2) | F1 · todos | Test: `apps/api/test/finance/api-output-fields.test.ts` (ninguna respuesta lleva claves de credenciales) y `apps/api/test/finance/api-export.test.ts` («no incluye secretos ni datos de autenticación») |
+| 8.2.1 | L1 | Acceso por función con permisos explícitos | **Verificado (F1)** | Denegar por defecto + niveles de acceso explícitos por ruta (`public`, `session`, `active`, `active_reauth`) (`apps/api/test/auth/login.test.ts`, «denegar por defecto»; rutas del libro, informes y exportación en `apps/api/test/finance/api-permissions.test.ts`: sin sesión, con sesión a medias, sin CSRF, desde otro origen y S+ sin reautenticación → 403). Los permisos de los tokens de dispositivo se verifican en F2 con ellos | F1 · http | Test de la matriz de rutas |
 | 8.2.2 | L1 | Acceso por dato (IDOR) | Planificado | Un solo usuario; el token del atajo no puede leer datos | F1–F2 · todos | Test: token → `GET /movements/:id` → 401/403 |
 | 8.2.3 | L2 | Acceso por campo | Planificado | Esquemas de entrada estrictos y de salida explícitos · Libro: los ajustes de conciliación no se editan ni se borran por la API y `source`/`status` no se aceptan en las peticiones (`apps/api/test/finance/api-movements.test.ts`) | F1+ · todos | Test |
 | 8.3.1 | L1 | Autorización en una capa de confianza | **Verificado (F1)** | Middleware del backend | F1 · http | Test: `apps/api/test/auth/login.test.ts` («denegar por defecto»: toda ruta sin sesión → 401) |
