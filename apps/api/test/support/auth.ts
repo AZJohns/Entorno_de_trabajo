@@ -20,17 +20,19 @@ export interface AuthTestContext {
   readonly recoveryCodes: readonly string[];
   /** Código TOTP en el instante del reloj simulado (`offset` en pasos de 30 s). */
   totp(offset?: number): string;
-  /** Cliente nuevo (otro navegador). */
-  client(): TestClient;
+  /** Cliente nuevo (otro navegador), opcionalmente desde otra IP (ver `trustProxyHops`). */
+  client(ip?: string): TestClient;
   /** Cliente con una sesión completa (contraseña + TOTP). */
-  loggedIn(): Promise<TestClient>;
+  loggedIn(ip?: string): Promise<TestClient>;
 }
 
 /**
  * Registra los hooks: una base de datos por archivo; antes de cada test, aplicación nueva (reloj y
  * límites de peticiones a cero) y usuario recién creado.
  */
-export function useAuthTestContext(): () => AuthTestContext {
+export function useAuthTestContext(
+  options: { trustProxyHops?: number } = {},
+): () => AuthTestContext {
   let database: TestDatabase;
   let context: AuthTestContext | undefined;
 
@@ -45,7 +47,7 @@ export function useAuthTestContext(): () => AuthTestContext {
   beforeEach(async () => {
     // Borrar el usuario borra en cascada sesiones, TOTP y códigos (la auditoría no se puede borrar).
     await database.db.deleteFrom('users').execute();
-    const t = buildTestApp({ db: database.db });
+    const t = buildTestApp({ db: database.db, trustProxyHops: options.trustProxyHops ?? 0 });
     const service = createAuthService({
       db: database.db,
       clock: t.clock,
@@ -62,9 +64,9 @@ export function useAuthTestContext(): () => AuthTestContext {
       database,
       recoveryCodes: credentials.recoveryCodes,
       totp: (offset = 0) => hotp(secret, timeStep(t.clock.now()) + offset),
-      client: () => new TestClient(t.app),
-      async loggedIn() {
-        const client = new TestClient(t.app);
+      client: (ip?: string) => new TestClient(t.app, ip),
+      async loggedIn(ip?: string) {
+        const client = new TestClient(t.app, ip);
         const login = await client.post('/api/v1/auth/login', {
           username: USERNAME,
           password: PASSWORD,

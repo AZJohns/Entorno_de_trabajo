@@ -1,6 +1,6 @@
 /**
- * Inicio de sesión en dos pasos, caducidad, bloqueo por inactividad, desbloqueo, CSRF, origen, límites
- * de peticiones y denegación por defecto. PostgreSQL real; reloj simulado; sin red.
+ * Inicio de sesión en dos pasos, caducidad, bloqueo por inactividad, desbloqueo, CSRF, origen y
+ * denegación por defecto. PostgreSQL real; reloj simulado; sin red.
  */
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
@@ -312,40 +312,7 @@ describe('CSRF y origen', () => {
   });
 });
 
-describe('límites de peticiones', () => {
-  it('login: el sexto intento desde la misma IP en 15 minutos recibe 429', async () => {
-    const ctx = getCtx();
-    for (let i = 0; i < 5; i += 1) {
-      expect(
-        (await ctx.client().post('/api/v1/auth/login', { username: USERNAME, password: 'mal' }))
-          .status,
-      ).toBe(401);
-    }
-    const sixth = await ctx
-      .client()
-      .post('/api/v1/auth/login', { username: USERNAME, password: PASSWORD });
-    expect(sixth.status).toBe(429);
-    expect(code(sixth)).toBe('RATE_LIMITED');
-    expect(sixth.headers['ratelimit-policy']).toBeDefined();
-  });
-
-  it('segundo factor: el undécimo intento desde la misma IP recibe 429', async () => {
-    const ctx = getCtx();
-    let last = 0;
-    for (let i = 0; i < 11; i += 1) {
-      const client = ctx.client();
-      // Cada sesión pendiente admite 5 fallos; se usan varias para llegar al límite por IP.
-      if (i % 4 === 0) {
-        await ctx.database.db.deleteFrom('sessions').execute();
-      }
-      await client
-        .post('/api/v1/auth/login', { username: USERNAME, password: PASSWORD })
-        .catch(() => undefined);
-      last = (await client.post('/api/v1/auth/login/second-factor', { totp: '000000' })).status;
-    }
-    expect(last).toBe(429);
-  });
-});
+// Los límites de peticiones están en rate-limit.test.ts (necesitan simular varias IP).
 
 describe('denegar por defecto', () => {
   const protectedRoutes: [string, string][] = [

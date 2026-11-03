@@ -12,9 +12,15 @@ export class TestClient {
   csrf: string | undefined;
   origin: string | undefined = TEST_ORIGIN;
   sendCsrf = true;
+  /**
+   * IP del cliente, enviada en `X-Forwarded-For`. Solo tiene efecto si la app confía en un proxy
+   * (`trustProxyHops` ≥ 1); sirve para simular peticiones desde IP distintas.
+   */
+  readonly ip: string | undefined;
 
-  constructor(app: Express) {
+  constructor(app: Express, ip?: string) {
     this.#app = app;
+    this.ip = ip;
   }
 
   get(path: string): Promise<Response> {
@@ -33,6 +39,7 @@ export class TestClient {
   #prepare(req: request.Test): request.Test {
     if (this.cookie !== undefined) req.set('Cookie', this.cookie);
     if (this.origin !== undefined) req.set('Origin', this.origin);
+    if (this.ip !== undefined) req.set('X-Forwarded-For', this.ip);
     if (this.sendCsrf && this.csrf !== undefined) req.set('X-CSRF-Token', this.csrf);
     return req;
   }

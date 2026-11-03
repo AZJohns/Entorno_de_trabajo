@@ -17,7 +17,9 @@ export function createAuthRouter(
 ): Router {
   const router = Router();
 
-  router.post('/login', limits.loginGlobal, limits.loginPerIp, guard('public'), controller.login);
+  // Primero el límite por IP: las peticiones que rechaza no deben gastar el cupo global (si no, una
+  // sola IP lo agotaría en segundos). Ver docs/seguridad/limites.md §1.
+  router.post('/login', limits.loginPerIp, limits.loginGlobal, guard('public'), controller.login);
   router.post(
     '/login/second-factor',
     limits.factorPerIp,
