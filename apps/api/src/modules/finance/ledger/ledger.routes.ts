@@ -2,13 +2,23 @@
  * Rutas del libro real (`/api/v1/...`). No declaran guarda propia: las protege la guarda por defecto
  * de la aplicación (sesión activa), igual que cualquier ruta que no sea de `/auth`.
  */
-import { Router } from 'express';
-import type { createLedgerController, createReportsController } from './ledger.controller.ts';
+import { Router, type RequestHandler } from 'express';
+import type {
+  createExportController,
+  createLedgerController,
+  createReportsController,
+} from './ledger.controller.ts';
 
 type Controller = ReturnType<typeof createLedgerController>;
 type ReportsController = ReturnType<typeof createReportsController>;
+type ExportController = ReturnType<typeof createExportController>;
 
-export function createLedgerRouter(c: Controller, reports: ReportsController): Router {
+export function createLedgerRouter(
+  c: Controller,
+  reports: ReportsController,
+  exporter: ExportController,
+  requireReauth: RequestHandler,
+): Router {
   const router = Router();
 
   router.get('/accounts', c.listAccounts);
@@ -44,6 +54,9 @@ export function createLedgerRouter(c: Controller, reports: ReportsController): R
   router.get('/reports/monthly/:month/categories', reports.categories);
   router.get('/reports/balances', reports.balances);
   router.get('/reports/balance-history', reports.balanceHistory);
+
+  // S+: además de la sesión activa, reautenticación completa reciente (ASVS 7.5.1).
+  router.get('/export', requireReauth, exporter.exportData);
 
   return router;
 }

@@ -2,7 +2,7 @@
  * Controladores HTTP del libro real: validan la entrada con los esquemas compartidos, llaman al
  * servicio y dan forma a la respuesta. Sin lógica de negocio ni SQL.
  */
-import type { RequestHandler } from 'express';
+import type { Request, RequestHandler, Response } from 'express';
 import { z } from 'zod';
 import {
   createAccountRequestSchema,
@@ -23,6 +23,8 @@ import {
   type AccountResponse,
   type CategoryResponse,
   type CreateReconciliationResponse,
+  type ExportResponse,
+  EXPORT_FORMAT_VERSION,
   type MovementResponse,
   type ReconciliationResponse,
   type TransferResponse,
@@ -269,4 +271,58 @@ export function createReportsController(service: ReportsService) {
     res.json(await service.balanceHistory(from, to));
   };
   return { monthly, categories, balances, balanceHistory };
+}
+
+/**
+ * Registra en la auditoría que se ha exportado, con los recuentos (nunca los datos). La aplicación lo
+ * inyecta: el módulo de finanzas no conoce la autenticación.
+ */
+export type RecordExport = (
+  req: Request,
+  res: Response,
+  counts: Readonly<Record<string, number>>,
+) => Promise<void>;
+
+/** Controlador de `GET /export`. La guarda de reautenticación se pone en la ruta, no aquí. */
+export function createExportController(service: LedgerService, recordExport: RecordExport) {
+  const exportData: RequestHandler = async (req, res) => {
+    const data = await service.exportAll();
+    const body: ExportResponse = {
+      format: 'backoffice-export',
+      version: EXPORT_FORMAT_VERSION,
+      exportedAt: data.exportedAt.toISOString(),
+      currency: 'EUR',
+      amountUnit: 'cents',
+      accounts: data.accounts.map(accountDto),
+      categories: data.categories.map(categoryDto),
+      movements: data.movements.map(movementDto),
+      transfers: data.transfers.map(transferDto),
+      reconciliations: data.reconciliations.map((record) => ({
+        id: record.id,
+        accountId: record.accountId,
+        month: record.month.slice(0, 7),
+        asOf: record.asOf,
+        statementBalanceCents: record.statementBalanceCents,
+        computedBalanceCents: record.computedBalanceCents,
+        note: record.note,
+        createdAt: record.createdAt.toISOString(),
+        adjustmentMovementId: record.adjustmentMovementId,
+      })),
+    };
+    // Primero la auditoría: si no se puede registrar, el archivo no sale.
+    await recordExport(req, res, {
+      accounts: body.accounts.length,
+      categories: body.categories.length,
+      movements: body.movements.length,
+      transfers: body.transfers.length,
+      reconciliations: body.reconciliations.length,
+    });
+    // Nombre generado por el servidor: ASCII, sin datos del usuario (ASVS 5.4.1 y 5.4.2).
+    const filename = `backoffice-export-${body.exportedAt.slice(0, 10)}.json`;
+    res
+      .type('application/json; charset=utf-8')
+      .set('Content-Disposition', `attachment; filename="${filename}"`)
+      .send(JSON.stringify(body, null, 2));
+  };
+  return { exportData };
 }

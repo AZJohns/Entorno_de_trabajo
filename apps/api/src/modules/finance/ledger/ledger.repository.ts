@@ -620,6 +620,39 @@ export class LedgerRepository {
     return ids;
   }
 
+  // --- exportación ------------------------------------------------------------------------------
+
+  /** Todos los movimientos, en un orden estable. Los mapeadores quitan cualquier columna que no sea del dominio. */
+  async listAllMovements(): Promise<MovementRecord[]> {
+    const rows = await this.#db
+      .selectFrom('movements')
+      .selectAll()
+      .orderBy('booked_on')
+      .orderBy('id')
+      .execute();
+    return rows.map(toMovement);
+  }
+
+  async listAllTransfers(): Promise<TransferRecord[]> {
+    const rows = await this.#db
+      .selectFrom('transfers')
+      .selectAll()
+      .orderBy('booked_on')
+      .orderBy('id')
+      .execute();
+    return rows.map(toTransfer);
+  }
+
+  async listAllReconciliations(): Promise<ReconciliationRecord[]> {
+    const rows = await this.#db
+      .selectFrom('account_reconciliations')
+      .selectAll()
+      .orderBy('month')
+      .orderBy('id')
+      .execute();
+    return rows.map(toReconciliation);
+  }
+
   // --- informes ---------------------------------------------------------------------------------
 
   /**

@@ -674,6 +674,25 @@ export class AuthService {
     if (breached) throw passwordRejected('breached');
   }
 
+  /**
+   * Deja constancia en la auditoría de una exportación de datos (`data.exported`). `counts` son
+   * recuentos por tipo de dato: nunca los datos exportados (ASVS 16.2.5).
+   */
+  async recordDataExport(
+    session: SessionContext,
+    meta: RequestMeta,
+    counts: Readonly<Record<string, number>>,
+  ): Promise<void> {
+    await this.#audit({
+      actor: `user:${session.userId}`,
+      action: 'data.exported',
+      entityType: 'session',
+      entityId: session.id,
+      ip: meta.ip,
+      metadata: { counts },
+    });
+  }
+
   async #audit(event: AuditEvent): Promise<void> {
     await this.#repo.insertAuditEvent(event);
   }

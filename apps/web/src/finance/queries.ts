@@ -10,6 +10,7 @@ import {
   categoryReportResponseSchema,
   categoryResponseSchema,
   createReconciliationResponseSchema,
+  exportResponseSchema,
   monthlyReportResponseSchema,
   movementResponseSchema,
   pageSchema,
@@ -37,6 +38,7 @@ import {
 } from '@tanstack/react-query';
 import { z } from 'zod';
 import { api } from '../api/client.ts';
+import { saveJsonFile } from './download.ts';
 
 const ROOT = 'finance';
 
@@ -346,5 +348,24 @@ export function useBalanceHistory(from: string, to: string) {
       api(`/reports/balance-history${queryString({ from, to })}`, {
         schema: balanceHistoryResponseSchema,
       }),
+  });
+}
+
+// --- exportación ---------------------------------------------------------------------------------
+
+/**
+ * Descarga la copia completa de los datos (`GET /export`, S+). Si la reautenticación ha caducado, la
+ * API responde `REAUTH_REQUIRED` y la reacción común de `App.tsx` lleva a `/reautenticar`.
+ */
+export function useExportData() {
+  return useMutation({
+    mutationFn: async () => {
+      const data = await api('/export', { schema: exportResponseSchema });
+      saveJsonFile(
+        `backoffice-export-${data.exportedAt.slice(0, 10)}.json`,
+        JSON.stringify(data, null, 2),
+      );
+      return data;
+    },
   });
 }

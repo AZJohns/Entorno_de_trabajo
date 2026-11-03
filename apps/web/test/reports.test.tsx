@@ -2,6 +2,7 @@
 /** Informes: geometría de los ejes, desplazamiento de meses y la pantalla con la API simulada. */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { niceAxis, position } from '../src/finance/charts/scale.ts';
@@ -196,5 +197,92 @@ describe('ReportsPage', () => {
       </QueryClientProvider>,
     );
     expect(await screen.findByText('No hay gastos confirmados en este mes.')).toBeTruthy();
+  });
+});
+
+describe('Exportar datos', () => {
+  const FILE = {
+    format: 'backoffice-export',
+    version: 1,
+    exportedAt: '2026-11-03T10:00:00.000Z',
+    currency: 'EUR',
+    amountUnit: 'cents',
+    accounts: [],
+    categories: [],
+    movements: [],
+    transfers: [],
+    reconciliations: [],
+  };
+
+  function renderPage(): void {
+    render(
+      <QueryClientProvider
+        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      >
+        <MemoryRouter>
+          <ReportsPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+  }
+
+  it('descarga el JSON con un nombre generado a partir de la fecha de la exportación', async () => {
+    stubApi({ '/export': FILE });
+    const blobs: Blob[] = [];
+    const created = vi.fn((blob: Blob) => {
+      blobs.push(blob);
+      return 'blob:prueba';
+    });
+    vi.stubGlobal(
+      'URL',
+      Object.assign(URL, { createObjectURL: created, revokeObjectURL: vi.fn() }),
+    );
+    const names: string[] = [];
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      names.push(this.download);
+    });
+
+    renderPage();
+    await userEvent.setup().click(await screen.findByRole('button', { name: 'Exportar datos' }));
+    expect(await screen.findByText('Copia descargada.')).toBeTruthy();
+    expect(names).toEqual(['backoffice-export-2026-11-03.json']);
+    expect(JSON.parse(await blobs[0]!.text())).toMatchObject({
+      format: 'backoffice-export',
+      version: 1,
+    });
+  });
+
+  it('sin reautenticación muestra el aviso de la API y no descarga nada', async () => {
+    stubApi();
+    const base = globalThis.fetch;
+    vi.stubGlobal('fetch', (url: string, init?: RequestInit) =>
+      url.includes('/export')
+        ? Promise.resolve(
+            new Response(
+              JSON.stringify({
+                type: 'about:blank#REAUTH_REQUIRED',
+                title: 'Hace falta volver a autenticarse',
+                status: 403,
+                code: 'REAUTH_REQUIRED',
+                detail: 'Vuelve a introducir tu contraseña y tu código',
+                requestId: 'r1',
+              }),
+              { status: 403, headers: { 'Content-Type': 'application/problem+json' } },
+            ),
+          )
+        : base(url, init),
+    );
+    const created = vi.fn(() => 'blob:x');
+    vi.stubGlobal(
+      'URL',
+      Object.assign(URL, { createObjectURL: created, revokeObjectURL: vi.fn() }),
+    );
+
+    renderPage();
+    await userEvent.setup().click(await screen.findByRole('button', { name: 'Exportar datos' }));
+    expect(await screen.findByText(/Vuelve a introducir tu contraseña/u)).toBeTruthy();
+    expect(created).not.toHaveBeenCalled();
   });
 });
