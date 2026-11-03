@@ -63,6 +63,88 @@ export interface AuditEventsTable {
   metadata: Defaulted<Record<string, unknown>>;
 }
 
+/**
+ * Importe en céntimos (`bigint` de PostgreSQL): `pg` lo devuelve como cadena, para no perder precisión,
+ * y se acepta un número al insertar. Se convierte con `centsFromDb` (src/db/cents.ts), nunca con `Number`.
+ */
+type CentsColumn = ColumnType<string, number, number>;
+
+/**
+ * Fecha contable (`date`) como `YYYY-MM-DD`. `createDatabase` configura `pg` para no convertirla en un
+ * `Date` a medianoche de la zona local, que cambiaría de día según la zona del servidor.
+ */
+type DateColumn = ColumnType<string, string, string>;
+
+export interface AccountsTable {
+  id: Generated<string>;
+  name: string;
+  type: 'checking' | 'savings' | 'cash';
+  currency: Defaulted<'EUR'>;
+  opening_balance_cents: ColumnType<string, number | undefined, number>;
+  opening_date: DateColumn;
+  archived_at: Defaulted<Date | null>;
+  created_at: Defaulted<Date>;
+  updated_at: Defaulted<Date>;
+}
+
+export interface CategoriesTable {
+  id: Generated<string>;
+  name: string;
+  kind: 'income' | 'expense';
+  archived_at: Defaulted<Date | null>;
+  created_at: Defaulted<Date>;
+  updated_at: Defaulted<Date>;
+}
+
+export interface AccountReconciliationsTable {
+  id: Generated<string>;
+  account_id: string;
+  month: DateColumn;
+  as_of: DateColumn;
+  statement_balance_cents: CentsColumn;
+  computed_balance_cents: CentsColumn;
+  note: string | null;
+  created_at: Defaulted<Date>;
+}
+
+/** Incidencias que impiden confirmar un movimiento (plan §2.3). */
+export type MovementFlag =
+  | 'amount_missing'
+  | 'amount_unparsed'
+  | 'merchant_missing'
+  | 'unknown_card'
+  | 'possible_duplicate'
+  | 'foreign_currency';
+
+export interface MovementsTable {
+  id: Generated<string>;
+  kind: 'income' | 'expense';
+  amount_cents: CentsColumn;
+  description: string | null;
+  merchant: string | null;
+  account_id: string | null;
+  category_id: string | null;
+  booked_on: DateColumn;
+  source: 'manual' | 'reconciliation';
+  reconciliation_id: string | null;
+  status: 'pending' | 'confirmed';
+  flags: Defaulted<MovementFlag[]>;
+  created_at: Defaulted<Date>;
+  updated_at: Defaulted<Date>;
+  confirmed_at: Date | null;
+}
+
+export interface TransfersTable {
+  id: Generated<string>;
+  from_account_id: string;
+  to_account_id: string;
+  amount_cents: CentsColumn;
+  booked_on: DateColumn;
+  note: string | null;
+  created_at: Defaulted<Date>;
+  updated_at: Defaulted<Date>;
+}
+
 /** Esquema completo de la base de datos. */
 export interface Database {
   users: UsersTable;
@@ -70,4 +152,9 @@ export interface Database {
   totp_authenticators: TotpAuthenticatorsTable;
   recovery_codes: RecoveryCodesTable;
   audit_events: AuditEventsTable;
+  accounts: AccountsTable;
+  categories: CategoriesTable;
+  account_reconciliations: AccountReconciliationsTable;
+  movements: MovementsTable;
+  transfers: TransfersTable;
 }
