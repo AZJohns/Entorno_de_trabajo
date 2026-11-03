@@ -5,8 +5,12 @@
  */
 import {
   accountResponseSchema,
+  balanceHistoryResponseSchema,
+  balancesReportResponseSchema,
+  categoryReportResponseSchema,
   categoryResponseSchema,
   createReconciliationResponseSchema,
+  monthlyReportResponseSchema,
   movementResponseSchema,
   pageSchema,
   reconciliationResponseSchema,
@@ -307,3 +311,40 @@ export function useDeleteReconciliation() {
 }
 
 export type { AccountResponse, CategoryResponse, MovementResponse, TransferResponse };
+
+// --- informes ------------------------------------------------------------------------------------
+// Los importes ya vienen calculados por la API (`/reports/*`); la web solo los dibuja.
+
+export function useMonthlyReport(from: string, to: string) {
+  return useQuery({
+    queryKey: [ROOT, 'reports', 'monthly', from, to],
+    queryFn: () =>
+      api(`/reports/monthly${queryString({ from, to })}`, { schema: monthlyReportResponseSchema }),
+  });
+}
+
+export function useCategoryReport(month: string) {
+  return useQuery({
+    queryKey: [ROOT, 'reports', 'categories', month],
+    queryFn: () =>
+      api(`/reports/monthly/${month}/categories`, { schema: categoryReportResponseSchema }),
+  });
+}
+
+export function useBalancesReport(at: string) {
+  return useQuery({
+    queryKey: [ROOT, 'reports', 'balances', at],
+    queryFn: () =>
+      api(`/reports/balances${queryString({ at })}`, { schema: balancesReportResponseSchema }),
+  });
+}
+
+export function useBalanceHistory(from: string, to: string) {
+  return useQuery({
+    queryKey: [ROOT, 'reports', 'history', from, to],
+    queryFn: () =>
+      api(`/reports/balance-history${queryString({ from, to })}`, {
+        schema: balanceHistoryResponseSchema,
+      }),
+  });
+}

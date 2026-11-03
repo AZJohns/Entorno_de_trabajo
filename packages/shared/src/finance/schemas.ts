@@ -288,3 +288,91 @@ export const listArchivableQuerySchema = z.strictObject({
     .default('false')
     .transform((value) => value === 'true'),
 });
+
+// --- informes (docs/plan.md §5, `/reports/*`) ------------------------------------------------------
+
+/** Máximo de meses que admiten los informes por rango (5 años). */
+export const MAX_REPORT_MONTHS = 60;
+
+/** `?from=YYYY-MM&to=YYYY-MM` de los informes mensuales y del histórico de saldos. */
+export const reportRangeQuerySchema = z
+  .strictObject({ from: monthSchema, to: monthSchema })
+  .refine((range) => range.from <= range.to, {
+    message: '«from» no puede ser posterior a «to»',
+    path: ['from'],
+  });
+
+/** `?at=YYYY-MM-DD` del informe de saldos. Obligatorio: el servidor no adivina «hoy» (zona horaria). */
+export const balancesQuerySchema = z.strictObject({ at: localDateSchema });
+
+export const monthlyReportRowSchema = z.object({
+  month: monthSchema,
+  /** Ingresos confirmados, sin los ajustes de conciliación. */
+  incomeCents: signedCents,
+  /** Gastos confirmados, sin los ajustes de conciliación. */
+  expenseCents: signedCents,
+  netCents: signedCents,
+  /** Ajustes de conciliación del mes, con signo: línea propia, no son ingresos ni gastos. */
+  adjustmentsCents: signedCents,
+  pending: z.object({
+    count: z.int().min(0),
+    incomeCents: signedCents,
+    expenseCents: signedCents,
+  }),
+});
+export const monthlyReportResponseSchema = z.object({ items: z.array(monthlyReportRowSchema) });
+
+export const categoryReportResponseSchema = z.object({
+  month: monthSchema,
+  items: z.array(
+    z.object({
+      kind: z.enum(MOVEMENT_KINDS),
+      /** `null` si no tiene categoría. */
+      categoryId: z.uuid().nullable(),
+      /** Nombre de la categoría; `null` si no tiene categoría. */
+      name: z.string().nullable(),
+      totalCents: signedCents,
+    }),
+  ),
+});
+
+export const balancesReportResponseSchema = z.object({
+  at: localDateSchema,
+  accounts: z.array(
+    z.object({
+      accountId: z.uuid(),
+      name: z.string(),
+      type: z.enum(ACCOUNT_TYPES),
+      archived: z.boolean(),
+      /** Saldo calculado: incluye los ajustes. */
+      balanceCents: signedCents,
+      /** De ese saldo, lo debido a ajustes de conciliación (con signo). */
+      adjustmentsCents: signedCents,
+    }),
+  ),
+  totalCents: signedCents,
+  totalAdjustmentsCents: signedCents,
+});
+
+export const balanceHistoryResponseSchema = z.object({
+  months: z.array(monthSchema),
+  accounts: z.array(
+    z.object({
+      accountId: z.uuid(),
+      name: z.string(),
+      archived: z.boolean(),
+      /** Saldo a fin de cada mes de `months`; `null` si la cuenta aún no estaba abierta. */
+      balancesCents: z.array(signedCents.nullable()),
+    }),
+  ),
+  /** Suma de las cuentas abiertas en cada mes. */
+  totalsCents: z.array(signedCents),
+});
+
+export type ReportRangeQuery = z.infer<typeof reportRangeQuerySchema>;
+export type BalancesQuery = z.infer<typeof balancesQuerySchema>;
+export type MonthlyReportRow = z.infer<typeof monthlyReportRowSchema>;
+export type MonthlyReportResponse = z.infer<typeof monthlyReportResponseSchema>;
+export type CategoryReportResponse = z.infer<typeof categoryReportResponseSchema>;
+export type BalancesReportResponse = z.infer<typeof balancesReportResponseSchema>;
+export type BalanceHistoryResponse = z.infer<typeof balanceHistoryResponseSchema>;

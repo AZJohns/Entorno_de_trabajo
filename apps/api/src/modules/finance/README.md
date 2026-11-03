@@ -15,15 +15,17 @@ Cuentas, categorías, movimientos, transferencias y conciliación mensual. Dise�
 |---|---|---|
 | `ledger/domain/dates.ts` | Fechas contables `YYYY-MM-DD` como texto, sin `Date` ni zona horaria | No |
 | `ledger/domain/balances.ts` | `balanceAsOf` (saldo de una cuenta hasta una fecha) y `monthlyTotals` (ingresos, gastos y ajustes de un mes) | No |
+| `ledger/domain/reports.ts` | Informes sobre `balanceAsOf` y `monthlyTotals`: `monthlyReport`, `categoryBreakdown`, `pendingTotals`, `adjustmentsAsOf`, `accountBalanceLine`, `sumCents` | No |
 | `ledger/domain/reconciliation.ts` | `reconcile` (diferencia y ajuste) y `reconciliationDiscrepancy` (aviso si el libro deja de cuadrar con el banco) | No |
 | `ledger/ledger.repository.ts` | Consultas de Kysely sobre las cinco tablas; importes ya en céntimos y fechas como texto | Base de datos |
 | `ledger/ledger.service.ts` | Reglas que dependen de otras filas, transacciones y conciliación | — |
+| `ledger/reports.service.ts` | Informes (`/reports/*`): lee filas con el repositorio y calcula con `domain/reports.ts` | — |
 | `ledger/ledger.controller.ts`, `ledger/ledger.routes.ts` | HTTP: validación con los esquemas de `@backoffice/shared` y respuestas | — |
 | `index.ts` | API pública: `createFinanceModule({ db, clock })` → `{ ledger, router }` | — |
 
 ## Endpoints (`/api/v1`, sesión activa; sin reautenticación)
 
-`/accounts` (+ `/:id`, `/:id/archive`, `/:id/reconciliations`), `/reconciliations/:id`, `/categories` (+ `/:id`, `/:id/archive`), `/movements` (+ `/pending/count`, `/:id`, `/:id/confirm`) y `/transfers` (+ `/:id`). Detalle en `docs/plan.md` §2.10; esquemas en `packages/shared/src/finance/schemas.ts`.
+`/accounts` (+ `/:id`, `/:id/archive`, `/:id/reconciliations`), `/reconciliations/:id`, `/categories` (+ `/:id`, `/:id/archive`), `/movements` (+ `/pending/count`, `/:id`, `/:id/confirm`) y `/transfers` (+ `/:id`), más los informes `GET /reports/monthly?from&to`, `/reports/monthly/:month/categories`, `/reports/balances?at` y `/reports/balance-history?from&to`. Detalle en `docs/plan.md` §2.10; esquemas en `packages/shared/src/finance/schemas.ts`.
 
 Códigos de error del libro:
 
@@ -57,6 +59,8 @@ Una cuenta archivada queda **congelada**: no admite movimientos, transferencias 
 - **Discrepancia**: se compara el saldo calculado hoy hasta `as_of`, **con** los ajustes, con el `statement_balance_cents` registrado. Detecta movimientos y transferencias cambiados, un ajuste editado o borrado, y una conciliación de un mes anterior creada después. `computed_balance_cents` es solo el registro histórico.
 - **Saldo de apertura**: `opening_balance_cents` es el saldo **al inicio del día** `opening_date`; los movimientos de ese día se suman a él. Por eso se rechazan (422) los anteriores a esa fecha y no se puede adelantar la apertura más allá de la actividad existente.
 - **Altas manuales** nacen confirmadas y completas. Los borradores (`pending`) los creará el atajo de la fase 2; esta API los edita y confirma.
+
+- **Informes** (`/reports/*`): solo lectura, sin SQL de agregación: el repositorio devuelve filas y `domain/reports.ts` suma con `balanceAsOf` y `monthlyTotals`. Los **ajustes de conciliación** nunca entran en ingresos, gastos ni en el desglose por categoría: salen en `adjustmentsCents` (mensual) y en su propia columna del saldo por cuenta (que sí los incluye, como `balanceAsOf`). Las **transferencias** solo afectan a los saldos. Los pendientes se cuentan aparte (ingresos y gastos por separado, porque restarlos no tendría sentido). `at`, `from` y `to` son obligatorios: el servidor no adivina «hoy» (zona horaria). Rango máximo: 60 meses (422). Los informes incluyen cuentas archivadas; no una cuenta en una fecha anterior a su apertura (en el histórico, `null`). Los movimientos confirmados exigen categoría, así que «sin categoría» solo es posible en teoría.
 
 ## Fase 1b frente a fase 2
 

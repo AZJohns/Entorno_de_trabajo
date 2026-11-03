@@ -43,3 +43,9 @@ export function formatMonth(month: string): string {
   const name = MONTH_NAMES[Number(month.slice(5, 7)) - 1] ?? month;
   return `${name} de ${month.slice(0, 4)}`;
 }
+
+/** Desplaza un mes `YYYY-MM` (`delta` negativo = hacia atrás): `2026-01`, −1 → `2025-12`. */
+export function shiftMonth(month: string, delta: number): string {
+  const index = Number(month.slice(0, 4)) * 12 + (Number(month.slice(5, 7)) - 1) + delta;
+  return `${String(Math.floor(index / 12)).padStart(4, '0')}-${pad((index % 12) + 1)}`;
+}

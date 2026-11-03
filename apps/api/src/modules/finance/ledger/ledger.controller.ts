@@ -10,6 +10,9 @@ import {
   createMovementRequestSchema,
   createReconciliationRequestSchema,
   createTransferRequestSchema,
+  balancesQuerySchema,
+  monthSchema,
+  reportRangeQuerySchema,
   listArchivableQuerySchema,
   listMovementsQuerySchema,
   listTransfersQuerySchema,
@@ -26,6 +29,7 @@ import {
 } from '@backoffice/shared';
 import type { CategoryRecord, MovementRecord, TransferRecord } from './ledger.repository.ts';
 import type { AccountView, LedgerService, ReconciliationView } from './ledger.service.ts';
+import type { ReportsService } from './reports.service.ts';
 
 const idSchema = z.uuid();
 
@@ -246,4 +250,23 @@ export function createLedgerController(service: LedgerService) {
     createReconciliation,
     deleteReconciliation,
   };
+}
+
+/** Controlador de los informes (`/reports/*`). */
+export function createReportsController(service: ReportsService) {
+  const monthly: RequestHandler = async (req, res) => {
+    const { from, to } = reportRangeQuerySchema.parse(req.query);
+    res.json(await service.monthly(from, to));
+  };
+  const categories: RequestHandler = async (req, res) => {
+    res.json(await service.categories(monthSchema.parse(req.params['month'])));
+  };
+  const balances: RequestHandler = async (req, res) => {
+    res.json(await service.balances(balancesQuerySchema.parse(req.query).at));
+  };
+  const balanceHistory: RequestHandler = async (req, res) => {
+    const { from, to } = reportRangeQuerySchema.parse(req.query);
+    res.json(await service.balanceHistory(from, to));
+  };
+  return { monthly, categories, balances, balanceHistory };
 }

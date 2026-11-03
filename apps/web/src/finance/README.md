@@ -8,6 +8,7 @@ Interfaz de `apps/api/src/modules/finance/ledger`. Diseño y API: `docs/plan.md`
 | `/cuentas/:id/conciliacion` | Conciliar, historial con aviso de discrepancia y borrar | `pages/ReconciliationPage.tsx` |
 | `/categorias` | Alta, renombrar y archivar (gastos e ingresos) | `pages/CategoriesPage.tsx` |
 | `/movimientos` | Filtros de la API, alta, edición, borrado con confirmación y confirmar pendientes | `pages/MovementsPage.tsx` |
+| `/informes` | Balance mensual, desglose por categoría, saldo por cuenta (ajustes en su columna) y evolución del saldo; 3 gráficos | `pages/ReportsPage.tsx`, `charts/` |
 | `/transferencias` | Filtros, alta, edición y borrado con confirmación | `pages/TransfersPage.tsx` |
 
 ## Estructura
@@ -17,6 +18,8 @@ Interfaz de `apps/api/src/modules/finance/ledger`. Diseño y API: `docs/plan.md`
 - `forms/`: formularios presentacionales (reciben callbacks y el error de la API; no conocen react-query), con foco en el primer campo con error.
 - `dates.ts`: fechas como texto, sin `Date` para formatear (evita el desfase de zona horaria).
 - `../ui/finance-forms.tsx`: campos con etiqueta y `aria-describedby`, `ProblemNotice` y `ConfirmBar`.
+
+- `charts/`: gráficos en SVG propio (decisión y comparación con Recharts en `docs/dependencias.md`). **Solo dibujan**: todas las cifras las calcula la API; `scale.ts` solo reparte píxeles. Cada gráfico lleva una tabla con los mismos datos.
 
 ## Errores de la API
 

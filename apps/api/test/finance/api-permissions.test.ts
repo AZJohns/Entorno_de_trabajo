@@ -42,13 +42,17 @@ const ROUTES: readonly (readonly [method: 'get' | 'post' | 'patch' | 'delete', p
   ['get', `/transfers/${ID}`],
   ['patch', `/transfers/${ID}`],
   ['delete', `/transfers/${ID}`],
+  ['get', '/reports/monthly'],
+  ['get', '/reports/monthly/2026-10/categories'],
+  ['get', '/reports/balances'],
+  ['get', '/reports/balance-history'],
 ];
 
 const MUTATING = ROUTES.filter(([method]) => method !== 'get');
 
 /** Pasa a la forma «MÉTODO /ruta/:id» de las rutas registradas. */
 const asPattern = (method: string, path: string): string =>
-  `${method.toUpperCase()} ${path.replaceAll(ID, ':id')}`;
+  `${method.toUpperCase()} ${path.replaceAll(ID, ':id').replace('/monthly/2026-10/', '/monthly/:month/')}`;
 
 describe('rutas del libro', () => {
   it('la lista de este test coincide con las rutas registradas en el router', () => {

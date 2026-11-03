@@ -1247,6 +1247,7 @@ Tamaños relativos (S, M, L, XL). No pongo días porque no conozco tu ritmo y un
     - Cuentas (corriente, ahorro y efectivo), categorías, movimientos (alta, edición, confirmación y filtros) y transferencias.
     - **Conciliación mensual con un movimiento de ajuste.**
   - **1c. Informes**: balance mensual, desglose por categoría, saldo por cuenta (con los ajustes en una línea propia) y 3 gráficos.
+    - Los 3 gráficos: barras de ingresos y gastos por mes, barras de gastos por categoría de un mes y líneas del saldo por cuenta. Se dibujan en **SVG propio**, no con Recharts (comparación en `docs/dependencias.md`).
   - **1d. Exportación** `GET /export` con reautenticación.
   - Todo **en local**.
 - **Terminado cuando**
