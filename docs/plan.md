@@ -1,7 +1,7 @@
 # Plan del backoffice personal
 
 - **Estado:** borrador v2 (diseño; todavía no hay código)
-- **Fecha:** 2026-11-02 · **Revisión 3:** cierre de la parte 1 (correo del historial aceptado, desbloqueo con un factor según NIST, licencia MIT, RTO 24 h) · **Revisión 2:** incorpora las confirmaciones de la plantilla real y tus decisiones sobre §9 (repositorio público, ASVS 5.0 L2 + NIST SP 800-63B, conciliación, despliegue con medición)
+- **Fecha:** 2026-11-03 · **Revisión 4:** hoja de ruta (1b terminada; la fase 2 añade atajos manuales, menús servidos por la API y «pagos habituales»; la fase 3 pasa a «Presupuestos»), pregunta 18 resuelta y preguntas 37 y 38 · **Revisión 3:** cierre de la parte 1 (correo del historial aceptado, desbloqueo con un factor según NIST, licencia MIT, RTO 24 h) · **Revisión 2:** incorpora las confirmaciones de la plantilla real y tus decisiones sobre §9 (repositorio público, ASVS 5.0 L2 + NIST SP 800-63B, conciliación, despliegue con medición)
 - **Documentos relacionados:** [`docs/plantilla-excel.md`](plantilla-excel.md) (contrato del importador), [`docs/seguridad/asvs-l2.md`](seguridad/asvs-l2.md) (matriz de cumplimiento), [`docs/runbooks/github.md`](runbooks/github.md) (configuración del repositorio público), [`SECURITY.md`](../SECURITY.md) y [`CLAUDE.md`](../CLAUDE.md) (reglas de trabajo)
 
 **Marcas usadas en este documento**
@@ -915,7 +915,7 @@ Notificación ─▶ toque ─▶ PWA ─▶ bandeja de pendientes ─▶ comple
 
 - El atajo llama a `GET /ingest/catalog`, muestra «Elegir de la lista» y «Pedir entrada» y envía `description` y `categoryId`.
 - **Incertidumbres:** si una automatización con «Ejecutar inmediatamente» puede mostrar diálogos interactivos y cómo lo hace (en la pantalla de bloqueo o encima de la app de pago); si es cómodo hacerlo en la caja; y la latencia de dos peticiones.
-- [RESUELTO] **Se prueba** en la prueba T13. Mientras tanto, aunque se envíen el concepto y la categoría, el movimiento **entra como pendiente** (una sola ruta de confirmación). Confirmarlo directamente cuando el importe es mayor que 0 y no hay marcas **se decide después de T13** (§9, pregunta 18).
+- [RESUELTO] **Se prueba** en la prueba T13. Regla (§9, pregunta 18, RESUELTA): un movimiento introducido a mano con el atajo y con todos los datos se guarda **confirmado**; uno de la automatización de Apple Pay con datos incompletos entra como **pendiente**.
 
 ### 5.9 Limitaciones
 
@@ -1243,7 +1243,7 @@ Tamaños relativos (S, M, L, XL). No pongo días porque no conozco tu ritmo y un
     - Caducidades de 24 h y 1 h; desbloqueo tras inactividad con un factor (`/auth/unlock`); lista y cierre de sesiones; `Clear-Site-Data` al salir.
     - CSRF, límites de peticiones y `audit_events`.
     - Cabeceras (HSTS, CSP, `no-store`).
-  - **1b. Libro real**
+  - **1b. Libro real** — **TERMINADA** (PR #9, #10 y #11)
     - Cuentas (corriente, ahorro y efectivo), categorías, movimientos (alta, edición, confirmación y filtros) y transferencias.
     - **Conciliación mensual con un movimiento de ajuste.**
   - **1c. Informes**: balance mensual, desglose por categoría, saldo por cuenta (con los ajustes en una línea propia) y 3 gráficos.
@@ -1294,6 +1294,11 @@ Tamaños relativos (S, M, L, XL). No pongo días porque no conozco tu ritmo y un
     - Tokens de dispositivo (crear y revocar, ambos con reautenticación).
     - `/ingest/wallet-transactions`, correspondencia de tarjetas, bandeja de pendientes y formulario rápido.
     - Prueba T13 (preguntar el concepto y la categoría en el momento).
+    - **Atajos manuales desde el Centro de Control de iOS**, además de la automatización de Apple Pay: «Registrar un gasto», «Registrar un ingreso» y «Registrar una transferencia». Usan la misma ruta `/ingest`.
+    - **Menús servidos por la API**: las cuentas, las categorías y los pagos habituales los devuelve un `GET` protegido con el token del dispositivo (la base es `GET /ingest/catalog`, §5.8). **Nunca van escritos a mano en el atajo**, para que un cambio en la app no obligue a editarlo.
+    - **Opción «Otro»** en los menús: el concepto se escribe a mano. Si falta la categoría, el movimiento entra como pendiente.
+    - **Pagos habituales** (Spotify, gimnasio…): cada uno con nombre, categoría y cuenta por defecto, e importe típico opcional. El atajo pregunta «Único / Recurrente».
+    - **Acceso desde el móvil: la PWA instalada; no habrá app nativa.** Motivos (inferencia mía, no medida): una app nativa exige cuenta de desarrollador de Apple (de pago), firma y distribución (TestFlight o App Store) y mantener otra base de código; la PWA ya cubre la interfaz, las notificaciones push (en iOS, solo con la PWA instalada) y el atajo llama a la API sin necesitar una app. Lo que no da la PWA (acceso directo a Wallet) tampoco lo daría una app propia: lo resuelve la automatización de Atajos [VERIFICAR si cambia la política de Apple].
   - **2e. Evaluación de passkeys y usabilidad de la sesión**
     - T18 (passkey en la PWA) y T19 (autorrelleno de la contraseña y del TOTP).
     - Si T18 funciona: alta de passkeys con @simplewebauthn y su ADR.
@@ -1307,6 +1312,7 @@ Tamaños relativos (S, M, L, XL). No pongo días porque no conozco tu ritmo y un
   - Revocar un token → el atajo recibe 401 y muestra la notificación local.
   - Hay tests de la ingesta (idempotencia, huella, marcas, importes con los formatos **reales** de T3 reescritos con cifras inventadas, permisos del token).
   - Gasto manual registrado en menos de 15 s.
+  - Los atajos manuales (gasto, ingreso y transferencia) funcionan desde el Centro de Control con menús que salen de la API, y «Otro» sin categoría deja el movimiento pendiente.
   - Filas de la fase 2 en `asvs-l2.md` actualizadas.
 - **Riesgos**
   - **El comportamiento de iOS** (el spike va primero).
@@ -1325,16 +1331,18 @@ Tamaños relativos (S, M, L, XL). No pongo días porque no conozco tu ritmo y un
   - Decisiones basadas en métricas con un criterio fijado **antes** de medir.
   - 3-2-1, RPO y RTO.
 
-### Fase 3 — Importación del Excel + presupuesto, proyección, metas, escenarios, comprobaciones y comparativa · tamaño XL (se divide en tres)
+### Fase 3 — Presupuestos · tamaño M + XL (3a y 3b)
 
 - **Antes de empezar:** migrar tu Excel a la v2 (`plantilla-excel.md` §14). La especificación de la plantilla no tiene puntos abiertos (§13).
 - **Alcance**
-  - **3a. Importación**
+  - **3a. Presupuesto por categoría y mes dentro de la app, con progreso** · tamaño M. Se define en la propia app y muestra el avance (gastado frente a lo presupuestado) a partir de los movimientos reales, calculado al leer. Es el presupuesto que rellena 3b.
+  - **3b. Importación del Excel** · tamaño XL. Rellena ese mismo presupuesto y trae el resto del plan; sus tres partes (antes 3a, 3b y 3c) son:
+  - **3b.1. Importación**
     - Spike de la librería de Excel (§4.2).
     - Fixture ficticia hecha a mano en Excel, con los resultados esperados calculados a mano.
     - Lectura, validación de los 4 niveles, vista previa, correspondencia de categorías, confirmación, fotos e idempotencia.
-  - **3b. Cálculos** (funciones puras): presupuesto, proyección, metas, escenarios y checks, con sus endpoints.
-  - **3c. Interfaz**: dashboard del plan (indicadores y 3 gráficos) y comparativa entre plan y realidad.
+  - **3b.2. Cálculos** (funciones puras): presupuesto, proyección, metas, escenarios y checks, con sus endpoints.
+  - **3b.3. Interfaz**: dashboard del plan (indicadores y 3 gráficos) y comparativa entre plan y realidad.
 - **Terminado cuando**
   - Hay tests:
     - Del importador, para cada código del catálogo de problemas.
@@ -1348,7 +1356,7 @@ Tamaños relativos (S, M, L, XL). No pongo días porque no conozco tu ritmo y un
 - **Riesgos**
   - Ambigüedades de la plantilla. Mitigación: §13 resuelta antes de empezar.
   - Peculiaridades de la librería (fechas, fórmulas compartidas).
-  - El tamaño de la fase. Mitigación: entregar 3a, 3b y 3c por separado.
+  - El tamaño de la fase. Mitigación: entregar 3a, 3b.1, 3b.2 y 3b.3 por separado.
   - Que se cuele un dato real en la fixture.
 - **Conceptos para la entrevista**
   - Análisis seguro de archivos no fiables (zip bombs, XXE, no evaluar nada).
@@ -1454,13 +1462,15 @@ Estado tras la revisión 2: **RESUELTA** (con la decisión tomada) o **PENDIENTE
 | 15 | ¿Origen «importación»? | RESUELTA | La importación de extractos queda fuera del MVP; `import` se elimina del modelo |
 | 16 | ¿Qué es la conciliación? | RESUELTA | Una vez al mes por cuenta: saldo calculado frente al del banco, con un ajuste explícito si hay diferencia |
 | 29 | ¿El saldo inicial de la proyección (`S0`) debería salir de las cuentas reales? | PENDIENTE (fase 3) | **R:** cuando haya cuentas conciliadas, `S0` = Σ de los saldos calculados de las cuentas a fin del mes anterior al mes 1, mostrando la diferencia con las filas «Saldo de ahorro» del Excel; hasta entonces, las filas del Excel |
+| 37 | ¿Avisar al pasarse del presupuesto? | PENDIENTE (fase 3a) | **R:** primero solo el indicador de progreso en la app; decidir los avisos (push o en pantalla) cuando se vea cómo se usa el presupuesto |
+| 38 | ¿Generar automáticamente los gastos recurrentes cada mes? | PENDIENTE (después de la fase 2) | **R:** empezar con los «pagos habituales» solo como menú del atajo y decidir la generación automática con datos de uso; si se hace, que cree movimientos pendientes y no confirmados |
 
 **Atajo y notificaciones**
 
 | # | Pregunta | Estado | Decisión o recomendación |
 |---|---|---|---|
 | 17 | ¿Importes en la pantalla de bloqueo? | RESUELTA | Texto genérico por defecto |
-| 18 | ¿Preguntar en el atajo? ¿Confirmar directamente? | RESUELTA la prueba / PENDIENTE la confirmación directa | Se prueba en T13. La confirmación directa se decide después de T13 (fase 2) |
+| 18 | ¿Preguntar en el atajo? ¿Confirmar directamente? | RESUELTA | Un movimiento introducido a mano con el atajo y con todos los datos se guarda **confirmado**; uno que llega de la automatización de Apple Pay con datos incompletos entra como **pendiente**. T13 sigue midiendo la comodidad de preguntar en la caja |
 | 19 | ¿Caducidad del token del atajo? | RESUELTA | 180 días, con un aviso 14 días antes |
 
 **Seguridad y despliegue**
@@ -1488,7 +1498,7 @@ Estado tras la revisión 2: **RESUELTA** (con la decisión tomada) o **PENDIENTE
 | 26 | ¿Cómo se publica en el portfolio? | RESUELTA | Commits mediante la API de GitHub a Portfolio-v2 |
 | 27 | ¿Interfaz solo en español? | RESUELTA | Sí |
 
-Los números 29–35 son preguntas nuevas de esta revisión (la 30 se fusionó con la 18). La 36 surge en la fase 1 (autenticación).
+Los números 29–35 son preguntas nuevas de la revisión 2 (la 30 se fusionó con la 18). La 36 surge en la fase 1 (autenticación); la 37 y la 38, en la revisión 4.
 
 ---
 
