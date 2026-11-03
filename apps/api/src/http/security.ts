@@ -13,11 +13,24 @@ export function isUnsafeMethod(method: string): boolean {
 }
 
 /**
- * Cabeceras de seguridad con helmet (ASVS 3.4): CSP estricta, HSTS de 1 año con subdominios,
- * `nosniff`, `Referrer-Policy: no-referrer` y prohibición de incrustar la página en marcos.
+ * Funciones del navegador que la web no usa y que se desactivan para ella y para cualquier marco.
+ * helmet 8 no envía esta cabecera.
  */
-export function securityHeaders(): RequestHandler {
-  return helmet({
+const PERMISSIONS_POLICY =
+  'camera=(), microphone=(), geolocation=(), payment=(), usb=(), bluetooth=(), serial=(), hid=()';
+
+const permissionsPolicy: RequestHandler = (_req, res, next) => {
+  res.setHeader('Permissions-Policy', PERMISSIONS_POLICY);
+  next();
+};
+
+/**
+ * Cabeceras de seguridad (ASVS 3.4): con helmet, CSP estricta, HSTS de 1 año con subdominios,
+ * `nosniff`, `Referrer-Policy: no-referrer` y prohibición de incrustar la página en marcos; además,
+ * una `Permissions-Policy` restrictiva (docs/plan.md §6.2).
+ */
+export function securityHeaders(): RequestHandler[] {
+  const headers = helmet({
     contentSecurityPolicy: {
       useDefaults: false,
       directives: {
@@ -35,6 +48,7 @@ export function securityHeaders(): RequestHandler {
     strictTransportSecurity: { maxAge: 31_536_000, includeSubDomains: true },
     referrerPolicy: { policy: 'no-referrer' },
   });
+  return [headers, permissionsPolicy];
 }
 
 /** Ninguna respuesta de la API se guarda en cachés del navegador ni intermedias (ASVS 14.3.2, 14.2.2). */
