@@ -8,7 +8,7 @@ Interfaz de `apps/api/src/modules/finance/ledger`. Diseño y API: `docs/plan.md`
 | `/cuentas/:id/conciliacion` | Conciliar, historial con aviso de discrepancia y borrar | `pages/ReconciliationPage.tsx` |
 | `/categorias` | Alta, renombrar y archivar (gastos e ingresos) | `pages/CategoriesPage.tsx` |
 | `/movimientos` | Filtros de la API, alta, edición, borrado con confirmación y confirmar pendientes | `pages/MovementsPage.tsx` |
-| `/informes` | Balance mensual, desglose por categoría, saldo por cuenta (ajustes en su columna) y evolución del saldo; 3 gráficos | `pages/ReportsPage.tsx`, `charts/` |
+| `/informes` | Botón «Exportar datos» (JSON) y balance mensual, desglose por categoría, saldo por cuenta (ajustes en su columna) y evolución del saldo; 3 gráficos | `pages/ReportsPage.tsx`, `charts/` |
 | `/transferencias` | Filtros, alta, edición y borrado con confirmación | `pages/TransfersPage.tsx` |
 
 ## Estructura

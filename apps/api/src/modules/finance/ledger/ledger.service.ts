@@ -124,6 +124,18 @@ export interface AccountView extends AccountRecord {
   readonly balanceCents: number;
 }
 
+/** Datos del libro para la exportación. */
+export interface LedgerExport {
+  readonly exportedAt: Date;
+  readonly accounts: readonly AccountView[];
+  readonly categories: readonly CategoryRecord[];
+  readonly movements: readonly MovementRecord[];
+  readonly transfers: readonly TransferRecord[];
+  readonly reconciliations: readonly (ReconciliationRecord & {
+    readonly adjustmentMovementId: string | null;
+  })[];
+}
+
 export class LedgerService {
   readonly #deps: LedgerServiceDeps;
   readonly #repo: LedgerRepository;
@@ -662,5 +674,46 @@ export class LedgerService {
       if (account !== undefined) this.#assertNotArchived(account);
       await repo.deleteReconciliation(id);
     });
+  }
+
+  /**
+   * Todos los datos del libro para la exportación (`GET /export`). Lee en una sola transacción de solo
+   * lectura con `REPEATABLE READ`, para que el archivo sea una foto coherente aunque alguien escriba a
+   * la vez. Devuelve registros del dominio, no filas: lo que no esté en ellos no puede salir en el archivo.
+   */
+  async exportAll(): Promise<LedgerExport> {
+    return this.#deps.db
+      .transaction()
+      .setIsolationLevel('repeatable read')
+      .execute(async (trx) => {
+        const repo = new LedgerRepository(trx);
+        const accounts = await repo.listAccounts(true);
+        const [ledgers, categories, movements, transfers, reconciliations] = await Promise.all([
+          repo.loadLedgers(accounts),
+          repo.listCategories(true),
+          repo.listAllMovements(),
+          repo.listAllTransfers(),
+          repo.listAllReconciliations(),
+        ]);
+        const adjustments = await repo.adjustmentIds(reconciliations.map((record) => record.id));
+        return {
+          exportedAt: this.#deps.clock.now(),
+          accounts: accounts.map((account) => {
+            const ledger = ledgers.get(account.id);
+            return {
+              ...account,
+              balanceCents:
+                ledger === undefined ? account.openingBalanceCents : balanceAsOf(ledger, null),
+            };
+          }),
+          categories,
+          movements,
+          transfers,
+          reconciliations: reconciliations.map((record) => ({
+            ...record,
+            adjustmentMovementId: adjustments.get(record.id) ?? null,
+          })),
+        };
+      });
   }
 }

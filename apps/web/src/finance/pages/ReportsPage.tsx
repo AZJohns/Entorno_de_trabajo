@@ -3,7 +3,7 @@
  * en su propia columna) y los tres gráficos. Todas las cifras las calcula la API.
  */
 import { useState } from 'react';
-import { ErrorMessage, Loading } from '../../ui/forms.tsx';
+import { Button, ErrorMessage, Loading, SuccessMessage } from '../../ui/forms.tsx';
 import { SelectField } from '../../ui/finance-forms.tsx';
 import { money } from '../amount.ts';
 import { formatMonth, monthOf, shiftMonth, todayLocal } from '../dates.ts';
@@ -14,6 +14,7 @@ import {
   useBalanceHistory,
   useBalancesReport,
   useCategoryReport,
+  useExportData,
   useMonthlyReport,
 } from '../queries.ts';
 
@@ -35,6 +36,7 @@ export function ReportsPage() {
   const from = shiftMonth(to, -(MONTHS_SHOWN - 1));
   const [month, setMonth] = useState(to);
 
+  const exportData = useExportData();
   const monthly = useMonthlyReport(from, to);
   const categories = useCategoryReport(month);
   const balances = useBalancesReport(today);
@@ -47,6 +49,26 @@ export function ReportsPage() {
   return (
     <div className="flex flex-col gap-4">
       <h1 className="text-2xl font-semibold">Informes</h1>
+
+      <Section title="Exportar datos">
+        <p className="mb-3 text-sm text-slate-600">
+          Descarga una copia legible (JSON) de cuentas, categorías, movimientos, transferencias y
+          conciliaciones, con los importes en céntimos. Pide volver a introducir la contraseña y el
+          código si hace más de 10 minutos que lo hiciste. No incluye datos de acceso.
+        </p>
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={exportData.isPending}
+          onClick={() => {
+            exportData.mutate();
+          }}
+        >
+          {exportData.isPending ? 'Exportando…' : 'Exportar datos'}
+        </Button>
+        {exportData.isError && <ErrorMessage error={exportData.error} />}
+        {exportData.isSuccess && <SuccessMessage>Copia descargada.</SuccessMessage>}
+      </Section>
 
       <Section title="Balance mensual">
         {monthly.isPending ? (

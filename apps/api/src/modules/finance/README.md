@@ -25,7 +25,7 @@ Cuentas, categorías, movimientos, transferencias y conciliación mensual. Dise�
 
 ## Endpoints (`/api/v1`, sesión activa; sin reautenticación)
 
-`/accounts` (+ `/:id`, `/:id/archive`, `/:id/reconciliations`), `/reconciliations/:id`, `/categories` (+ `/:id`, `/:id/archive`), `/movements` (+ `/pending/count`, `/:id`, `/:id/confirm`) y `/transfers` (+ `/:id`), más los informes `GET /reports/monthly?from&to`, `/reports/monthly/:month/categories`, `/reports/balances?at` y `/reports/balance-history?from&to`. Detalle en `docs/plan.md` §2.10; esquemas en `packages/shared/src/finance/schemas.ts`.
+`/accounts` (+ `/:id`, `/:id/archive`, `/:id/reconciliations`), `/reconciliations/:id`, `/categories` (+ `/:id`, `/:id/archive`), `/movements` (+ `/pending/count`, `/:id`, `/:id/confirm`) y `/transfers` (+ `/:id`), más los informes `GET /reports/monthly?from&to`, `/reports/monthly/:month/categories`, `/reports/balances?at` y `/reports/balance-history?from&to`, y `GET /export` (S+: exige reautenticación completa en los últimos 10 minutos). Detalle en `docs/plan.md` §2.10; esquemas en `packages/shared/src/finance/schemas.ts`.
 
 Códigos de error del libro:
 
@@ -61,6 +61,8 @@ Una cuenta archivada queda **congelada**: no admite movimientos, transferencias 
 - **Altas manuales** nacen confirmadas y completas. Los borradores (`pending`) los creará el atajo de la fase 2; esta API los edita y confirma.
 
 - **Informes** (`/reports/*`): solo lectura, sin SQL de agregación: el repositorio devuelve filas y `domain/reports.ts` suma con `balanceAsOf` y `monthlyTotals`. Los **ajustes de conciliación** nunca entran en ingresos, gastos ni en el desglose por categoría: salen en `adjustmentsCents` (mensual) y en su propia columna del saldo por cuenta (que sí los incluye, como `balanceAsOf`). Las **transferencias** solo afectan a los saldos. Los pendientes se cuentan aparte (ingresos y gastos por separado, porque restarlos no tendría sentido). `at`, `from` y `to` son obligatorios: el servidor no adivina «hoy» (zona horaria). Rango máximo: 60 meses (422). Los informes incluyen cuentas archivadas; no una cuenta en una fecha anterior a su apertura (en el histórico, `null`). Los movimientos confirmados exigen categoría, así que «sin categoría» solo es posible en teoría.
+
+- **Exportación** (`GET /export`, S+): JSON legible con cuentas (también archivadas, con su saldo calculado al exportar), categorías, movimientos (confirmados, pendientes y ajustes), transferencias y conciliaciones; importes en céntimos. Formato versionado (`format`, `version`; esquema `exportResponseSchema` en `packages/shared`). **Qué no sale nunca**: usuarios, sesiones, factores, tokens ni la auditoría. Se garantiza porque el servicio devuelve registros del dominio (los mapeadores de `ledger.repository.ts` solo copian columnas conocidas) y el controlador construye el archivo campo a campo: una columna nueva de la base de datos no llega al archivo salvo que alguien la añada a propósito. Se lee en una transacción `REPEATABLE READ` para que sea una foto coherente. La auditoría (`data.exported`, con recuentos y sin datos) se registra **antes** de enviar el archivo: si falla, no sale nada. El nombre del archivo lo genera el servidor (`backoffice-export-AAAA-MM-DD.json`). La guarda de reautenticación y el registro de auditoría los inyecta la aplicación (`createFinanceModule`): este módulo no conoce la autenticación. No hay paginación: con el volumen de un solo usuario cabe en memoria; si creciera, habría que pasar a un flujo (*stream*).
 
 ## Fase 1b frente a fase 2
 

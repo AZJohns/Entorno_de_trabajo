@@ -376,3 +376,41 @@ export type MonthlyReportResponse = z.infer<typeof monthlyReportResponseSchema>;
 export type CategoryReportResponse = z.infer<typeof categoryReportResponseSchema>;
 export type BalancesReportResponse = z.infer<typeof balancesReportResponseSchema>;
 export type BalanceHistoryResponse = z.infer<typeof balanceHistoryResponseSchema>;
+
+// --- exportación (docs/plan.md §2.10, `GET /export`) -----------------------------------------------
+
+/** Versión del formato de exportación: sube si cambia la forma del archivo. */
+export const EXPORT_FORMAT_VERSION = 1;
+
+/**
+ * Archivo de `GET /export`: una copia legible de los datos del libro. Solo datos de negocio: nunca
+ * usuarios, sesiones, factores de autenticación, tokens ni la auditoría. Importes en céntimos.
+ */
+export const exportResponseSchema = z.strictObject({
+  format: z.literal('backoffice-export'),
+  version: z.literal(EXPORT_FORMAT_VERSION),
+  exportedAt: z.iso.datetime(),
+  currency: z.literal('EUR'),
+  amountUnit: z.literal('cents'),
+  /** Incluye las cuentas archivadas. `balanceCents` es informativo: se calcula al exportar. */
+  accounts: z.array(accountResponseSchema),
+  /** Incluye las categorías archivadas. */
+  categories: z.array(categoryResponseSchema),
+  /** Todos: confirmados y pendientes, y los ajustes de conciliación. */
+  movements: z.array(movementResponseSchema),
+  transfers: z.array(transferResponseSchema),
+  reconciliations: z.array(
+    z.strictObject({
+      id: z.uuid(),
+      accountId: z.uuid(),
+      month: monthSchema,
+      asOf: localDateSchema,
+      statementBalanceCents: signedCents,
+      computedBalanceCents: signedCents,
+      note: z.string().nullable(),
+      createdAt: z.iso.datetime(),
+      adjustmentMovementId: z.uuid().nullable(),
+    }),
+  ),
+});
+export type ExportResponse = z.infer<typeof exportResponseSchema>;

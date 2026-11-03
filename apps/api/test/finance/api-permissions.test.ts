@@ -9,6 +9,7 @@ import { createFinanceModule } from '../../src/modules/finance/index.ts';
 import { systemClock } from '../../src/lib/clock.ts';
 import { useAuthTestContext } from '../support/auth.ts';
 import { PASSWORD, USERNAME } from '../support/auth.ts';
+import { REAUTH_WINDOW_MS } from '../../src/modules/auth/domain/session-rules.ts';
 import { expectProblem } from '../support/ledger.ts';
 
 const getCtx = useAuthTestContext();
@@ -46,7 +47,11 @@ const ROUTES: readonly (readonly [method: 'get' | 'post' | 'patch' | 'delete', p
   ['get', '/reports/monthly/2026-10/categories'],
   ['get', '/reports/balances'],
   ['get', '/reports/balance-history'],
+  ['get', '/export'],
 ];
+
+/** Rutas S+: además de la sesión, exigen reautenticación completa en los últimos 10 minutos. */
+const REAUTH_ROUTES = ROUTES.filter(([, path]) => path === '/export');
 
 const MUTATING = ROUTES.filter(([method]) => method !== 'get');
 
@@ -59,6 +64,10 @@ describe('rutas del libro', () => {
     const { router } = createFinanceModule({
       db: createDatabase('postgres://nadie:nada@127.0.0.1:1/ninguna'),
       clock: systemClock,
+      requireReauth: (_req, _res, next) => {
+        next();
+      },
+      recordExport: () => Promise.resolve(),
     });
     const stack = (router as unknown as { stack: { route?: { path: string; methods: object } }[] })
       .stack;
@@ -101,6 +110,31 @@ describe('rutas del libro', () => {
     client.origin = 'http://otra-web.invalid';
     expect((await client[method](`${BASE}${path}`, {})).status).toBe(403);
   });
+
+  it.each(REAUTH_ROUTES)(
+    'S+ sin reautenticación reciente: %s %s → 403 REAUTH_REQUIRED',
+    async (method, path) => {
+      const ctx = getCtx();
+      const client = await ctx.loggedIn();
+      ctx.t.clock.advance(REAUTH_WINDOW_MS);
+      expectProblem(await client[method](`${BASE}${path}`), 403, 'REAUTH_REQUIRED');
+    },
+  );
+
+  it.each(REAUTH_ROUTES)(
+    'S+ tras reautenticarse (contraseña + TOTP): %s %s → 200',
+    async (method, path) => {
+      const ctx = getCtx();
+      const client = await ctx.loggedIn();
+      ctx.t.clock.advance(REAUTH_WINDOW_MS);
+      const reauth = await client.post(`${BASE}/auth/reauth`, {
+        password: PASSWORD,
+        totp: ctx.totp(),
+      });
+      expect(reauth.status).toBe(200);
+      expect((await client[method](`${BASE}${path}`)).status).toBe(200);
+    },
+  );
 
   it('con la sesión bloqueada por inactividad no se accede a los datos', async () => {
     const ctx = getCtx();

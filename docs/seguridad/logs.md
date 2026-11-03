@@ -51,10 +51,11 @@ Columnas: `occurred_at`, `actor` (`user:<id>`, `anonymous` o `system:cli`), `act
 | `password.reset` | `system:cli` | `user:reset-password` | `sessionsRevoked` |
 | `sessions.revoked_all` | `system:cli` | `user:revoke-sessions` | `sessionsRevoked` |
 | `user.disabled` | `system:cli` | `user:disable` | `sessionsRevoked` |
+| `data.exported` | `user:<id>` | `GET /export` (entidad: la sesión) | `counts`: número de filas por tipo, nunca los datos |
 
-Tests: `apps/api/test/auth/account.test.ts` («registra los eventos de autenticación…», «la auditoría es de solo inserción…», «ni los logs ni la auditoría contienen contraseñas, códigos ni tokens») y `apps/api/test/security.test.ts` (rechazos registrados con su código y sin el cuerpo).
+Tests: `apps/api/test/auth/account.test.ts` («registra los eventos de autenticación…», «la auditoría es de solo inserción…», «ni los logs ni la auditoría contienen contraseñas, códigos ni tokens») y `apps/api/test/security.test.ts` (rechazos registrados con su código y sin el cuerpo) y `apps/api/test/finance/api-export.test.ts` («audita data.exported con recuentos y sin datos»).
 
 ## 4. Pendiente en fases posteriores
 
-- Fase 2: roles separados de la base de datos (la app solo con `INSERT` y `SELECT` en `audit_events`), destinos de producción, copia diaria y eventos de los tokens de dispositivo y de la exportación (`data.exported`).
+- Fase 2: roles separados de la base de datos (la app solo con `INSERT` y `SELECT` en `audit_events`), destinos de producción, copia diaria y eventos de los tokens de dispositivo.
 - Fases 1b–3: eventos de negocio relevantes para la seguridad (confirmación de importaciones, `authz.denied` cuando haya permisos distintos de la sesión).

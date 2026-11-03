@@ -14,11 +14,11 @@ import express, { type Express } from 'express';
 import type { Kysely } from 'kysely';
 import type { Logger } from 'pino';
 import type { Database } from './db/schema.ts';
-import { errorHandler, notFoundHandler } from './http/errors.ts';
+import { AppError, errorHandler, notFoundHandler } from './http/errors.ts';
 import { createHttpLogger } from './http/logger.ts';
 import { noStore, requireJsonBody, requireSameOrigin, securityHeaders } from './http/security.ts';
 import type { Clock } from './lib/clock.ts';
-import { createAuthModule, type PasswordBreachChecker } from './modules/auth/index.ts';
+import { createAuthModule, getSession, type PasswordBreachChecker } from './modules/auth/index.ts';
 import { createFinanceModule } from './modules/finance/index.ts';
 
 /** Dependencias externas de la aplicación (se inyectan para poder sustituirlas en los tests). */
@@ -74,7 +74,22 @@ export function createApp(deps: AppDependencies): Express {
   // Denegar por defecto: cualquier otra ruta exige una sesión activa. Una ruta inexistente responde
   // 401 sin sesión y 404 con ella, así que no se puede descubrir qué rutas existen sin autenticarse.
   api.use(auth.guard('active'));
-  api.use(createFinanceModule({ db: deps.db, clock: deps.clock }).router);
+  api.use(
+    createFinanceModule({
+      db: deps.db,
+      clock: deps.clock,
+      requireReauth: auth.guard('active_reauth'),
+      recordExport: async (req, res, counts) => {
+        const session = getSession(res);
+        if (session === null) throw new AppError('UNAUTHENTICATED', 401, 'Sesión no iniciada');
+        await auth.service.recordDataExport(
+          session,
+          { ip: req.ip ?? null, userAgent: req.get('user-agent') ?? null },
+          counts,
+        );
+      },
+    }).router,
+  );
   app.use('/api/v1', api);
 
   app.use(notFoundHandler);
