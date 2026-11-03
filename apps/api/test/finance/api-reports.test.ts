@@ -120,6 +120,22 @@ describe('GET /reports/monthly', () => {
     expect((await client.get(`${BASE}/monthly${query}`)).status).toBe(400);
   });
 
+  // ASVS 15.3.7: un parámetro repetido llega como array; Zod espera una cadena y lo rechaza. Es un
+  // error de validación (400, como el resto; plan.md §2: 422 es solo para incoherencias con el libro).
+  it('rechaza un parámetro repetido (?from=a&from=b) con 400, sin elegir uno de los dos', async () => {
+    const client = await getCtx().loggedIn();
+    expectProblem(
+      await client.get(`${BASE}/monthly?from=2026-10&from=2026-09&to=2026-10`),
+      400,
+      'VALIDATION_ERROR',
+    );
+    expectProblem(
+      await client.get('/api/v1/movements?status=pending&status=confirmed'),
+      400,
+      'VALIDATION_ERROR',
+    );
+  });
+
   it('422 si el rango supera 60 meses; 60 meses exactos valen', async () => {
     const client = await getCtx().loggedIn();
     expectProblem(

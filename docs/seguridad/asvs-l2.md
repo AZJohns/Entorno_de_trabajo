@@ -49,9 +49,9 @@
 | ID | Nivel | Requisito (resumen) | Estado | Cómo se cumple | Fase · módulo | Verificación |
 |---|---|---|---|---|---|---|
 | 1.1.1 | L2 | Decodificar a forma canónica una sola vez y antes de validar | Planificado | Express parsea el JSON una sola vez; Zod valida después; no hay decodificaciones manuales | F0 · http | Revisión |
-| 1.1.2 | L2 | Codificar la salida como último paso, para el intérprete de destino | Planificado | React escapa al renderizar; la API solo emite JSON serializado por Express | F1 · web | Revisión |
-| 1.2.1 | L1 | Codificación de salida según el contexto (HTML, atributos, cabeceras) | Planificado | React; las cabeceras solo llevan valores generados por el servidor | F1 · web, http | Test XSS (F5) + revisión |
-| 1.2.2 | L1 | Codificar los datos al construir URLs | Planificado | El cliente de la API usa `URL` y `encodeURIComponent`; nunca concatena | F1 · web/lib | Revisión |
+| 1.1.2 | L2 | Codificar la salida como último paso, para el intérprete de destino | **Verificado (F1)** | React escapa al renderizar; la API solo emite JSON serializado por Express · `dangerouslySetInnerHTML`, `innerHTML`, `outerHTML`, `insertAdjacentHTML` y `document.write` prohibidos por lint en `apps/web` | F1 · web | Lint: `no-restricted-syntax` en `eslint.config.js` · Test: `apps/web/test/finance-pages.test.tsx` («una descripción con <script> se muestra como texto…») |
+| 1.2.1 | L1 | Codificación de salida según el contexto (HTML, atributos, cabeceras) | **Verificado (F1)** | React; las cabeceras solo llevan valores generados por el servidor | F1 · web, http | Test: `apps/web/test/finance-pages.test.tsx` («una descripción con <script> se muestra como texto…») + lint. Las cabeceras no llevan datos del usuario (`security.test.ts`) |
+| 1.2.2 | L1 | Codificar los datos al construir URLs | **Verificado (F1)** | Query strings con `URLSearchParams` (`queryString`) y segmentos de ruta con `encodeURIComponent` (`segment`, en `apps/web/src/finance/queries.ts`); el id de `useParams` lo controla quien escribe la URL | F1 · web/lib | Test: `apps/web/test/finance-pages.test.tsx` («codifica el id de la ruta del navegador…») |
 | 1.2.3 | L1 | Codificar al generar JavaScript o JSON dinámico | Planificado | No se genera JavaScript; el JSON sale de `res.json` | F0 · http | Revisión |
 | 1.2.4 | L1 | Consultas parametrizadas | Planificado | Kysely parametriza; `sql.raw` prohibido salvo justificación (regla de lint) | F0–F5 · repositorios | Lint + revisión |
 | 1.2.5 | L1 | Sin inyección de comandos del sistema | Planificado | La app no ejecuta comandos; las copias las hace el host con argumentos fijos | F0 · — | Revisión |
@@ -75,7 +75,7 @@
 |---|---|---|---|---|---|---|
 | 2.1.1 | L1 | Reglas de validación documentadas | Planificado | Los esquemas Zod de `packages/shared` + `plantilla-excel.md` | F0+ · shared | Revisión |
 | 2.1.2 | L2 | Coherencia de datos combinados documentada | Planificado | Restricciones de `plan.md` §2 (confirmado = completo, categoría del mismo tipo…) | F1+ · finance | Revisión |
-| 2.1.3 | L2 | Límites de negocio documentados | Planificado | `docs/seguridad/limites.md`: tamaños, longitudes, número de sesiones y límites de peticiones · **Auth hecho**: `docs/seguridad/limites.md` §1 y §4 | F1 · todos | Revisión |
+| 2.1.3 | L2 | Límites de negocio documentados | **Verificado (F1)** | `docs/seguridad/limites.md` §7: índice único de límites de peticiones, campos, importes, fechas, cantidades y duraciones, con su fuente de verdad. Los límites de peticiones de la API general y de la ingesta están marcados como fase 2 (2.4.1) | F1 · todos | Revisión: `docs/seguridad/limites.md` §7 |
 | 2.2.1 | L1 | Validación positiva (listas permitidas, rangos) | Planificado | Zod estricto con enumeraciones, rangos y longitudes | F1+ · todos | Tests de validación |
 | 2.2.2 | L1 | Validación en una capa de servicio de confianza | Planificado | El backend valida siempre, aunque el frontend use los mismos esquemas · Libro: esquemas de `packages/shared/src/finance/schemas.ts` en los controladores y reglas entre filas en `ledger.service.ts` (`apps/api/test/finance/api-movements.test.ts`, `api-transfers.test.ts`, `api-reconciliations.test.ts`) | F1+ · http | Tests de API |
 | 2.2.3 | L2 | Combinaciones de datos razonables | Planificado | `CHECK` en la base de datos + reglas combinadas de Zod (origen ≠ destino, fecha ≥ apertura…) · Libro: restricciones de `0003_ledger` (`apps/api/test/finance/ledger-schema.test.ts`) y 422 por categoría de otro tipo, fecha anterior a la apertura o conciliación anterior a ella (`api-movements.test.ts`, `api-transfers.test.ts`, `api-reconciliations.test.ts`) | F1+ · finance | Tests |
@@ -270,8 +270,8 @@
 
 | ID | Nivel | Requisito (resumen) | Estado | Cómo se cumple | Fase · módulo | Verificación |
 |---|---|---|---|---|---|---|
-| 14.1.1 | L2 | Datos sensibles identificados y clasificados | Planificado | `docs/seguridad/datos.md`: credenciales (hashes, semillas, tokens), datos financieros, notas y metadatos | F1 | Revisión |
-| 14.1.2 | L2 | Requisitos de protección por nivel | Planificado | El mismo documento | F1 | Revisión |
+| 14.1.1 | L2 | Datos sensibles identificados y clasificados | **Verificado (F1)** | `docs/seguridad/datos.md` §1–2: cuatro niveles (N3 secreto a N0 público) y clasificación de credenciales, datos financieros, sesiones, auditoría, logs, configuración, copias y exportación | F1 | Revisión: `docs/seguridad/datos.md` |
+| 14.1.2 | L2 | Requisitos de protección por nivel | **Verificado (F1)** | `docs/seguridad/datos.md` §3: cifrado, almacenamiento, logs, exportación, acceso, retención, minimización y rotación por nivel; §4 lista lo que depende de la fase 2 | F1 | Revisión: `docs/seguridad/datos.md` |
 | 14.2.1 | L1 | Datos sensibles solo en el cuerpo o en cabeceras, nunca en la URL | Planificado | Tokens en cabeceras. La búsqueda `q` va en la URL: los logs de Caddy y de pino **no registran la query string** | F1–F2 · http, deploy | Test (redacción) + revisión |
 | 14.2.2 | L2 | Sin caché de datos sensibles en componentes del servidor | Planificado | `Cache-Control: no-store`; Caddy sin caché · `no-store` en `/api` desde F1 (test: `apps/api/test/security.test.ts`) | F1–F2 | Test |
 | 14.2.3 | L2 | Sin envío de datos a terceros (rastreadores) | Planificado | Sin analíticas ni CDN de terceros; la CSP lo impone | F0 · web | Revisión |
@@ -296,7 +296,7 @@
 | 15.3.4 ‡ | L2 | IP original correcta tras el proxy | Planificado | `TRUST_PROXY_HOPS` (0 por defecto; 1 detrás de Caddy en F2). Nunca `trust proxy = true` | F2 · http | Test: `apps/api/test/auth/proxy.test.ts` (F1); configuración real en F2 |
 | 15.3.5 | L2 | Tipos estrictos e igualdad estricta | **Verificado (F0)** | TypeScript estricto + `eqeqeq` | F0 · todos | TypeScript `strict` + lint `eqeqeq` |
 | 15.3.6 | L2 | Sin contaminación de prototipos | Planificado | `Map` u `Object.create(null)` para las claves que vienen del usuario; Zod descarta `__proto__` | F1+ · todos | Test con `__proto__` |
-| 15.3.7 | L2 | Sin contaminación de parámetros HTTP | Planificado | Zod espera cadenas: los parámetros repetidos (arrays) se rechazan | F1 · http | Test |
+| 15.3.7 | L2 | Sin contaminación de parámetros HTTP | **Verificado (F1)** | Zod espera cadenas: un parámetro repetido llega como array y se rechaza con 400 `VALIDATION_ERROR`; ninguno de los valores se elige en silencio | F1 · http | Test: `apps/api/test/finance/api-reports.test.ts` («rechaza un parámetro repetido…») |
 
 ## V16 — Registro de seguridad y gestión de errores
 
@@ -327,8 +327,8 @@
 
 | Documento | Requisitos | Fase |
 |---|---|---|
-| `docs/seguridad/limites.md`: límites de negocio, funciones costosas y lista de palabras del contexto | 2.1.3, 6.1.2, 15.1.3 | F1 (creado; parte de autenticación) |
-| `docs/seguridad/datos.md`: clasificación de los datos y protección por nivel | 14.1.1, 14.1.2 | F1 |
+| `docs/seguridad/limites.md`: límites de negocio, funciones costosas y lista de palabras del contexto | 2.1.3, 6.1.2, 15.1.3 | F1 (creado; §7 reúne todos los límites del libro y la autenticación) |
+| `docs/seguridad/datos.md`: clasificación de los datos y protección por nivel | 14.1.1, 14.1.2 | F1 (creado) |
 | `docs/seguridad/logs.md`: inventario de los eventos y sus destinos | 16.1.1, 16.2.3 | F1 (creado; parte de autenticación) |
 | `docs/seguridad/criptografia.md`: inventario y ciclo de vida de las claves | 11.1.1, 11.1.2 | F1–F2 |
 | `docs/seguridad/comunicaciones.md`: destinos salientes permitidos | 13.1.1, 13.2.4 | F2 |

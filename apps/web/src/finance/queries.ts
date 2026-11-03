@@ -48,6 +48,14 @@ function invalidate(queryClient: QueryClient): Promise<void> {
   return queryClient.invalidateQueries({ queryKey: [ROOT] });
 }
 
+/**
+ * Codifica un valor como segmento de ruta (ASVS 1.2.2). Los ids de la ruta del navegador
+ * (`useParams`) los controla quien escribe la URL: sin codificar, `..%2Freports` cambiaría de endpoint.
+ */
+export function segment(value: string): string {
+  return encodeURIComponent(value);
+}
+
 /** Query string con solo los filtros que tienen valor. */
 export function queryString(params: Record<string, string | undefined>): string {
   const search = new URLSearchParams();
@@ -73,7 +81,7 @@ export function useAccounts(includeArchived: boolean) {
 export function useAccount(id: string) {
   return useQuery({
     queryKey: [ROOT, 'account', id],
-    queryFn: () => api(`/accounts/${id}`, { schema: accountResponseSchema }),
+    queryFn: () => api(`/accounts/${segment(id)}`, { schema: accountResponseSchema }),
   });
 }
 
@@ -90,7 +98,7 @@ export function useUpdateAccount() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: { id: string; body: UpdateAccountRequest }) =>
-      api(`/accounts/${input.id}`, {
+      api(`/accounts/${segment(input.id)}`, {
         method: 'PATCH',
         body: input.body,
         schema: accountResponseSchema,
@@ -103,7 +111,7 @@ export function useArchiveAccount() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) =>
-      api(`/accounts/${id}/archive`, { method: 'POST', schema: accountResponseSchema }),
+      api(`/accounts/${segment(id)}/archive`, { method: 'POST', schema: accountResponseSchema }),
     onSuccess: () => invalidate(queryClient),
   });
 }
@@ -133,7 +141,7 @@ export function useRenameCategory() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: { id: string; name: string }) =>
-      api(`/categories/${input.id}`, {
+      api(`/categories/${segment(input.id)}`, {
         method: 'PATCH',
         body: { name: input.name },
         schema: categoryResponseSchema,
@@ -146,7 +154,7 @@ export function useArchiveCategory() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) =>
-      api(`/categories/${id}/archive`, { method: 'POST', schema: categoryResponseSchema }),
+      api(`/categories/${segment(id)}/archive`, { method: 'POST', schema: categoryResponseSchema }),
     onSuccess: () => invalidate(queryClient),
   });
 }
@@ -201,7 +209,7 @@ export function useUpdateMovement() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: { id: string; body: UpdateMovementRequest }) =>
-      api(`/movements/${input.id}`, {
+      api(`/movements/${segment(input.id)}`, {
         method: 'PATCH',
         body: input.body,
         schema: movementResponseSchema,
@@ -214,7 +222,7 @@ export function useConfirmMovement() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) =>
-      api(`/movements/${id}/confirm`, { method: 'POST', schema: movementResponseSchema }),
+      api(`/movements/${segment(id)}/confirm`, { method: 'POST', schema: movementResponseSchema }),
     onSuccess: () => invalidate(queryClient),
   });
 }
@@ -222,7 +230,7 @@ export function useConfirmMovement() {
 export function useDeleteMovement() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api(`/movements/${id}`, { method: 'DELETE' }),
+    mutationFn: (id: string) => api(`/movements/${segment(id)}`, { method: 'DELETE' }),
     onSuccess: () => invalidate(queryClient),
   });
 }
@@ -262,7 +270,7 @@ export function useUpdateTransfer() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: { id: string; body: UpdateTransferRequest }) =>
-      api(`/transfers/${input.id}`, {
+      api(`/transfers/${segment(input.id)}`, {
         method: 'PATCH',
         body: input.body,
         schema: transferResponseSchema,
@@ -274,7 +282,7 @@ export function useUpdateTransfer() {
 export function useDeleteTransfer() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api(`/transfers/${id}`, { method: 'DELETE' }),
+    mutationFn: (id: string) => api(`/transfers/${segment(id)}`, { method: 'DELETE' }),
     onSuccess: () => invalidate(queryClient),
   });
 }
@@ -285,7 +293,7 @@ export function useReconciliations(accountId: string) {
   return useQuery({
     queryKey: [ROOT, 'reconciliations', accountId],
     queryFn: () =>
-      api(`/accounts/${accountId}/reconciliations`, {
+      api(`/accounts/${segment(accountId)}/reconciliations`, {
         schema: listOf(reconciliationResponseSchema),
       }).then((result) => result.items),
   });
@@ -295,7 +303,7 @@ export function useCreateReconciliation(accountId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body: CreateReconciliationRequest) =>
-      api(`/accounts/${accountId}/reconciliations`, {
+      api(`/accounts/${segment(accountId)}/reconciliations`, {
         method: 'POST',
         body,
         schema: createReconciliationResponseSchema,
@@ -307,7 +315,7 @@ export function useCreateReconciliation(accountId: string) {
 export function useDeleteReconciliation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api(`/reconciliations/${id}`, { method: 'DELETE' }),
+    mutationFn: (id: string) => api(`/reconciliations/${segment(id)}`, { method: 'DELETE' }),
     onSuccess: () => invalidate(queryClient),
   });
 }
@@ -329,7 +337,9 @@ export function useCategoryReport(month: string) {
   return useQuery({
     queryKey: [ROOT, 'reports', 'categories', month],
     queryFn: () =>
-      api(`/reports/monthly/${month}/categories`, { schema: categoryReportResponseSchema }),
+      api(`/reports/monthly/${segment(month)}/categories`, {
+        schema: categoryReportResponseSchema,
+      }),
   });
 }
 

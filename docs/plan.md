@@ -1260,7 +1260,7 @@ Tamaños relativos (S, M, L, XL). No pongo días porque no conozco tu ritmo y un
     - Que un código de recuperación vale una sola vez.
     - Las caducidades por inactividad y absoluta, con un reloj simulado.
     - El desbloqueo tras inactividad: acepta solo la contraseña (sin TOTP) dentro de las 24 h; rechaza el desbloqueo pasada la caducidad absoluta, en una sesión `mfa_pending` o sin la cookie; rota el token; no habilita las rutas S+; 5 fallos revocan la sesión.
-    - La matriz de **permisos**: todas las rutas sin sesión → 401; en `mfa_pending` → 401; sin CSRF → 403; S+ sin reautenticación → 403; token de dispositivo fuera de `/ingest` → 401/403.
+    - La matriz de **permisos**: todas las rutas sin sesión → 401; en `mfa_pending` → 401; sin CSRF → 403; S+ sin reautenticación → 403. El caso «token de dispositivo fuera de `/ingest`» pasa a la fase 2, que es cuando existen los tokens (`device_tokens`).
     - Las contraseñas cortas, comunes o filtradas, rechazadas (con un doble de prueba de la API de HIBP).
     - Los límites de peticiones.
   - Las filas de V6, V7 y V8 de `asvs-l2.md` asignadas a la fase 1 están en estado «cumplido» y cada una enlaza a su test.
@@ -1313,6 +1313,7 @@ Tamaños relativos (S, M, L, XL). No pongo días porque no conozco tu ritmo y un
   - Cabeceras verificadas: sin errores de CSP en la consola; HSTS presente.
   - Revocar un token → el atajo recibe 401 y muestra la notificación local.
   - Hay tests de la ingesta (idempotencia, huella, marcas, importes con los formatos **reales** de T3 reescritos con cifras inventadas, permisos del token).
+  - **Un token de dispositivo fuera de `/ingest/*` → 401/403**, en todas las rutas de la API y con un test por cada combinación de credencial y ruta (matriz de permisos de §6; ASVS 8.2.2 y 8.2.3). Y un token con `ingest:read-catalog` no puede llamar a `POST /ingest/wallet-transactions`.
   - Gasto manual registrado en menos de 15 s.
   - Los atajos manuales (gasto, ingreso y transferencia) funcionan desde el Centro de Control con menús que salen de la API, y «Otro» sin categoría deja el movimiento pendiente.
   - Filas de la fase 2 en `asvs-l2.md` actualizadas.
