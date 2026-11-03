@@ -1,11 +1,14 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { problemDetailsSchema } from '@backoffice/shared';
 import { useAuthTestContext } from '../support/auth.ts';
+import type { TestClient } from '../support/client.ts';
 import {
   createAccount,
   createCategory,
   createMovement,
   expectProblem,
   resetLedger,
+  type Created,
 } from '../support/ledger.ts';
 
 const getCtx = useAuthTestContext();
@@ -70,7 +73,7 @@ describe('cuentas', () => {
 
   it('el nombre es único entre las activas, sin distinguir mayúsculas', async () => {
     const client = await getCtx().loggedIn();
-    const account = await createAccount(client, { name: 'Ahorro' });
+    const account = await createAccount(client, { name: 'Ahorro', openingBalanceCents: 0 });
     expectProblem(
       await client.post('/api/v1/accounts', {
         name: 'AHORRO',
@@ -88,7 +91,7 @@ describe('cuentas', () => {
   it('lista sin las archivadas salvo que se pida', async () => {
     const client = await getCtx().loggedIn();
     const active = await createAccount(client);
-    const archived = await createAccount(client);
+    const archived = await createAccount(client, { openingBalanceCents: 0 });
     await client.post(`/api/v1/accounts/${archived.id}/archive`);
 
     const ids = (res: { body: unknown }): string[] =>
@@ -137,7 +140,7 @@ describe('cuentas', () => {
 
   it('una cuenta archivada no se edita', async () => {
     const client = await getCtx().loggedIn();
-    const account = await createAccount(client);
+    const account = await createAccount(client, { openingBalanceCents: 0 });
     await client.post(`/api/v1/accounts/${account.id}/archive`);
     expectProblem(
       await client.patch(`/api/v1/accounts/${account.id}`, { name: 'Otro' }),
@@ -173,7 +176,7 @@ describe('cuentas', () => {
   it('archivar: 409 con movimientos pendientes; después, idempotente', async () => {
     const ctx = getCtx();
     const client = await ctx.loggedIn();
-    const account = await createAccount(client);
+    const account = await createAccount(client, { openingBalanceCents: 0 });
     const pending = await ctx.database.db
       .insertInto('movements')
       .values({
@@ -188,6 +191,7 @@ describe('cuentas', () => {
       .returning('id')
       .executeTakeFirstOrThrow();
 
+    // Con saldo 0 y un pendiente: el pendiente lo impide.
     expectProblem(await client.post(`/api/v1/accounts/${account.id}/archive`), 409, 'CONFLICT');
 
     await ctx.database.db.deleteFrom('movements').where('id', '=', pending.id).execute();
@@ -200,6 +204,79 @@ describe('cuentas', () => {
       404,
       'NOT_FOUND',
     );
+  });
+
+  describe('archivar exige saldo 0', () => {
+    const archive = (client: TestClient, account: Created) =>
+      client.post(`/api/v1/accounts/${account.id}/archive`);
+
+    it('con saldo distinto de 0: 409 con el saldo actual en el mensaje', async () => {
+      const client = await getCtx().loggedIn();
+      const positive = await createAccount(client, { openingBalanceCents: 12_540 });
+      const res = await archive(client, positive);
+      expectProblem(res, 409, 'CONFLICT');
+      // Intl usa un espacio duro antes del símbolo del euro.
+      expect(problemDetailsSchema.parse(res.body).detail).toBe(
+        'Para archivar la cuenta, su saldo debe ser 0 (ahora: 125,40\u00a0€). Vacíala antes con una transferencia',
+      );
+      const negative = await createAccount(client, { openingBalanceCents: -500 });
+      expectProblem(await archive(client, negative), 409, 'CONFLICT');
+      expect((await client.get(`/api/v1/accounts/${positive.id}`)).body).toMatchObject({
+        archived: false,
+      });
+    });
+
+    it('cuenta los movimientos y transferencias de fecha futura', async () => {
+      const client = await getCtx().loggedIn();
+      const account = await createAccount(client, { openingBalanceCents: 0 });
+      const other = await createAccount(client, { openingBalanceCents: 0 });
+      const income = await createCategory(client, 'income');
+      await createMovement(client, {
+        kind: 'income',
+        amountCents: 1_000,
+        accountId: account.id,
+        categoryId: income.id,
+        bookedOn: '2099-01-01',
+      });
+      expectProblem(await archive(client, account), 409, 'CONFLICT');
+      const out = await client.post('/api/v1/transfers', {
+        fromAccountId: account.id,
+        toAccountId: other.id,
+        amountCents: 1_000,
+        bookedOn: '2099-02-01',
+      });
+      expect(out.status).toBe(201);
+      expect((await archive(client, account)).status).toBe(200);
+    });
+
+    it('con saldo 0 se archiva', async () => {
+      const client = await getCtx().loggedIn();
+      const account = await createAccount(client, { openingBalanceCents: 5_000 });
+      const other = await createAccount(client, { openingBalanceCents: 0 });
+      await client.post('/api/v1/transfers', {
+        fromAccountId: account.id,
+        toAccountId: other.id,
+        amountCents: 5_000,
+        bookedOn: '2026-10-10',
+      });
+      const res = await archive(client, account);
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ archived: true });
+    });
+
+    it('un ajuste de conciliación que deja el saldo en 0 permite archivar', async () => {
+      const client = await getCtx().loggedIn();
+      const account = await createAccount(client, { openingBalanceCents: 10_000 });
+      expectProblem(await archive(client, account), 409, 'CONFLICT');
+      const reconciled = await client.post(`/api/v1/accounts/${account.id}/reconciliations`, {
+        month: '2026-10',
+        asOf: '2026-10-31',
+        statementBalanceCents: 0,
+      });
+      expect(reconciled.status, JSON.stringify(reconciled.body)).toBe(201);
+      expect(reconciled.body).toMatchObject({ differenceCents: -10_000 });
+      expect((await archive(client, account)).status).toBe(200);
+    });
   });
 });
 

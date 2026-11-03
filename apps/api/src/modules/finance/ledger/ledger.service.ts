@@ -15,23 +15,25 @@
  * referencia inexistente, no un conflicto.
  */
 import type { Kysely } from 'kysely';
-import type {
-  CreateAccountRequest,
-  CreateCategoryRequest,
-  CreateMovementRequest,
-  CreateReconciliationRequest,
-  CreateTransferRequest,
-  ListMovementsQuery,
-  ListTransfersQuery,
-  UpdateAccountRequest,
-  UpdateMovementRequest,
-  UpdateTransferRequest,
+import {
+  formatCents,
+  type CreateAccountRequest,
+  type CreateCategoryRequest,
+  type CreateMovementRequest,
+  type CreateReconciliationRequest,
+  type CreateTransferRequest,
+  type ListMovementsQuery,
+  type ListTransfersQuery,
+  type UpdateAccountRequest,
+  type UpdateMovementRequest,
+  type UpdateTransferRequest,
 } from '@backoffice/shared';
 import type { Database } from '../../../db/schema.ts';
 import { isUniqueViolation } from '../../../db/errors.ts';
 import { AppError } from '../../../http/errors.ts';
 import type { Clock } from '../../../lib/clock.ts';
 import type { LocalDate } from './domain/dates.ts';
+import { balanceAsOf } from './domain/balances.ts';
 import { reconcile, reconciliationDiscrepancy } from './domain/reconciliation.ts';
 import {
   LedgerRepository,
@@ -231,7 +233,14 @@ export class LedgerService {
     });
   }
 
-  /** Archiva la cuenta (idempotente). Con movimientos pendientes, 409: hay que confirmarlos o borrarlos. */
+  /**
+   * Archiva la cuenta (idempotente). Una cuenta archivada queda congelada, así que solo se archiva si
+   * no deja nada vivo: sin movimientos pendientes (hay que confirmarlos o borrarlos) y con saldo 0.
+   *
+   * El saldo es el actual, sin fecha: cuentan todos los movimientos confirmados y las transferencias,
+   * también los de fecha futura. Un ajuste de conciliación que lo deje en 0 vale igual que cualquier
+   * otro movimiento. Se lee dentro de la transacción junto con el recuento de pendientes.
+   */
   async archiveAccount(id: string): Promise<AccountRecord> {
     return this.#transaction(async (repo) => {
       const account = await repo.findAccount(id);
@@ -240,6 +249,12 @@ export class LedgerService {
       if ((await repo.countPendingMovements(id)) > 0) {
         throw conflict(
           'La cuenta tiene movimientos pendientes: confírmalos o bórralos antes de archivarla',
+        );
+      }
+      const balance = balanceAsOf(await repo.loadLedger(account), null);
+      if (balance !== 0) {
+        throw conflict(
+          `Para archivar la cuenta, su saldo debe ser 0 (ahora: ${formatCents(balance)}). Vacíala antes con una transferencia`,
         );
       }
       await repo.archiveAccount(id, this.#deps.clock.now());

@@ -32,7 +32,9 @@ Códigos de error del libro:
 | 400 | Cuerpo, consulta o identificador no válidos; origen y destino de una transferencia iguales; `asOf` fuera del mes |
 | 404 | El recurso de la URL no existe |
 | 422 | El cuerpo es válido pero incoherente con el libro: **cuenta o categoría inexistente** (se comprueba antes de insertar), categoría de otro tipo, fecha anterior a la apertura de la cuenta (movimientos, transferencias y conciliaciones), importe 0 en un movimiento confirmado |
-| 409 | Cuenta o categoría archivada; ajuste de conciliación (no se edita ni se borra: solo con su conciliación); nombre duplicado; mes ya conciliado; borrador ya confirmado; archivar una cuenta con pendientes |
+| 409 | Cuenta o categoría archivada; ajuste de conciliación (no se edita ni se borra: solo con su conciliación); nombre duplicado; mes ya conciliado; borrador ya confirmado; archivar una cuenta con pendientes o con saldo distinto de 0 |
+
+**Archivar exige saldo 0**: el saldo actual (`balanceAsOf` sin fecha: todos los movimientos confirmados y las transferencias, también los de fecha futura) debe ser 0 y no puede haber movimientos pendientes en la cuenta; si no, 409 con el saldo en el mensaje (p. ej. «Para archivar la cuenta, su saldo debe ser 0 (ahora: 125,40 €). Vacíala antes con una transferencia»). Un ajuste de conciliación que lleve el saldo a 0 vale como cualquier otro movimiento. Así una cuenta archivada no deja dinero «escondido» en los saldos totales.
 
 Una cuenta archivada queda **congelada**: no admite movimientos, transferencias ni conciliaciones nuevos, ni editar o borrar los que tiene (409). Las cuentas y categorías no se borran, se archivan; por eso ninguna ruta de esta versión borra una fila referenciada y `isReferencedRowError` (`src/db/errors.ts`) todavía no se usa. Si algún día lo hace, será solo en el borrado: `23503` al insertar significa referencia inexistente (422), no conflicto.
 
