@@ -44,6 +44,12 @@ docs/            Plan, ADR, seguridad y runbooks
    cp .env.example .env
    ```
 
+   Rellena también `TOTP_ENCRYPTION_KEY` (32 bytes aleatorios en base64; guarda una copia en tu gestor de contraseñas). Los demás valores del ejemplo sirven para desarrollo (`HOST=127.0.0.1`, `PUBLIC_ORIGIN=http://localhost:5173`, `TRUST_PROXY_HOPS=0`):
+
+   ```bash
+   node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"
+   ```
+
 3. Arranca PostgreSQL 18 (solo escucha en `127.0.0.1`):
 
    ```bash
@@ -68,11 +74,19 @@ docs/            Plan, ADR, seguridad y runbooks
    curl http://127.0.0.1:3000/api/v1/health
    ```
 
-7. Arranca la web (Vite redirige `/api` a la API):
+7. Crea el único usuario (una sola vez). Pide la contraseña sin mostrarla (15 caracteres o más) y la comprueba contra Pwned Passwords, así que necesita conexión. Muestra **una sola vez** la clave TOTP, el enlace `otpauth://` y 10 códigos de recuperación: añade la clave a tu app de autenticación y guarda los códigos en el gestor de contraseñas:
+
+   ```bash
+   pnpm user:create
+   ```
+
+8. Arranca la web (Vite redirige `/api` a la API) y entra en http://localhost:5173 con el usuario, la contraseña y el código de la app:
 
    ```bash
    pnpm --filter @backoffice/web dev
    ```
+
+Otras operaciones de la cuenta (restablecer la contraseña, cerrar todas las sesiones, deshabilitar la cuenta): [`apps/api/src/modules/auth/README.md`](apps/api/src/modules/auth/README.md).
 
 ## Comprobaciones (las mismas que la CI)
 

@@ -172,6 +172,7 @@ jobs (infraestructura) ──▶ tasks, notifications, imports, auth (limpiezas 
 | username | text | NOT NULL; índice único sobre `lower(username)` |
 | password_hash | text | NOT NULL. Formato PHC (`$argon2id$v=19$m=…,t=…,p=…$…`): guarda los parámetros, así que se pueden endurecer sin migración, recalculando el hash en el siguiente inicio de sesión |
 | timezone | text | NOT NULL DEFAULT `'Europe/Madrid'` |
+| disabled_at | timestamptz | NULL. Cuenta deshabilitada por el script `user:disable` (ASVS 7.4.2); no se borra para conservar la auditoría |
 | created_at, updated_at | timestamptz | |
 
 Índice único `ON users ((true))`: **garantiza en la base de datos que solo hay un usuario**. Si algún día hubiera varios, se elimina con una migración.
@@ -182,8 +183,8 @@ jobs (infraestructura) ──▶ tasks, notifications, imports, auth (limpiezas 
 | id | uuid | PK |
 | user_id | uuid | FK `users` ON DELETE CASCADE |
 | token_hash | bytea | NOT NULL UNIQUE. SHA-256 del valor de la cookie: si se filtra la base de datos, las sesiones no se pueden usar |
-| csrf_token_hash | bytea | NOT NULL |
 | stage | text | `CHECK IN ('mfa_pending','full')`. Tras la contraseña, la sesión queda en `mfa_pending` (5 minutos, solo puede llamar a `/auth/login/second-factor`); con el segundo factor se **emite un token nuevo** en `full` (ASVS 7.2.4) |
+| failed_attempts | smallint | NOT NULL DEFAULT 0. Fallos de segundo factor, desbloqueo o reautenticación; al quinto, la sesión se revoca |
 | created_at, last_seen_at | timestamptz | `last_seen_at` controla la caducidad por inactividad (§6.2). Una sesión inactiva **no se revoca**: queda bloqueada hasta que se desbloquea con un factor (`POST /auth/unlock`) o hasta que llega su caducidad absoluta |
 | expires_at | timestamptz | NOT NULL (caducidad absoluta) |
 | reauthenticated_at | timestamptz | NULL. Última reautenticación completa, para las acciones sensibles (§6.2) |
@@ -191,6 +192,8 @@ jobs (infraestructura) ──▶ tasks, notifications, imports, auth (limpiezas 
 | user_agent | text | Para listar las sesiones abiertas |
 
 Índice en `expires_at` para la limpieza periódica.
+
+**Token CSRF**: no se guarda. Se deriva del token de sesión con `HMAC-SHA256(token, "csrf-v1")` (ADR 0006): quien no tiene la cookie no puede calcularlo y cambia cuando rota la sesión. Por eso no hay columna `csrf_token_hash` (estaba en la primera versión de este plan).
 
 **`totp_authenticators`** (segundo factor obligatorio)
 | Columna | Tipo | Restricciones y notas |
@@ -203,7 +206,7 @@ jobs (infraestructura) ──▶ tasks, notifications, imports, auth (limpiezas 
 | confirmed_at | timestamptz | NULL hasta que se verifica el primer código |
 | created_at | timestamptz | |
 
-Índice único parcial `(user_id) WHERE confirmed_at IS NOT NULL`: un solo TOTP activo.
+Índices únicos parciales `(user_id) WHERE confirmed_at IS NOT NULL` y `(user_id) WHERE confirmed_at IS NULL`: un solo TOTP activo y, como mucho, un alta pendiente. Rotación de `TOTP_ENCRYPTION_KEY`: ADR 0006, decisión 11.
 
 **`recovery_codes`** (códigos de recuperación de un solo uso)
 | Columna | Tipo | Restricciones y notas |
@@ -234,7 +237,7 @@ jobs (infraestructura) ──▶ tasks, notifications, imports, auth (limpiezas 
 | id | bigint identity | PK |
 | occurred_at | timestamptz | índice |
 | actor | text | `user`, `device:<id>` o `system` |
-| action | text | `login.success`, `login.failure`, `mfa.success`, `mfa.failure`, `recovery_code.used`, `reauth.success`, `device_token.created`, `device_token.revoked`, `plan_import.confirmed`, `password.changed`, `totp.changed`, `data.exported`, `authz.denied`… (inventario completo en `docs/seguridad/`, ASVS 16.1.1) |
+| action | text | `login.password_success`, `login.failure`, `mfa.success`, `mfa.failure`, `recovery_code.used`, `reauth.success`, `device_token.created`, `device_token.revoked`, `plan_import.confirmed`, `password.changed`, `totp.changed`, `data.exported`… (inventario completo y actualizado en `docs/seguridad/logs.md`, ASVS 16.1.1). Un trigger rechaza `UPDATE`, `DELETE` y `TRUNCATE` |
 | entity_type, entity_id | text, uuid | NULL |
 | metadata | jsonb | Sin importes, tokens ni contraseñas |
 
@@ -546,18 +549,19 @@ notes *─* tags (note_tags)
 | Método | Ruta | Auth | Descripción |
 |---|---|---|---|
 | GET | `/health` | P | `{ status: "ok" }`. Sin versión ni detalles internos |
-| POST | `/auth/login` | P (con límite de peticiones) | `{ username, password }` → 200 `{ next: "second-factor" }` + cookie de sesión en `mfa_pending` |
-| POST | `/auth/login/second-factor` | sesión `mfa_pending` (con límite de peticiones) | `{ totp }`, `{ recoveryCode }` o la aserción WebAuthn → 204 + **cookie nueva** en `full` |
-| POST | `/auth/logout` | S | Revoca la sesión actual y responde con `Clear-Site-Data` (ASVS 14.3.1) |
-| GET | `/auth/session` | S | `{ user, csrfToken, expiresAt, idleExpiresAt }` |
-| POST | `/auth/unlock` | cookie de una sesión `full` bloqueada por inactividad, dentro de su caducidad absoluta (con límite de peticiones) | `{ password }` o passkey → 204 + **cookie nueva**. Un solo factor, junto con el secreto de sesión (NIST SP 800-63B-4). 5 intentos fallidos → la sesión se revoca |
-| POST | `/auth/reauth` | S | Reautenticación **completa**: `{ password, totp }` o passkey |
-| POST | `/auth/password` | S+ | `{ currentPassword, newPassword }`. Comprueba la lista de contraseñas filtradas y ofrece cerrar las demás sesiones |
+| POST | `/auth/login` | P (con límite de peticiones) | `{ username, password }` → 200 `{ next: "second-factor", csrfToken, expiresAt }` + cookie de sesión en `mfa_pending` |
+| POST | `/auth/login/second-factor` | sesión `mfa_pending` (con límite de peticiones) | `{ totp }`, `{ recoveryCode }` o la aserción WebAuthn → 200 con el estado de la sesión (y su token CSRF nuevo) + **cookie nueva** en `full` |
+| POST | `/auth/logout` | cualquier sesión | Revoca la sesión actual y responde con `Clear-Site-Data` (ASVS 14.3.1) |
+| GET | `/auth/session` | cualquier sesión, **también bloqueada o pendiente** | `{ user, stage, state, csrfToken, expiresAt, idleExpiresAt, reauthenticatedUntil }`. `state` = `pending`, `locked` o `active`: la web decide con él qué pantalla mostrar. Sin datos de negocio |
+| POST | `/auth/unlock` | cookie de una sesión `full` bloqueada por inactividad, dentro de su caducidad absoluta (con límite de peticiones) | `{ password }` o passkey → 200 con el estado + **cookie nueva**. Un solo factor, junto con el secreto de sesión (NIST SP 800-63B-4). 5 intentos fallidos → la sesión se revoca |
+| POST | `/auth/reauth` | S | Reautenticación **completa**: `{ password, totp }` o passkey → 200 con el estado + **cookie nueva** |
+| POST | `/auth/password` | S+ | `{ currentPassword, newPassword, terminateOtherSessions }`. Comprueba la lista de contraseñas filtradas y ofrece cerrar las demás sesiones |
 | POST | `/auth/totp/enroll` | S+ | Genera una semilla nueva sin confirmar; devuelve la clave y el URI `otpauth://` |
-| POST | `/auth/totp/confirm` | S+ | `{ code }`. Activa la semilla nueva y desactiva la anterior; ofrece cerrar las demás sesiones |
+| POST | `/auth/totp/confirm` | S+ | `{ code, terminateOtherSessions }`. Activa la semilla nueva y desactiva la anterior; ofrece cerrar las demás sesiones |
 | POST | `/auth/recovery-codes` | S+ | Regenera los 10 códigos y los devuelve **una sola vez** |
 | GET | `/export` | S+ | Exportación completa en JSON (`Content-Disposition: attachment`) |
-| GET / DELETE | `/auth/sessions`, `/auth/sessions/:id` | S | Ver y cerrar las sesiones abiertas |
+| GET | `/auth/sessions` | S | Ver las sesiones abiertas |
+| DELETE | `/auth/sessions/:id` | S+ | Cerrar una sesión (§6.2: cerrarlas exige reautenticación) |
 | GET | `/auth/device-tokens` | S | Lista (prefijo, uso, caducidad) |
 | POST | `/auth/device-tokens` | S+ | `{ name, expiresInDays, scopes }` → 201 con el token **en claro una sola vez** |
 | DELETE | `/auth/device-tokens/:id` | S+ | Revoca el token (no lo borra) |
@@ -995,8 +999,9 @@ La matriz requisito a requisito, con su fase, módulo y test, está en [`docs/se
   - Si se pierde el TOTP: código de recuperación.
   - Si se pierde todo: un script en el servidor. Exige acceso SSH, que equivale a la verificación de identidad del alta (ASVS 6.4.4). El restablecimiento de la contraseña **no desactiva el TOTP** (ASVS 6.4.3).
 - **Defensa contra la fuerza bruta** (documentada, ASVS 6.1.1):
-  - Login: 5 intentos por IP cada 15 minutos, más una espera creciente global.
-  - Segundo factor: 5 intentos por sesión `mfa_pending`; después, la sesión se revoca y hay que volver a empezar.
+  - Login: 5 intentos por IP cada 15 minutos y 20 por hora en total (todas las IP).
+  - Segundo factor, desbloqueo y reautenticación: 10 intentos por IP cada 15 minutos y 5 fallos por sesión; después, la sesión se revoca y hay que volver a empezar.
+  - Detalle, IPv6, `TRUST_PROXY_HOPS` y la contrapartida del límite global: `docs/seguridad/limites.md`.
   - **Sin bloqueo de cuenta**: con un solo usuario, el bloqueo sería una denegación de servicio contra uno mismo.
 - **Vías de autenticación documentadas** (ASVS 6.1.3 y 6.3.4):
   1. Contraseña + TOTP.
@@ -1026,7 +1031,7 @@ La matriz requisito a requisito, con su fase, módulo y test, está en [`docs/se
 
 **Cookies y CSRF**
 - Cookie `__Host-sid`: `HttpOnly; Secure; SameSite=Lax; Path=/` (ASVS 3.3).
-- Token CSRF sincronizado en la cabecera `X-CSRF-Token` y comprobación de `Origin` / `Sec-Fetch-Site` (ASVS 3.5.1). Sin `csurf`.
+- Token CSRF sincronizado en la cabecera `X-CSRF-Token`, **derivado** del token de sesión (HMAC, sin columna; ADR 0006), y comprobación de `Origin` / `Sec-Fetch-Site` en toda petición que modifica datos, también en el login (ASVS 3.5.1). Sin `csurf`.
 - Por qué `Lax` y no `Strict`: con `Strict`, una navegación iniciada fuera de la app (desde una notificación) podría llegar sin la cookie [VERIFICAR en el dispositivo].
 
 **Límite de peticiones**: login y segundo factor (arriba); ingesta, 30 por minuto por token; resto de la API, 300 por minuto (ASVS 2.4.1).
@@ -1051,13 +1056,14 @@ La matriz requisito a requisito, con su fase, módulo y test, está en [`docs/se
 **Cabeceras** (ASVS 3.4) con helmet:
 - **HSTS** de 1 año con `includeSubDomains`.
 - **CSP** con `default-src 'self'`, sin `unsafe-inline` en los scripts y con `frame-ancestors 'none'`.
-- `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` y `Permissions-Policy` restrictiva.
+- `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` y `Permissions-Policy` restrictiva (propia: helmet 8 no la envía).
 - **`Cache-Control: no-store` en todas las respuestas de `/api`** (ASVS 14.3.2).
 
 **Secretos**
 - Todos en variables de entorno, validadas al arrancar; `.env.example` sin valores.
 - En producción, en un archivo con permisos `600` fuera del repositorio, y copia en el gestor de contraseñas.
-- Inventario: `DATABASE_URL`, `VAPID_PRIVATE_KEY`, `TOTP_ENCRYPTION_KEY`, `HIBP_USER_AGENT` y `PUBLIC_ORIGIN`. Solo en el host, nunca en la app: la contraseña de restic y las claves del almacén de copias.
+- Inventario: `DATABASE_URL`, `VAPID_PRIVATE_KEY`, `TOTP_ENCRYPTION_KEY` (con `TOTP_ENCRYPTION_KEY_VERSION`) y `PUBLIC_ORIGIN`. HIBP usa un User-Agent fijo y genérico: no hace falta `HIBP_USER_AGENT`.
+- Configuración de red (no secreta): `HOST` (127.0.0.1 por defecto: en desarrollo la API no es accesible desde la red local) y `TRUST_PROXY_HOPS` (0 por defecto; 1 detrás de Caddy). Ver `docs/seguridad/limites.md`. Solo en el host, nunca en la app: la contraseña de restic y las claves del almacén de copias.
 - **Desviación documentada de ASVS 13.3.1** (exige un gestor de secretos tipo *vault*): con un único host y un único operador, un *vault* añadiría infraestructura sin reducir el riesgo real. Si el host se compromete, el atacante obtiene igualmente los secretos en memoria. Mitigación: permisos mínimos, rotación documentada en `docs/runbooks/` y secretos de copias fuera de la app.
 
 **Repositorio público** [RESUELTO]
@@ -1070,7 +1076,7 @@ La matriz requisito a requisito, con su fase, módulo y test, está en [`docs/se
 
 **Logs (ASVS V16)**
 - pino en JSON, con `redact` para cookies, `authorization`, contraseñas, códigos TOTP, tokens y cuerpos con datos financieros.
-- Marcas de tiempo en UTC. Inventario de los eventos registrados en `docs/seguridad/` (ASVS 16.1.1).
+- Marcas de tiempo en UTC. Inventario de los eventos registrados en `docs/seguridad/logs.md` (ASVS 16.1.1).
 - `audit_events` en la base de datos para los eventos de seguridad: autenticación con éxito y fallida, segundo factor, reautenticación, tokens, exportaciones y denegaciones.
 - Los logs se copian a diario al almacén de copias, que es de solo añadir y está fuera del servidor (ASVS 16.4.2 y 16.4.3, cumplimiento **parcial**: no hay un SIEM ni alertas en tiempo real; se acepta el riesgo y se documenta).
 
@@ -1252,7 +1258,7 @@ Tamaños relativos (S, M, L, XL). No pongo días porque no conozco tu ritmo y un
   - Las filas de V6, V7 y V8 de `asvs-l2.md` asignadas a la fase 1 están en estado «cumplido» y cada una enlaza a su test.
 - **Riesgos**
   - Errores sutiles de autenticación (la matriz ASVS y los tests de permisos los mitigan).
-  - Cookies `Secure` en `localhost` con Safari [VERIFICAR; si hace falta, mkcert].
+  - Cookies `Secure` en `localhost` con Safari [RESUELTO: el desarrollo es en Windows sin Safari; `__Host-sid` con `Secure` funciona sobre `http://localhost` en Chromium (comprobado el 2026-11-03). El iPhone solo usará el servidor HTTPS de la fase 2. Sin mkcert].
   - El desfase de reloj en el TOTP.
   - Que se cuelen números decimales en los importes.
 - **Conceptos para la entrevista**
