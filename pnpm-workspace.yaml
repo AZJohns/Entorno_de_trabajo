@@ -14,3 +14,13 @@ minimumReleaseAge: 4320
 # pnpm 10 no ejecuta scripts de instalación de dependencias salvo los de esta lista (vacía a
 # propósito). Añadir un paquete aquí exige justificarlo en docs/dependencias.md.
 onlyBuiltDependencies: []
+
+overrides:
+  # Seguridad: GHSA-g3hv-75wg-m249 (gravedad moderada; denegación de servicio por amplificación de
+  # patrones glob). minimatch < 11.0.1 es vulnerable. Solo llega como dependencia de DESARROLLO (eslint
+  # → @eslint/config-array y @typescript-eslint/typescript-estree), que declaran ^10.x: por eso
+  # Dependabot no puede subirla. Verificado con 11.0.x: ESLint analiza los mismos archivos con los
+  # mismos resultados y pasan lint, typecheck, tests y build.
+  # Se fija ^11.0.1 (no >=11.0.1) para no aceptar una futura 12.x sin revisarla.
+  # RETIRAR cuando eslint y typescript-eslint acepten minimatch >= 11.0.1 en su propio rango.
+  minimatch: '^11.0.1'
