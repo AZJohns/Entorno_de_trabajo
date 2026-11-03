@@ -30,9 +30,28 @@ const TITLES: Record<ErrorCode, string> = {
   VALIDATION_ERROR: 'Datos no válidos',
   MALFORMED_JSON: 'JSON mal formado',
   PAYLOAD_TOO_LARGE: 'Petición demasiado grande',
+  UNSUPPORTED_MEDIA_TYPE: 'Tipo de contenido no admitido',
   NOT_FOUND: 'Recurso no encontrado',
+  CONFLICT: 'Conflicto con el estado actual',
   INTERNAL_ERROR: 'Error interno',
+  UNAUTHENTICATED: 'Sesión no iniciada',
+  SESSION_LOCKED: 'Sesión bloqueada por inactividad',
+  INVALID_CREDENTIALS: 'Credenciales incorrectas',
+  CSRF_FAILED: 'Petición rechazada (CSRF)',
+  REAUTH_REQUIRED: 'Hace falta volver a autenticarse',
+  RATE_LIMITED: 'Demasiados intentos',
+  PASSWORD_REJECTED: 'Contraseña no válida',
+  BREACH_CHECK_UNAVAILABLE: 'No se pudo comprobar la contraseña',
 };
+
+/** Errores que indican un posible intento de saltarse un control: se registran (ASVS 16.3.2, 16.3.3). */
+const SECURITY_CODES: ReadonlySet<ErrorCode> = new Set<ErrorCode>([
+  'UNAUTHENTICATED',
+  'INVALID_CREDENTIALS',
+  'CSRF_FAILED',
+  'REAUTH_REQUIRED',
+  'RATE_LIMITED',
+]);
 
 function problem(
   code: ErrorCode,
@@ -82,6 +101,8 @@ export const errorHandler: ErrorRequestHandler = (err: unknown, req, res, _next)
 
   if (err instanceof AppError) {
     body = problem(err.code, err.status, requestId, err.message, err.errors);
+    // Solo el código y la ruta: nunca el cuerpo de la petición.
+    if (SECURITY_CODES.has(err.code)) req.log.warn({ code: err.code }, 'Petición rechazada');
   } else if (err instanceof z.ZodError) {
     const errors = err.issues.map((issue) => ({
       path: issue.path.join('.'),
