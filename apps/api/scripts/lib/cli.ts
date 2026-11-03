@@ -22,6 +22,7 @@ export function openAuthService(): { service: AuthService; close: () => Promise<
     totpKey: Buffer.from(config.TOTP_ENCRYPTION_KEY, 'base64'),
     totpKeyVersion: config.TOTP_ENCRYPTION_KEY_VERSION,
     breachChecker: createHibpChecker(),
+    publicOrigin: config.PUBLIC_ORIGIN,
   });
   return { service, close: () => db.destroy() };
 }

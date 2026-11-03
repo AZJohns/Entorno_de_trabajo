@@ -52,6 +52,7 @@ export function createApp(deps: AppDependencies): Express {
     totpKey: deps.totpKey,
     totpKeyVersion: deps.totpKeyVersion,
     breachChecker: deps.breachChecker,
+    publicOrigin: deps.publicOrigin,
   });
 
   const api = express.Router();

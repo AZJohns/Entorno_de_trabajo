@@ -5,7 +5,7 @@
 import { afterAll, beforeAll, beforeEach } from 'vitest';
 import { createAuthService, type AuthService } from '../../src/modules/auth/index.ts';
 import { base32Decode, hotp, timeStep } from '../../src/modules/auth/domain/totp.ts';
-import { buildTestApp, type TestApp } from './app.ts';
+import { TEST_ORIGIN, buildTestApp, type TestApp } from './app.ts';
 import { TestClient } from './client.ts';
 import { DB_TIMEOUT_MS, createTestDatabase, type TestDatabase } from './database.ts';
 
@@ -52,6 +52,7 @@ export function useAuthTestContext(): () => AuthTestContext {
       totpKey: t.totpKey,
       totpKeyVersion: 1,
       breachChecker: t.breachChecker,
+      publicOrigin: TEST_ORIGIN,
     });
     const credentials = await service.createInitialUser(USERNAME, PASSWORD);
     const secret = base32Decode(credentials.totpSecret);

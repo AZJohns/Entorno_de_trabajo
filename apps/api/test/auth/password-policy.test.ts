@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { checkPasswordPolicy } from '../../src/modules/auth/domain/password-policy.ts';
+import {
+  checkPasswordPolicy,
+  originContextWords,
+} from '../../src/modules/auth/domain/password-policy.ts';
 
 const policy = {
   commonPasswords: new Set(['qwertyuiopasdfgh', '123456789012345']),
@@ -32,6 +35,20 @@ describe('política de contraseñas (NIST 800-63B-4, ASVS 6.2)', () => {
   it('rechaza las que contienen palabras del contexto (ASVS 6.2.11)', () => {
     expect(checkPasswordPolicy('mi-BACKOFFICE-seguro-2026', policy)).toBe('context_word');
     expect(checkPasswordPolicy('el usuario manda mucho', policy)).toBe('context_word');
+  });
+
+  it('el dominio del origen público aporta sus etiquetas como palabras del contexto (ASVS 6.1.2)', () => {
+    expect(originContextWords('https://finanzas.ejemplo.test:8443')).toEqual([
+      'finanzas',
+      'ejemplo',
+      'test',
+    ]);
+    const withDomain = {
+      ...policy,
+      contextWords: originContextWords('https://finanzas.ejemplo.test'),
+    };
+    expect(checkPasswordPolicy('mis FINANZAS personales 2026', withDomain)).toBe('context_word');
+    expect(checkPasswordPolicy('una frase larga sin el dominio', withDomain)).toBeNull();
   });
 
   it('no modifica la contraseña: los espacios iniciales y finales cuentan (ASVS 6.2.8)', () => {

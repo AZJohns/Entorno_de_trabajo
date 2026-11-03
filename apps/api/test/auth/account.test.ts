@@ -103,6 +103,7 @@ describe('cambio de contraseña', () => {
     ['común (lista local de 15+ caracteres)', '1qaz2wsx3edc4rfv'],
     ['con el nombre de usuario', `mi ${USERNAME} favorito`],
     ['con el nombre de la aplicación', 'el backoffice de casa'],
+    ['con el dominio de PUBLIC_ORIGIN', 'mi servidor localhost de confianza'],
     ['igual que la actual', PASSWORD],
   ])('rechaza una contraseña %s', async (_label, newPassword) => {
     const client = await getCtx().loggedIn();

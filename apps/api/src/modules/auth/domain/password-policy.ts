@@ -55,3 +55,14 @@ export function checkPasswordPolicy(
   }
   return null;
 }
+
+/**
+ * Palabras del contexto que salen del origen público (`PUBLIC_ORIGIN`): las etiquetas de su nombre de
+ * host. Así el dominio forma parte de la lista sin escribirlo en el repositorio (ASVS 6.1.2). Las de
+ * menos de 4 caracteres (p. ej., `com`) las ignora `checkPasswordPolicy`.
+ *
+ * @param origin Origen ya validado por la configuración (esquema + host + puerto).
+ */
+export function originContextWords(origin: string): string[] {
+  return new URL(origin).hostname.split('.').filter((label) => label !== '');
+}

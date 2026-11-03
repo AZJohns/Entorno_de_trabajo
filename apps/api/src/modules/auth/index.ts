@@ -9,6 +9,7 @@ import { createAuthController } from './auth.controller.ts';
 import { createSessionMiddleware } from './auth.middleware.ts';
 import { createAuthRouter } from './auth.routes.ts';
 import { AuthService } from './auth.service.ts';
+import { originContextWords } from './domain/password-policy.ts';
 import { loadCommonPasswords } from './infra/common-passwords.ts';
 import type { PasswordBreachChecker } from './infra/hibp.ts';
 
@@ -17,7 +18,10 @@ export { getSession } from './auth.middleware.ts';
 export { AuthService, type InitialCredentials, type SessionContext } from './auth.service.ts';
 export { createHibpChecker, type PasswordBreachChecker } from './infra/hibp.ts';
 
-/** Palabras del contexto que ninguna contraseña puede contener (además del nombre de usuario). */
+/**
+ * Palabras del contexto que ninguna contraseña puede contener. Además, en tiempo de ejecución, el
+ * nombre de usuario y las etiquetas del dominio de `PUBLIC_ORIGIN` (docs/seguridad/limites.md).
+ */
 export const CONTEXT_WORDS: readonly string[] = [
   'backoffice',
   'entorno',
@@ -33,6 +37,8 @@ export interface AuthModuleDeps {
   readonly totpKey: Buffer;
   readonly totpKeyVersion: number;
   readonly breachChecker: PasswordBreachChecker;
+  /** Origen público: su dominio se añade a las palabras del contexto. */
+  readonly publicOrigin: string;
 }
 
 /** Crea el servicio de autenticación (también lo usan los scripts de servidor). */
@@ -40,7 +46,7 @@ export function createAuthService(deps: AuthModuleDeps): AuthService {
   return new AuthService({
     ...deps,
     commonPasswords: loadCommonPasswords(),
-    contextWords: CONTEXT_WORDS,
+    contextWords: [...CONTEXT_WORDS, ...originContextWords(deps.publicOrigin)],
     issuer: 'Backoffice',
   });
 }
