@@ -13,8 +13,9 @@ import {
 } from '@backoffice/shared';
 import { base32Decode, hotp, timeStep } from '../../src/modules/auth/domain/totp.ts';
 import { REAUTH_WINDOW_MS } from '../../src/modules/auth/domain/session-rules.ts';
+import { buildTestApp } from '../support/app.ts';
 import { PASSWORD, USERNAME, useAuthTestContext } from '../support/auth.ts';
-import type { TestClient } from '../support/client.ts';
+import { TestClient } from '../support/client.ts';
 
 const getCtx = useAuthTestContext();
 const NEW_PASSWORD = 'otra frase de paso larga y distinta';
@@ -369,5 +370,50 @@ describe('operaciones de servidor (scripts)', () => {
       (await ctx.client().post('/api/v1/auth/login', { username: USERNAME, password: PASSWORD }))
         .status,
     ).toBe(401);
+  });
+});
+
+describe('rotación de la clave de cifrado del TOTP (docs/adr/0006)', () => {
+  it('el TOTP cifrado con la clave anterior falla cerrado; se entra con un código de recuperación y se da de alta otro', async () => {
+    const ctx = getCtx();
+    // La misma base de datos, servida con una clave nueva (versión 2).
+    const rotated = buildTestApp({ db: ctx.database.db, totpKeyVersion: 2 });
+    const client = new TestClient(rotated.app);
+    expect(
+      (await client.post('/api/v1/auth/login', { username: USERNAME, password: PASSWORD })).status,
+    ).toBe(200);
+    const withOldSeed = await client.post('/api/v1/auth/login/second-factor', {
+      totp: ctx.totp(),
+    });
+    expect(withOldSeed.status).toBe(500);
+    expect(code(withOldSeed)).toBe('INTERNAL_ERROR');
+
+    const recovered = await client.post('/api/v1/auth/login/second-factor', {
+      recoveryCode: ctx.recoveryCodes[0],
+    });
+    expect(recovered.status).toBe(200);
+    const enroll = totpEnrollResponseSchema.parse(
+      (await client.post('/api/v1/auth/totp/enroll')).body,
+    );
+    const newSecret = base32Decode(enroll.secret);
+    const newCode = () => hotp(newSecret, timeStep(rotated.clock.now()));
+    const confirm = await client.post('/api/v1/auth/totp/confirm', {
+      code: newCode(),
+      terminateOtherSessions: true,
+    });
+    expect(confirm.status).toBe(204);
+    rotated.clock.advance(30_000);
+
+    const stored = await ctx.database.db
+      .selectFrom('totp_authenticators')
+      .select('key_version')
+      .where('confirmed_at', 'is not', null)
+      .execute();
+    expect(stored).toEqual([{ key_version: 2 }]);
+    const again = new TestClient(rotated.app);
+    await again.post('/api/v1/auth/login', { username: USERNAME, password: PASSWORD });
+    expect((await again.post('/api/v1/auth/login/second-factor', { totp: newCode() })).status).toBe(
+      200,
+    );
   });
 });

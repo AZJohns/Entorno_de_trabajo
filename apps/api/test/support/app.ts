@@ -44,7 +44,7 @@ export interface TestApp {
  * no consultan la base de datos).
  */
 export function buildTestApp(
-  options: { db?: Kysely<Database>; trustProxyHops?: number } = {},
+  options: { db?: Kysely<Database>; trustProxyHops?: number; totpKeyVersion?: number } = {},
 ): TestApp {
   const clock = new FakeClock();
   const breachChecker = new FakeBreachChecker();
@@ -58,7 +58,7 @@ export function buildTestApp(
     publicOrigin: TEST_ORIGIN,
     trustProxyHops: options.trustProxyHops ?? 0,
     totpKey,
-    totpKeyVersion: 1,
+    totpKeyVersion: options.totpKeyVersion ?? 1,
   });
   return { app, clock, breachChecker, totpKey, logs: lines };
 }
