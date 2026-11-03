@@ -3,14 +3,14 @@ import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { problemDetailsSchema } from '@backoffice/shared';
-import { createApp } from '../src/app.ts';
 import { AppError, errorHandler, notFoundHandler } from '../src/http/errors.ts';
 import { createHttpLogger } from '../src/http/logger.ts';
 import { captureLogger } from './helpers.ts';
+import { TEST_ORIGIN, buildTestApp } from './support/app.ts';
 
 describe('GET /api/v1/health', () => {
   it('responde 200 con { status: "ok" } y sin detalles internos', async () => {
-    const app = createApp(captureLogger('silent'));
+    const { app } = buildTestApp();
     const res = await request(app).get('/api/v1/health');
     expect(res.status).toBe(200);
     expect(res.headers['content-type']).toMatch(/^application\/json; charset=utf-8/);
@@ -20,9 +20,9 @@ describe('GET /api/v1/health', () => {
 });
 
 describe('formato de error (RFC 9457)', () => {
-  it('una ruta inexistente devuelve 404 problem+json con requestId', async () => {
-    const app = createApp(captureLogger('silent'));
-    const res = await request(app).get('/api/v1/no-existe');
+  it('una ruta inexistente fuera de la API devuelve 404 problem+json con requestId', async () => {
+    const { app } = buildTestApp();
+    const res = await request(app).get('/no-existe');
     expect(res.status).toBe(404);
     expect(res.headers['content-type']).toMatch(/^application\/problem\+json/);
     const body = problemDetailsSchema.parse(res.body);
@@ -31,9 +31,10 @@ describe('formato de error (RFC 9457)', () => {
   });
 
   it('JSON mal formado → 400 MALFORMED_JSON', async () => {
-    const app = createApp(captureLogger('silent'));
+    const { app } = buildTestApp();
     const res = await request(app)
       .post('/api/v1/health')
+      .set('Origin', TEST_ORIGIN)
       .set('Content-Type', 'application/json')
       .send('{"a":');
     expect(res.status).toBe(400);
@@ -41,9 +42,10 @@ describe('formato de error (RFC 9457)', () => {
   });
 
   it('cuerpo por encima del límite → 413 PAYLOAD_TOO_LARGE', async () => {
-    const app = createApp(captureLogger('silent'));
+    const { app } = buildTestApp();
     const res = await request(app)
       .post('/api/v1/health')
+      .set('Origin', TEST_ORIGIN)
       .set('Content-Type', 'application/json')
       .send(JSON.stringify({ data: 'x'.repeat(200 * 1024) }));
     expect(res.status).toBe(413);

@@ -17,7 +17,8 @@
     "db:down": "docker compose down",
     "db:migrate": "pnpm --filter @backoffice/api db:migrate",
     "check:migrations": "node apps/api/scripts/check-migrations-immutable.ts",
-    "secrets:scan": "gitleaks git --redact --verbose ."
+    "secrets:scan": "gitleaks git --redact --verbose .",
+    "user:create": "pnpm --filter @backoffice/api user:create"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
