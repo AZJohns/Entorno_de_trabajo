@@ -36,7 +36,12 @@ export function assertCents(value: number): Cents {
 
 /** Motivo por el que un texto no se pudo convertir en importe. */
 export type ParseAmountFailure =
-  'empty' | 'invalid_format' | 'too_many_decimals' | 'negative_not_allowed' | 'out_of_range';
+  | 'empty'
+  | 'invalid_format'
+  | 'too_many_decimals'
+  | 'negative_not_allowed'
+  | 'out_of_range'
+  | 'too_long';
 
 /** Resultado de {@link parseEuroAmount}: nunca lanza excepciones con entradas del usuario. */
 export type ParseAmountResult =
@@ -49,7 +54,40 @@ export interface ParseAmountOptions {
   readonly allowNegative?: boolean;
 }
 
-const CURRENCY_AFFIX = /^(?:€|eur)\s*|\s*(?:€|eur)$/giu;
+/**
+ * Longitud máxima del texto de entrada, comprobada ANTES de cualquier otra operación.
+ *
+ * El importe válido más largo es el máximo entero seguro con separadores, signo y moneda
+ * («-90.071.992.547.409,91 EUR», 26 caracteres). 64 deja margen para espacios alrededor y sigue
+ * acotando el trabajo: el texto puede venir de la red (atajo de iPhone) o de un archivo (Excel), y
+ * sin límite un atacante podría enviar megabytes para consumir CPU.
+ */
+export const MAX_AMOUNT_INPUT_LENGTH = 64;
+
+/**
+ * Quita un `€` o `EUR` (sin distinguir mayúsculas) al principio y al final, con los espacios que los
+ * separan del número.
+ *
+ * Se hace con operaciones lineales (`trim`, `slice`, comparaciones de prefijo y sufijo) en lugar de
+ * una expresión regular: la versión anterior, `/^(?:€|eur)\s*|\s*(?:€|eur)$/giu`, tenía una
+ * alternativa sin anclar al inicio con `\s*`, y con muchos espacios su coste era cuadrático
+ * (ReDoS; alerta de CodeQL js/polynomial-redos).
+ */
+function stripCurrencyAffix(input: string): string {
+  let text = input.trim();
+  if (text.startsWith('€')) {
+    text = text.slice(1).trimStart();
+  } else if (text.slice(0, 3).toLowerCase() === 'eur') {
+    text = text.slice(3).trimStart();
+  }
+  if (text.endsWith('€')) {
+    text = text.slice(0, -1).trimEnd();
+  } else if (text.slice(-3).toLowerCase() === 'eur') {
+    text = text.slice(0, -3).trimEnd();
+  }
+  return text;
+}
+
 const AMOUNT_BODY = /^\d[\d.,]*$/u;
 const THOUSANDS_GROUPS = /^\d{1,3}(?:\d{3})*$/u;
 
@@ -67,6 +105,7 @@ const THOUSANDS_GROUPS = /^\d{1,3}(?:\d{3})*$/u;
  * - Más de 2 decimales (`12,345` con el otro separador presente, `0,001`) → `too_many_decimals`.
  * - Grupos de miles mal formados (`1.23.456`) o espacios interiores → `invalid_format`.
  * - Negativos solo con `allowNegative`; nunca `+`.
+ * - Más de {@link MAX_AMOUNT_INPUT_LENGTH} caracteres → `too_long`, sin procesar el texto.
  *
  * @param input Texto introducido por el usuario o recibido de un cliente.
  * @returns `{ ok: true, cents }` o `{ ok: false, reason }`.
@@ -75,7 +114,10 @@ export function parseEuroAmount(
   input: string,
   options: ParseAmountOptions = {},
 ): ParseAmountResult {
-  let text = input.trim().replace(CURRENCY_AFFIX, '').trim();
+  // Primero se acota el trabajo: ninguna operación posterior recorre más de este número de caracteres.
+  if (input.length > MAX_AMOUNT_INPUT_LENGTH) return fail('too_long');
+
+  let text = stripCurrencyAffix(input);
   if (text === '') return fail('empty');
 
   let negative = false;

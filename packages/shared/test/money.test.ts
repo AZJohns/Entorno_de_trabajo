@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { assertCents, formatCents, isCents, parseEuroAmount } from '../src/index.ts';
+import {
+  MAX_AMOUNT_INPUT_LENGTH,
+  assertCents,
+  formatCents,
+  isCents,
+  parseEuroAmount,
+} from '../src/index.ts';
 
 describe('parseEuroAmount', () => {
   it.each([
@@ -18,6 +24,9 @@ describe('parseEuroAmount', () => {
     ['12,50 €', 1250],
     ['€12.50', 1250],
     ['  EUR 7 ', 700],
+    ['eur 7', 700],
+    ['7 Eur', 700],
+    ['€ 12,50 EUR', 1250],
     ['12 €', 1200],
     ['007,10', 710],
     // 0.1 + 0.2 en coma flotante no da 0.3; aquí no hay coma flotante.
@@ -59,6 +68,43 @@ describe('parseEuroAmount', () => {
       cents: Number.MAX_SAFE_INTEGER,
     });
     expect(parseEuroAmount('90071992547409,92')).toEqual({ ok: false, reason: 'out_of_range' });
+  });
+});
+
+describe('parseEuroAmount: límite de longitud y coste lineal (ReDoS)', () => {
+  it('acepta un texto de exactamente la longitud máxima', () => {
+    const input = `${'1'.padStart(MAX_AMOUNT_INPUT_LENGTH - 2, ' ')} €`;
+    expect(input).toHaveLength(MAX_AMOUNT_INPUT_LENGTH);
+    expect(parseEuroAmount(input)).toEqual({ ok: true, cents: 100 });
+  });
+
+  it('rechaza un carácter más con too_long', () => {
+    expect(parseEuroAmount('1'.repeat(MAX_AMOUNT_INPUT_LENGTH + 1))).toEqual({
+      ok: false,
+      reason: 'too_long',
+    });
+  });
+
+  it('una cadena enorme de espacios falla rápido y por el motivo correcto', () => {
+    // Con la regex anterior, el coste era cuadrático en el número de espacios.
+    const attack = `${' '.repeat(1_000_000)}x`;
+    const start = performance.now();
+    const result = parseEuroAmount(attack);
+    const elapsedMs = performance.now() - start;
+    expect(result).toEqual({ ok: false, reason: 'too_long' });
+    expect(elapsedMs).toBeLessThan(50);
+  });
+
+  it('dentro del límite, los espacios entre la moneda y el número se toleran', () => {
+    expect(parseEuroAmount(`€${' '.repeat(40)}12,50${' '.repeat(10)}`)).toEqual({
+      ok: true,
+      cents: 1250,
+    });
+  });
+
+  it('el patrón del ataque, dentro del límite, no es un importe válido', () => {
+    expect(parseEuroAmount(`${' '.repeat(50)}x`)).toEqual({ ok: false, reason: 'invalid_format' });
+    expect(parseEuroAmount(`${' '.repeat(50)}€x`)).toEqual({ ok: false, reason: 'invalid_format' });
   });
 });
 
