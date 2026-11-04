@@ -22,7 +22,7 @@
 | **Auditoría** | `audit_events` (actor, acción, entidad, `metadata` sin importes, tokens ni contraseñas) y la IP si se registra | **N1** |
 | **Logs técnicos** | Salida estándar de pino: `requestId`, método, ruta sin query string, código de estado | **N1** |
 | **Configuración** | `.env.example`, ADR, `docs/`, esquemas de `packages/shared`, `users.timezone` y preferencias de interfaz | **N0** (el valor real de una variable de entorno es N3; la preferencia de interfaz, N1) |
-| **Copias de seguridad** | Volcados cifrados de PostgreSQL y repositorio restic (fase 2) | Hereda el nivel más alto que contienen: **N3** |
+| **Copias de seguridad** | Volcados cifrados de PostgreSQL y repositorio restic (fase 2): copia 1 en el servidor, copia 2 en el almacén en la nube y copia 3 en el PC del propietario (`plan.md` §6.3). Las instantáneas del proveedor, si se hacen, contienen el disco entero sin el cifrado de restic | Hereda el nivel más alto que contienen: **N3** |
 | **Exportación** | Archivo JSON de `GET /export` | **N2** (nunca contiene datos de autenticación) |
 
 Las notas y las tareas (fases posteriores) se clasificarán como **N2** cuando existan: son texto libre del propietario.
@@ -34,7 +34,7 @@ La columna «Estado» distingue lo que ya cumple el código de lo que depende de
 | Requisito | N3 · Secreto | N2 · Confidencial | N1 · Interno | N0 · Público |
 |---|---|---|---|---|
 | **Cifrado en tránsito** | HTTPS con HSTS (fase 2); cookie `Secure`, `HttpOnly`, `SameSite=Lax` y prefijo `__Host-` | HTTPS con HSTS (fase 2) | HTTPS con HSTS (fase 2) | No exigido |
-| **Cifrado en reposo** | Hashes (Argon2id o SHA-256, nunca reversibles); la semilla TOTP, cifrada con AES-256-GCM y `key_version`; copias cifradas en el cliente (restic). Sin cifrado de columnas en general: quien compromete el servidor obtiene también la clave (`plan.md` §6) | Copias cifradas (fase 2). El cifrado del disco del servidor **no está decidido** (se decide en la fase 2, `plan.md` §6). No se cifran columnas | Sin requisito específico | No aplica |
+| **Cifrado en reposo** | Hashes (Argon2id o SHA-256, nunca reversibles); la semilla TOTP, cifrada con AES-256-GCM y `key_version`; copias cifradas en el cliente (restic). Sin cifrado de columnas en general: quien compromete el servidor obtiene también la clave (`plan.md` §6) | Copias cifradas (fase 2). Cifrado del disco del servidor: **propuesta pendiente de confirmación** (`plan.md` §7.8, pregunta 39). Recomendación: confiar en el cifrado en reposo del proveedor [VERIFICAR] y endurecer la cuenta de AWS, aceptando como **riesgo residual** que quien controle la cuenta pueda leer una instantánea. No se cifran columnas | Sin requisito específico | No aplica |
 | **Almacenamiento** | Nunca en el repositorio, en la URL, en `localStorage` ni en la respuesta de la API. Secretos solo en variables de entorno o en el almacén de secretos del host | Solo en PostgreSQL. Nunca en la URL (la búsqueda `q` es la excepción documentada en 14.2.1: no se registra la query string) ni en el almacenamiento del navegador (14.3.3) | En PostgreSQL y en los logs del contenedor | Repositorio público |
 | **Logs** | Prohibido registrarlos, enteros o parciales. Pino sustituye por `[REDACTED]` las cabeceras `Cookie`, `Authorization`, `X-CSRF-Token` y `Set-Cookie` y los campos de contraseña y código. Un test lo comprueba (`apps/api/test/logger.test.ts`) | Prohibido registrar importes, conceptos, comercios y cuerpos de petición. Se registran los **nombres** de los campos inválidos, no sus valores (`logs.md` §2) | Permitido; sin cuerpos ni cookies | Libre |
 | **Exportación** | **Nunca** se exporta, ni siquiera con reautenticación | Solo con `GET /export`: exige sesión completa y reautenticación reciente (S+), `Content-Disposition: attachment`, nombre generado y registro `data.exported` en la auditoría **con recuentos, sin importes** (`api-export.test.ts`) | Sin exportación; se consulta por la base de datos o los logs | Libre |
@@ -46,7 +46,7 @@ La columna «Estado» distingue lo que ya cumple el código de lo que depende de
 ## 4. Estado y huecos conocidos
 
 - **Hecho en la fase 1**: hashes y cifrado de la semilla TOTP, redacción de logs, cookie `__Host-`, `no-store` en `/api`, reautenticación para exportar y auditoría de la exportación.
-- **Depende de la fase 2** (despliegue): HTTPS, HSTS, decisión sobre el cifrado de disco, copias restic, cuentas del sistema y el borrado de `raw_payload`. Hasta entonces, N2 y N3 solo existen en el equipo de desarrollo, con datos ficticios.
+- **Depende de la fase 2** (despliegue): HTTPS, HSTS, confirmar la decisión sobre el cifrado de disco (propuesta en `plan.md` §7.8), copias restic, cuentas del sistema y el borrado de `raw_payload`. Hasta entonces, N2 y N3 solo existen en el equipo de desarrollo, con datos ficticios.
 - **Sin implementar**: la limpieza automática (ver «Retención» más abajo). La tabla `sessions` tiene el índice en `expires_at` para hacerla; hoy no se borra nada. Se hará en la fase 2 y se verificará con un test.
 
 ## Retención (pregunta 35, resuelta)
