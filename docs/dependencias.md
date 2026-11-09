@@ -24,6 +24,7 @@ Cada dependencia directa tiene que estar aquí con su justificación. **Antes de
 | `express-rate-limit` | 8.7.2 (2026-10-29) | api | Límites de peticiones del login y los segundos factores (ASVS 6.3.1, 2.4.1), con cabeceras `RateLimit` estándar y agrupación de IPv6 por prefijo. Trae `ip-address` 10.7.5 (MIT) y `debug` 4.4.3 (MIT) | Contador propio en memoria: fácil de escribir, pero las ventanas, IPv6 y las cabeceras son donde suelen estar los errores. `rate-limiter-flexible`: más potente (Redis, PostgreSQL), innecesario con una instancia | MIT |
 | `react-router` | 7.18.5 (2026-10-27) | web | Rutas de la SPA (modo de datos: `createBrowserRouter`), redirecciones entre pantallas de acceso. Trae `cookie` y `set-cookie-parser` (MIT), que solo usa el modo servidor y no entran en el paquete del navegador | TanStack Router (tipado de rutas más estricto, pero menos conocido); enrutado propio con `history` (reinventar los casos límite) | MIT |
 | `@tanstack/react-query` | 5.105.0 (2026-10-26) | web | Caché de las consultas a la API, reintentos y reacción común a los errores de sesión; al salir se vacía (ASVS 14.3.1). Trae `@tanstack/query-core` (MIT) | `fetch` + `useEffect`: sin caché ni invalidación coherentes; SWR (menos control sobre mutaciones) | MIT |
+| `qrcode-generator` | 2.0.4 (2025-08-07, consultado el 2026-11-09) | shared (la usan web y api) | Codifica el `otpauth://` del TOTP como QR **en local**, sin servicios externos: la semilla no sale del equipo. Se usa solo la matriz de módulos (`qrMatrix`); la web la dibuja como SVG y `user:create` como bloques Unicode en la terminal. Google Authenticator solo aplica `algorithm=SHA256` al escanear un QR (ASVS 11.4.1, pregunta 36). Sin dependencias, 56 KB sin minificar | Escribir el codificador: Node y el navegador no traen ninguno, y un QR exige códigos Reed-Solomon, máscaras y tablas de versiones (cientos de líneas, no «unas 50» probables). `qrcode` (más popular, pero trae `dijkstrajs`, `pngjs` y `yargs` para Node), `qr-code-styling` y los servicios web que devuelven una imagen (descartados por enviar la semilla a un tercero) | MIT |
 
 ## Desarrollo
 
@@ -94,7 +95,6 @@ No comprobado: el tamaño que añadiría Recharts al paquete de la web ni su com
 - **`express-session`, `connect-pg-simple`, `csurf`, `cookie-parser`**: sesiones, CSRF y lectura de la cookie propias (ADR 0006). `csurf` está obsoleto.
 - **`jsonwebtoken`, `jose`**: no se usan JWT (ADR 0006).
 - **`kysely-codegen`**: tipos de la base de datos escritos a mano (ADR 0006, decisión 9).
-- **Generador de códigos QR**: el alta del TOTP muestra la clave y el enlace `otpauth://` (en el iPhone abre la app de códigos). Si hiciera falta un QR, se evaluará entonces.
 
 ## Dependencias descartadas en la fase 0
 

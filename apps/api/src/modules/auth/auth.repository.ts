@@ -6,6 +6,7 @@
  */
 import type { Kysely, Selectable } from 'kysely';
 import type { Database, SessionsTable, UsersTable } from '../../db/schema.ts';
+import type { TotpAlgorithm } from './domain/totp.ts';
 
 export type UserRow = Selectable<UsersTable>;
 export type SessionRow = Selectable<SessionsTable>;
@@ -17,6 +18,7 @@ export interface TotpRow {
   readonly ciphertext: Buffer;
   readonly nonce: Buffer;
   readonly keyVersion: number;
+  readonly algorithm: TotpAlgorithm;
   readonly lastUsedStep: number | null;
   readonly confirmedAt: Date | null;
 }
@@ -208,6 +210,7 @@ export class AuthRepository {
           ciphertext: row.secret_ciphertext,
           nonce: row.secret_nonce,
           keyVersion: row.key_version,
+          algorithm: row.algorithm,
           lastUsedStep: row.last_used_step === null ? null : Number(row.last_used_step),
           confirmedAt: row.confirmed_at,
         };
@@ -218,6 +221,7 @@ export class AuthRepository {
     ciphertext: Buffer;
     nonce: Buffer;
     keyVersion: number;
+    algorithm: TotpAlgorithm;
     confirmedAt: Date | null;
     lastUsedStep: number | null;
   }): Promise<void> {
@@ -228,6 +232,7 @@ export class AuthRepository {
         secret_ciphertext: values.ciphertext,
         secret_nonce: values.nonce,
         key_version: values.keyVersion,
+        algorithm: values.algorithm,
         confirmed_at: values.confirmedAt,
         last_used_step: values.lastUsedStep,
       })

@@ -25,16 +25,15 @@
 | Estado | Requisitos |
 |---|---|
 | Verificado (fase 0) | 9 |
-| Verificado (fase 1) | 91 |
+| Verificado (fase 1) | 92 |
 | Planificado | 75 |
-| Desviación documentada | 8 |
+| Desviación documentada | 7 |
 | No aplica | 70 |
 | **Total L1 + L2** | **253** |
 
 **Desviaciones documentadas:**
 
 - **6.5.5**: TOTP con una vida máxima de 30 s.
-- **11.4.1**: Solo funciones hash aprobadas (el TOTP usa HMAC-SHA-1, *Legacy*).
 - **12.3.1**: TLS en todas las conexiones entrantes y salientes, también internas y de monitorización.
 - **12.3.3**: TLS entre servicios HTTP internos.
 - **12.3.4**: Certificados de confianza en los servicios internos.
@@ -224,11 +223,11 @@
 | 11.1.2 | L2 | Inventario criptográfico | Planificado | El mismo documento | F1–F2 | Revisión |
 | 11.2.1 | L2 | Implementaciones validadas | Planificado | `node:crypto` (OpenSSL), Caddy (Go) y restic | F1–F2 | Revisión |
 | 11.2.2 | L2 | Agilidad criptográfica | **Verificado (F1)** | Formato PHC (parámetros en el hash), `key_version` | F1 · auth | Test: `crypto.test.ts` («detecta hashes con parámetros antiguos…») y `apps/api/test/auth/account.test.ts` («rotación de la clave de cifrado del TOTP») |
-| 11.2.3 | L2 | ≥ 128 bits de seguridad | **Verificado (F1)** | AES-256-GCM, SHA-256, tokens de 256 bits; TOTP con HMAC-SHA1 de 160 bits de semilla (ver 11.4.1) | F1 · auth | Revisión: ADR 0006 |
+| 11.2.3 | L2 | ≥ 128 bits de seguridad | **Verificado (F1)** | AES-256-GCM, SHA-256, tokens de 256 bits; TOTP con HMAC-SHA-256 y semilla de 256 bits en las altas nuevas (ver 11.4.1) | F1 · auth | Revisión: ADR 0006 |
 | 11.3.1 | L1 | Sin ECB ni rellenos débiles | **Verificado (F1)** | AES-GCM | F1 · auth | Revisión: `crypto/secret-box.ts` |
 | 11.3.2 | L1 | Solo cifrados aprobados (AES-GCM) | **Verificado (F1)** | Sí | F1 · auth | Revisión: `crypto/secret-box.ts` |
 | 11.3.3 | L2 | Cifrado autenticado | **Verificado (F1)** | GCM | F1 · auth | Test: `crypto.test.ts` («detecta una modificación del texto cifrado o una clave incorrecta») |
-| 11.4.1 | L1 | Solo funciones hash aprobadas | **Desviación** | SHA-256 y HMAC-SHA-256 en todo lo propio (tokens, CSRF). **Desviación**: el TOTP usa HMAC-SHA-1, que el apéndice C de ASVS 5.0 clasifica como *Legacy* (L): admitido solo por compatibilidad y «no se considera una vulnerabilidad en sí», pero no aprobado. Motivo: es el algoritmo por defecto de RFC 6238 y el único que garantizan todas las apps de autenticación. Mitigación: semilla aleatoria de 160 bits cifrada, códigos de un solo uso, intentos limitados. Pendiente: probar HMAC-SHA-256 con la app del usuario antes del alta del TOTP de producción (pregunta 36 de `plan.md`). El SHA-1 de la consulta a Pwned Passwords no protege nada: lo impone el protocolo de rangos y no se guarda | F1 · auth | Revisión: `domain/totp.ts`; apéndice C de ASVS 5.0 (`5.0/en/0x92-Appendix-C_Cryptography.md`, consultado el 2026-11-03: HMAC-SHA-1 = L) |
+| 11.4.1 | L1 | Solo funciones hash aprobadas | **Verificado (F1)** | SHA-256 y HMAC-SHA-256 en todo lo propio (tokens, CSRF) y en el TOTP de las altas nuevas: cada credencial guarda su algoritmo (`totp_authenticators.algorithm`, con `CHECK` en `SHA1`/`SHA256`, sin valor por defecto) y las altas usan SHA256 con una semilla de 32 bytes. Las credenciales anteriores a la migración 0004 quedan en SHA1 (HMAC-SHA-1 es *Legacy* en el apéndice C de ASVS 5.0, «no se considera una vulnerabilidad en sí») para no dejar al usuario sin acceso; desaparecen al cambiar el TOTP en Seguridad. Las apps solo aplican `algorithm=SHA256` al escanear el QR del `otpauth://`: con la clave escrita a mano, Google Authenticator usa SHA-1, y por eso la web y `user:create` muestran el QR (generado en local) con ese aviso. El SHA-1 de la consulta a Pwned Passwords no protege nada: lo impone el protocolo de rangos y no se guarda | F1 · auth | Tests: `apps/api/test/auth/totp.test.ts` (vectores SHA-1 y SHA-256 del apéndice B de RFC 6238; una credencial SHA1 antigua sigue verificándose; un código del algoritmo equivocado se rechaza), `apps/api/test/auth/account.test.ts` (alta SHA256 con semilla de 32 bytes; el alta no se confirma con un código SHA-1; una credencial SHA1 sigue iniciando sesión) y `apps/api/test/auth/totp-migration.test.ts` (filas anteriores → SHA1, `CHECK`, sin valor por defecto). Comprobación manual del propietario: Google Authenticator para iOS calcula bien SHA-256 al añadir la cuenta escaneando un QR con `algorithm=SHA256` (con una clave desechable). Apéndice C de ASVS 5.0 (`5.0/en/0x92-Appendix-C_Cryptography.md`, consultado el 2026-11-03: HMAC-SHA-1 = L) |
 | 11.4.2 | L2 | Contraseñas con una función costosa de derivación | **Verificado (F1)** | Argon2id 64 MiB, t = 3, p = 4 (RFC 9106), por encima del mínimo de OWASP | F1 · auth | Test: `crypto.test.ts` («Argon2id (formato PHC)») + revisión de `PASSWORD_ARGON2` |
 | 11.4.3 | L2 | Hashes resistentes a colisiones para la integridad | Planificado | SHA-256 (`content_hash`, `file_sha256`) | F3 · imports | Revisión |
 | 11.4.4 | L2 | KDF con estiramiento al derivar claves de contraseñas | Planificado | La app no deriva claves de contraseñas; restic sí, con su KDF | F2 · copias | Revisión |

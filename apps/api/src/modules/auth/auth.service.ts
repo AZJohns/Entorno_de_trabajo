@@ -46,7 +46,14 @@ import {
   SESSION_IDLE_TIMEOUT_MS,
   sessionState,
 } from './domain/session-rules.ts';
-import { base32Encode, otpauthUri, verifyTotp } from './domain/totp.ts';
+import {
+  NEW_TOTP_ALGORITHM,
+  TOTP_SECRET_BYTES,
+  base32Encode,
+  otpauthUri,
+  verifyTotp,
+  type TotpAlgorithm,
+} from './domain/totp.ts';
 import { BreachCheckUnavailableError, type PasswordBreachChecker } from './infra/hibp.ts';
 
 /** Dependencias del servicio (se inyectan; los tests usan un reloj y un HIBP falsos). */
@@ -91,6 +98,8 @@ export interface IssuedSession {
 /** Credenciales iniciales que muestra una sola vez el script `create-user`. */
 export interface InitialCredentials {
   readonly totpSecret: string;
+  /** Algoritmo de la semilla: las apps solo lo aplican si se escanea el QR del enlace. */
+  readonly totpAlgorithm: TotpAlgorithm;
   readonly otpauthUri: string;
   readonly recoveryCodes: readonly string[];
 }
@@ -380,7 +389,7 @@ export class AuthService {
     meta: RequestMeta,
   ): Promise<{ secret: string; otpauthUri: string }> {
     const user = await this.#requireUser(session.userId);
-    const secret = randomBytes(20);
+    const secret = randomBytes(TOTP_SECRET_BYTES[NEW_TOTP_ALGORITHM]);
     const sealed = seal(this.#deps.totpKey, secret);
     await this.#deps.db.transaction().execute(async (trx) => {
       const repo = new AuthRepository(trx);
@@ -390,6 +399,7 @@ export class AuthService {
         ciphertext: sealed.ciphertext,
         nonce: sealed.nonce,
         keyVersion: this.#deps.totpKeyVersion,
+        algorithm: NEW_TOTP_ALGORITHM,
         confirmedAt: null,
         lastUsedStep: null,
       });
@@ -397,7 +407,12 @@ export class AuthService {
     await this.#audit({ actor: `user:${user.id}`, action: 'totp.enroll_started', ip: meta.ip });
     return {
       secret: base32Encode(secret),
-      otpauthUri: otpauthUri({ secret, issuer: this.#deps.issuer, account: user.username }),
+      otpauthUri: otpauthUri({
+        secret,
+        algorithm: NEW_TOTP_ALGORITHM,
+        issuer: this.#deps.issuer,
+        account: user.username,
+      }),
     };
   }
 
@@ -411,7 +426,13 @@ export class AuthService {
     if (pending === undefined) {
       throw new AppError('CONFLICT', 409, 'No hay ningún cambio de TOTP en curso');
     }
-    const result = verifyTotp(this.#openSecret(pending), input.code, this.#now(), null);
+    const result = verifyTotp(
+      this.#openSecret(pending),
+      pending.algorithm,
+      input.code,
+      this.#now(),
+      null,
+    );
     if (!result.ok) {
       throw new AppError('VALIDATION_ERROR', 400, 'El código no es correcto', [
         { path: 'code', message: 'El código no es correcto' },
@@ -494,7 +515,7 @@ export class AuthService {
     }
     await this.#assertAcceptablePassword(password, username);
     const passwordHash = await hashSecret(password, PASSWORD_ARGON2);
-    const secret = randomBytes(20);
+    const secret = randomBytes(TOTP_SECRET_BYTES[NEW_TOTP_ALGORITHM]);
     const sealed = seal(this.#deps.totpKey, secret);
 
     const recoveryCodes = await this.#deps.db.transaction().execute(async (trx) => {
@@ -505,6 +526,7 @@ export class AuthService {
         ciphertext: sealed.ciphertext,
         nonce: sealed.nonce,
         keyVersion: this.#deps.totpKeyVersion,
+        algorithm: NEW_TOTP_ALGORITHM,
         confirmedAt: this.#now(),
         lastUsedStep: null,
       });
@@ -519,7 +541,13 @@ export class AuthService {
     });
     return {
       totpSecret: base32Encode(secret),
-      otpauthUri: otpauthUri({ secret, issuer: this.#deps.issuer, account: username }),
+      totpAlgorithm: NEW_TOTP_ALGORITHM,
+      otpauthUri: otpauthUri({
+        secret,
+        algorithm: NEW_TOTP_ALGORITHM,
+        issuer: this.#deps.issuer,
+        account: username,
+      }),
       recoveryCodes,
     };
   }
@@ -604,7 +632,13 @@ export class AuthService {
   async #checkTotp(userId: string, code: string): Promise<boolean> {
     const totp = await this.#repo.findTotp(userId, 'confirmed');
     if (totp === undefined) return false;
-    const result = verifyTotp(this.#openSecret(totp), code, this.#now(), totp.lastUsedStep);
+    const result = verifyTotp(
+      this.#openSecret(totp),
+      totp.algorithm,
+      code,
+      this.#now(),
+      totp.lastUsedStep,
+    );
     return result.ok && (await this.#repo.claimTotpStep(totp.id, result.step));
   }
 

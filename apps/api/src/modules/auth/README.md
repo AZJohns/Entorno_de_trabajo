@@ -13,7 +13,7 @@ Autenticación del único usuario con dos factores (contraseña + TOTP), sesione
 
 | Carpeta / archivo | Contenido | E/S |
 |---|---|---|
-| `domain/` | TOTP (RFC 6238), códigos de recuperación, política de contraseñas, reglas de estado de la sesión | No (lógica pura) |
+| `domain/` | TOTP (RFC 6238, HMAC-SHA-256 o SHA-1 según la credencial), códigos de recuperación, política de contraseñas, reglas de estado de la sesión | No (lógica pura) |
 | `crypto/` | Argon2id (`crypto.argon2`), AES-256-GCM para la semilla TOTP, tokens de sesión y CSRF | Solo `node:crypto` |
 | `infra/` | Cliente de Pwned Passwords (HIBP) y carga de la lista de contraseñas comunes | Red, disco |
 | `data/common-passwords.txt` | 3.000 contraseñas comunes de 15 o más caracteres (SecLists, MIT). Se regenera con `pnpm --filter @backoffice/api build:common-passwords` (versión fijada por commit y SHA-256) | — |
@@ -54,7 +54,7 @@ Acceso: `public` (sin sesión), `session` (cualquier sesión viva), `mfa_pending
 
 - `users`: un único usuario (índice único sobre `(true)`), `password_hash` en formato PHC y `disabled_at`.
 - `sessions`: `token_hash` (SHA-256), `stage`, `failed_attempts`, `last_seen_at`, `expires_at`, `reauthenticated_at`, `revoked_at`, `user_agent`.
-- `totp_authenticators`: semilla cifrada (`secret_ciphertext`, `secret_nonce`, `key_version`), `last_used_step` y `confirmed_at`. Como mucho una confirmada y una pendiente por usuario.
+- `totp_authenticators`: semilla cifrada (`secret_ciphertext`, `secret_nonce`, `key_version`), `algorithm` (`SHA1` o `SHA256`, con `CHECK` y sin valor por defecto), `last_used_step` y `confirmed_at`. Como mucho una confirmada y una pendiente por usuario.
 - `recovery_codes`: `code_hash` (Argon2id) y `used_at`.
 - `audit_events`: solo inserción (trigger). Sin contraseñas, códigos ni tokens.
 
@@ -64,7 +64,7 @@ Se ejecutan en el servidor con el `.env` cargado. Leen la contraseña sin mostra
 
 | Comando | Qué hace |
 |---|---|
-| `pnpm user:create` | Crea el único usuario: contraseña, TOTP (muestra la clave y el enlace `otpauth://` **una vez**) y 10 códigos de recuperación (**una vez**). |
+| `pnpm user:create` | Crea el único usuario: contraseña, TOTP (muestra el QR, la clave y el enlace `otpauth://` **una vez**) y 10 códigos de recuperación (**una vez**). |
 | `pnpm --filter @backoffice/api user:reset-password` | Nueva contraseña; revoca todas las sesiones. **No** toca el TOTP (ASVS 6.4.3). |
 | `pnpm --filter @backoffice/api user:revoke-sessions` | Revoca todas las sesiones. |
 | `pnpm --filter @backoffice/api user:disable` | Deshabilita la cuenta y revoca sus sesiones. |

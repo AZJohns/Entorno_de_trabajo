@@ -27,12 +27,12 @@ La fase 1 necesita autenticación para un único usuario con nivel NIST AAL2 y O
    - Contraseñas: 64 MiB, t = 3, p = 4 (segunda recomendación de RFC 9106; por encima del mínimo de OWASP, 19 MiB, t = 2, p = 1). Unos 130 ms por hash en desarrollo. Si los parámetros cambian, el hash se recalcula en el siguiente login correcto (`needsRehash`).
    - Códigos de recuperación: 19 MiB, t = 2, p = 1 (mínimo de OWASP): tienen 80 bits y al verificar uno hay que probar hasta 10 hashes.
    - Si el usuario no existe, se verifica contra un hash ficticio con los mismos parámetros: el tiempo de respuesta no revela si existe.
-5. **TOTP implementado en el proyecto** (`domain/totp.ts`, RFC 6238/4226): HMAC-SHA1, 6 cifras, pasos de 30 s.
+5. **TOTP implementado en el proyecto** (`domain/totp.ts`, RFC 6238/4226): HMAC-SHA-256 en las altas nuevas (HMAC-SHA-1 en las credenciales anteriores a la migración 0004), 6 cifras, pasos de 30 s.
    - Se acepta el paso actual y el anterior (desfase de reloj). Desviación documentada de ASVS 6.5.5 (`asvs-l2.md`).
-   - HMAC-SHA-1 es *Legacy* según el apéndice C de ASVS 5.0: desviación documentada de 11.4.1, por compatibilidad con las apps de autenticación. Antes del alta de producción se probará HMAC-SHA-256 (pregunta 36 de `plan.md`).
+   - HMAC-SHA-1 es *Legacy* según el apéndice C de ASVS 5.0 (11.4.1). Pregunta 36 de `plan.md`, RESUELTA: cada credencial guarda su algoritmo (`totp_authenticators.algorithm`, `SHA1` o `SHA256`) y las altas nuevas usan SHA256. Google Authenticator en iOS solo aplica `algorithm=SHA256` si la cuenta se añade escaneando un QR; con la clave escrita a mano usa SHA-1, así que la web y `user:create` muestran el QR (generado en local) junto con ese aviso. Las credenciales anteriores quedan en SHA1 y siguen funcionando hasta que se cambie el TOTP.
    - **Cada código vale una vez**: `last_used_step` se actualiza con una sentencia condicional atómica (`claimTotpStep`), así que dos peticiones simultáneas con el mismo código no pueden ganar las dos.
-   - La semilla (20 bytes) se cifra con **AES-256-GCM** (`TOTP_ENCRYPTION_KEY`, nonce de 12 bytes) y se guarda con `key_version`. No puede ir con hash porque hay que recalcular los códigos.
-   - Se prueba con los vectores oficiales del apéndice B de RFC 6238.
+   - La semilla (32 bytes con SHA256; 20 en las credenciales SHA1 antiguas) se cifra con **AES-256-GCM** (`TOTP_ENCRYPTION_KEY`, nonce de 12 bytes) y se guarda con `key_version`. No puede ir con hash porque hay que recalcular los códigos.
+   - Se prueba con los vectores oficiales del apéndice B de RFC 6238 (SHA-1 y SHA-256).
 6. **Códigos de recuperación**: 10 códigos de 80 bits (`XXXX-XXXX-XXXX-XXXX`, base32 de Crockford), de un solo uso (`claimRecoveryCode` atómico), guardados con Argon2id porque tienen menos de 112 bits (ASVS 6.5.2). Al escribirlos se admiten minúsculas, espacios y letras confundibles (I/L → 1, O → 0).
 7. **CSRF en tres capas** (ASVS 3.5):
    - `SameSite=Lax` en la cookie.

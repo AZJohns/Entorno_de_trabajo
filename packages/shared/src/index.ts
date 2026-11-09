@@ -3,3 +3,4 @@ export * from './money/money.ts';
 export * from './errors/problem.ts';
 export * from './auth/schemas.ts';
 export * from './finance/schemas.ts';
+export * from './qr/qr.ts';

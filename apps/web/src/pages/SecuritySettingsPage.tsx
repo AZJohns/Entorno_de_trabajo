@@ -19,6 +19,7 @@ import { Link, useLocation } from 'react-router';
 import { api } from '../api/client.ts';
 import { forgetSession, hasRecentReauth, useSession } from '../auth/session.ts';
 import { Button, Checkbox, ErrorMessage, Field, Loading, SuccessMessage } from '../ui/forms.tsx';
+import { QrCode } from '../ui/QrCode.tsx';
 
 const SESSIONS_QUERY_KEY = ['auth', 'sessions'] as const;
 
@@ -198,9 +199,13 @@ function ChangeTotp() {
       ) : (
         <form onSubmit={submit} className="flex flex-col gap-3">
           <p className="text-sm text-slate-600">
-            Añade esta clave a tu app de autenticación con el enlace (en el móvil) o escribiéndola a
-            mano. Después, escribe el código que muestra.
+            Escanea este QR con tu app de autenticación. Después, escribe el código que muestra.
           </p>
+          <QrCode text={enrollment.otpauthUri} label="Código QR para añadir la clave nueva" />
+          <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            En Google Authenticator, escanea el QR; con la clave escrita a mano no funcionará.
+          </p>
+          <p className="text-sm text-slate-600">Clave (solo para apps que no puedan escanear):</p>
           <p className="rounded-md bg-slate-100 px-3 py-2 font-mono text-sm break-all">
             {groupSecret(enrollment.secret)}
           </p>
