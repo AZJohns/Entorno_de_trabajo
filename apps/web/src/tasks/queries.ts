@@ -4,10 +4,13 @@
  * actualiza la caché al instante y la deshace si el servidor lo rechaza.
  */
 import {
+  reminderListResponseSchema,
+  reminderResponseSchema,
   taskBoardResponseSchema,
   taskResponseSchema,
   timeEntryListResponseSchema,
   timeEntryResponseSchema,
+  type CreateReminderRequest,
   type CreateTaskRequest,
   type CreateTimeEntryRequest,
   type TaskBoardResponse,
@@ -162,6 +165,42 @@ export function useDeleteTimeEntry() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (entryId: string) => api(`/time-entries/${segment(entryId)}`, { method: 'DELETE' }),
+    onSuccess: () => invalidate(queryClient),
+  });
+}
+
+// --- recordatorios --------------------------------------------------------------------------------
+
+export function useReminders(taskId: string) {
+  return useQuery({
+    queryKey: [ROOT, 'reminders', taskId],
+    queryFn: () =>
+      api(`/tasks/${segment(taskId)}/reminders`, { schema: reminderListResponseSchema }).then(
+        (result) => result.items,
+      ),
+  });
+}
+
+export function useAddReminder() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { taskId: string } & CreateReminderRequest) =>
+      api(`/tasks/${segment(input.taskId)}/reminders`, {
+        method: 'POST',
+        body: { remindAtLocal: input.remindAtLocal },
+        schema: reminderResponseSchema,
+      }),
+    onSuccess: () => invalidate(queryClient),
+  });
+}
+
+export function useDeleteReminder() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { taskId: string; reminderId: string }) =>
+      api(`/tasks/${segment(input.taskId)}/reminders/${segment(input.reminderId)}`, {
+        method: 'DELETE',
+      }),
     onSuccess: () => invalidate(queryClient),
   });
 }

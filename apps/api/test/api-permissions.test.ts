@@ -1,11 +1,12 @@
 /**
  * Permisos de las rutas de negocio (docs/plan.md §6.2): denegar por defecto. Se recorren TODAS las rutas
- * registradas (libro, informes, exportación, presupuesto y tareas) y la lista se compara con las rutas
+ * registradas (libro, informes, exportación, presupuesto, tareas, recordatorios y notificaciones) y la lista se compara con las rutas
  * reales de los routers, así que una ruta nueva sin probar hace fallar este test.
  */
 import { describe, expect, it } from 'vitest';
 import { createDatabase } from '../src/db/database.ts';
 import { createFinanceModule } from '../src/modules/finance/index.ts';
+import { createNotificationsModule } from '../src/modules/notifications/index.ts';
 import { createTasksModule } from '../src/modules/tasks/index.ts';
 import { systemClock } from '../src/lib/clock.ts';
 import { useAuthTestContext } from './support/auth.ts';
@@ -65,6 +66,13 @@ const ROUTES: readonly (readonly [method: 'get' | 'post' | 'patch' | 'delete', p
   ['post', `/tasks/${ID}/timer/start`],
   ['post', `/tasks/${ID}/timer/stop`],
   ['delete', `/time-entries/${ID}`],
+  ['get', `/tasks/${ID}/reminders`],
+  ['post', `/tasks/${ID}/reminders`],
+  ['delete', `/tasks/${ID}/reminders/${ID}`],
+  ['get', '/notifications'],
+  ['get', '/notifications/unread-count'],
+  ['post', '/notifications/read-all'],
+  ['post', `/notifications/${ID}/read`],
 ];
 
 /** Rutas S+: además de la sesión, exigen reautenticación completa en los últimos 10 minutos. */
@@ -74,7 +82,7 @@ const MUTATING = ROUTES.filter(([method]) => method !== 'get');
 
 /** Pasa a la forma «MÉTODO /ruta/:id» de las rutas registradas. */
 const asPattern = (method: string, path: string): string =>
-  `${method.toUpperCase()} ${path.replaceAll(ID, ':id').replace('/monthly/2026-10/', '/monthly/:month/')}`;
+  `${method.toUpperCase()} ${path.replace(`/reminders/${ID}`, '/reminders/:reminderId').replaceAll(ID, ':id').replace('/monthly/2026-10/', '/monthly/:month/')}`;
 
 describe('rutas de negocio', () => {
   it('la lista de este test coincide con las rutas registradas en los routers', () => {
@@ -87,8 +95,13 @@ describe('rutas de negocio', () => {
       },
       recordExport: () => Promise.resolve(),
     });
-    const { router: tasks } = createTasksModule({ db, clock: systemClock });
-    const registered = [finance, tasks].flatMap((router) => {
+    const notificationsModule = createNotificationsModule({ db, clock: systemClock });
+    const { router: tasks } = createTasksModule({
+      db,
+      clock: systemClock,
+      notifications: notificationsModule.service,
+    });
+    const registered = [finance, tasks, notificationsModule.router].flatMap((router) => {
       const stack = (
         router as unknown as { stack: { route?: { path: string; methods: object } }[] }
       ).stack;

@@ -4,11 +4,16 @@
  * que modifican datos). El test de permisos recorre todas las que se registran aquí.
  */
 import { Router } from 'express';
-import type { createTasksController, createTimeEntriesController } from './tasks.controller.ts';
+import type {
+  createRemindersController,
+  createTasksController,
+  createTimeEntriesController,
+} from './tasks.controller.ts';
 
 export function createTasksRouter(
   tasks: ReturnType<typeof createTasksController>,
   time: ReturnType<typeof createTimeEntriesController>,
+  reminders: ReturnType<typeof createRemindersController>,
 ): Router {
   const router = Router();
   router.get('/tasks', tasks.list);
@@ -22,5 +27,8 @@ export function createTasksRouter(
   router.post('/tasks/:id/timer/start', time.start);
   router.post('/tasks/:id/timer/stop', time.stop);
   router.delete('/time-entries/:id', time.remove);
+  router.get('/tasks/:id/reminders', reminders.list);
+  router.post('/tasks/:id/reminders', reminders.create);
+  router.delete('/tasks/:id/reminders/:reminderId', reminders.remove);
   return router;
 }

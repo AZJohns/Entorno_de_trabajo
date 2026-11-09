@@ -1,6 +1,7 @@
 /** Marco de las pantallas internas: navegación y botón de salir. */
 import { NavLink, Outlet } from 'react-router';
 import { useLogout, useSession } from '../auth/session.ts';
+import { NotificationBell } from '../notifications/NotificationBell.tsx';
 import { Button } from '../ui/forms.tsx';
 
 const linkClass = ({ isActive }: { isActive: boolean }) =>
@@ -43,6 +44,7 @@ export function Layout() {
           </NavLink>
         </nav>
         <div className="flex items-center gap-3">
+          <NotificationBell />
           <span className="text-sm text-slate-500">{session.data?.user.username}</span>
           <Button type="button" variant="secondary" onClick={() => void logout()}>
             Salir

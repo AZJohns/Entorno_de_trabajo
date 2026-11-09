@@ -8,6 +8,7 @@ Interfaz de `apps/api/src/modules/tasks`. Diseño y API: `docs/plan.md` §2.6 y 
 | `TaskCard.tsx` | Tarjeta: fecha límite (con «Vencida» en texto), tiempo, cronómetro, acciones y menú «Mover a…» |
 | `TaskForm.tsx` | Alta y edición (título, descripción, fecha límite), validadas con los esquemas de `@backoffice/shared` |
 | `TimePanel.tsx` | Total, entradas con borrado y anotación manual (duración o inicio y fin) |
+| `RemindersPanel.tsx` | Recordatorios de la tarea: lista (pendientes y entregados, con CET/CEST), alta con fecha y hora de Madrid y borrado |
 | `boardLogic.ts` | Lógica pura: colocar una tarjeta, traducirla a `move`, vencidas, ventana de «Terminado», duraciones |
 | `queries.ts` | react-query: tablero, movimiento optimista con vuelta atrás, tiempo; textos de error en español |
 
@@ -23,8 +24,8 @@ funcionan sin dependencia.
   izquierda/derecha cambian de columna y arriba/abajo de lugar; Espacio o Intro la suelta y Escape cancela. Cada paso
   se anuncia en una región `aria-live`. Si el foco sale del asa, se cancela.
 - **Menú «Mover a…»** en cada tarjeta (un `<select>` nativo): es la vía para pantalla táctil, porque el arrastre
-  nativo de HTML5 no es fiable en la PWA instalada en iOS. **Comprobar en el iPhone** antes de dar por cerrado el
-  criterio «arrastrar funciona en la PWA» de la fase 4.
+  nativo de HTML5 no es fiable en la PWA instalada en iOS. El criterio de la fase 4 es que en la PWA del iPhone las
+  tareas se mueven con «Mover a…»; el arrastre con el dedo se evalúa con el iPhone en la fase 2.
 
 ### Movimiento optimista
 

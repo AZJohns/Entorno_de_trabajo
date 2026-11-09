@@ -184,6 +184,28 @@ export interface TaskTimeEntriesTable {
   created_at: Defaulted<Date>;
 }
 
+export interface TaskRemindersTable {
+  id: Generated<string>;
+  task_id: string;
+  remind_at: Date;
+  /** `NULL` mientras el aviso está pendiente. */
+  sent_at: Date | null;
+  attempts: Defaulted<number>;
+  last_error: string | null;
+  created_at: Defaulted<Date>;
+}
+
+export interface NotificationsTable {
+  id: Generated<string>;
+  kind: string;
+  /** Origen de la notificación (p. ej. el recordatorio). Sin clave ajena: es de otro módulo. */
+  reference_id: string | null;
+  title: string;
+  body: Defaulted<string>;
+  created_at: Defaulted<Date>;
+  read_at: Date | null;
+}
+
 /** Esquema completo de la base de datos. */
 export interface Database {
   users: UsersTable;
@@ -199,4 +221,6 @@ export interface Database {
   category_budgets: CategoryBudgetsTable;
   tasks: TasksTable;
   task_time_entries: TaskTimeEntriesTable;
+  task_reminders: TaskRemindersTable;
+  notifications: NotificationsTable;
 }

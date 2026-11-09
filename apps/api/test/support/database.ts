@@ -40,6 +40,8 @@ async function admin(query: string): Promise<void> {
 /** Base de datos temporal migrada. */
 export interface TestDatabase {
   readonly db: Kysely<Database>;
+  /** Cadena de conexión de esta base de datos temporal (para abrir un segundo pool en un test). */
+  readonly url: string;
   drop(): Promise<void>;
 }
 
@@ -53,6 +55,7 @@ export async function createTestDatabase(): Promise<TestDatabase> {
   await migrateToLatest(db);
   return {
     db,
+    url: url.toString(),
     async drop() {
       await db.destroy();
       await admin(`DROP DATABASE IF EXISTS ${name}`);

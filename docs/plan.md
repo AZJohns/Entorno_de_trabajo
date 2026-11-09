@@ -494,21 +494,38 @@ El importador traduce `=0` (lista vacía), la referencia directa y `SUM` sobre u
 
 **Sin solapes** [RESUELTO]: `EXCLUDE USING gist (tstzrange(started_at, ended_at, '[)') WITH &&)` prohíbe que dos entradas cualesquiera, **de cualquier tarea**, se pisen. Una persona no dedica el mismo minuto a dos tareas, y así los totales no cuentan tiempo dos veces; es coherente con el cronómetro único. Un cronómetro en marcha es un rango sin fin, así que también impide anotar a mano tiempo posterior a su inicio. Los intervalos contiguos (el fin de uno es el inicio de otro) son válidos. La exclusión por sí sola ya impediría un segundo cronómetro; el índice único parcial se mantiene como invariante explícito e independiente.
 
-**`task_reminders`**
+**`task_reminders`** (migración `0007_reminders_notifications`, fase 4c)
 | Columna | Tipo | Restricciones y notas |
 |---|---|---|
 | id | uuid | PK |
 | task_id | uuid | FK ON DELETE CASCADE |
 | remind_at | timestamptz | NOT NULL |
-| sent_at | timestamptz | NULL |
-| attempts | smallint | DEFAULT 0 |
-| last_error | text | NULL |
+| sent_at | timestamptz | NULL = pendiente |
+| attempts | smallint | NOT NULL DEFAULT 0. Solo diagnóstico de los fallos del planificador; **no hay tope**, un aviso nunca se abandona |
+| last_error | text | NULL, `CHECK (char_length <= 500)` |
+| created_at | timestamptz | |
 
-Índice parcial `(remind_at) WHERE sent_at IS NULL`.
+`UNIQUE (task_id, remind_at)` (un doble clic no crea dos avisos iguales) e índice parcial `(remind_at) WHERE sent_at IS NULL`, que es el que recorre el planificador.
+
+- **La hora local de Madrid se convierte en un instante en la API** [RESUELTO]. La web envía `remindAtLocal` (`YYYY-MM-DDTHH:mm`, sin zona) y `tasks/domain/local-time.ts` la convierte con `Intl` de Node, sin dependencia. Así la regla de los cambios de horario existe en un solo sitio, probada, y no depende de la zona ni de la versión del navegador de quien escribe el aviso. Una hora que **no existe** (el último domingo de marzo, 02:00–02:59) se **rechaza con 422**: no hay instante que sea «02:30» y adivinar si quería antes o después movería el aviso sin que se note. Una hora que **se repite** (último domingo de octubre, 02:00–02:59) se resuelve a la **primera** ocurrencia (horario de verano): se puede respetar literalmente, el aviso nunca llega tarde y la web muestra CET/CEST junto a la hora. Quien quiera la segunda puede pedir las 03:00, que es única. La zona es la constante `REMINDER_TIME_ZONE` (`Europe/Madrid`, `packages/shared`); con un solo usuario no se lee de `users.timezone`, que sigue siendo el valor por defecto.
+- **Entrega una sola vez** [RESUELTO]. El planificador reclama los avisos vencidos con `UPDATE … WHERE id IN (SELECT … FOR UPDATE SKIP LOCKED) RETURNING` (marca `sent_at`) y **en la misma transacción** crea la notificación. No existe un estado «reclamado pero no entregado»: si el proceso muere a mitad, PostgreSQL deshace la transacción y el aviso sigue pendiente; si hay dos procesos, el segundo se salta las filas bloqueadas. El índice único `(kind, reference_id)` de `notifications` es un segundo cerrojo. Dentro de la app es «exactamente una vez»; el push (fase 2) será «al menos una vez», porque un envío externo no puede ir en la transacción.
 
 ### 2.7 Módulo `notifications`
 
-**`push_subscriptions`**
+**`notifications`** (migración `0007_reminders_notifications`, fase 4c: el canal «dentro de la app»)
+| Columna | Tipo | Restricciones y notas |
+|---|---|---|
+| id | uuid | PK |
+| kind | text | `CHECK (kind ~ '^[a-z][a-z_]{0,39}$')`: formato y no lista cerrada, para no exigir una migración por cada tipo nuevo. Hoy, `task_reminder` |
+| reference_id | uuid | NULL. Origen (p. ej. el recordatorio). **Sin FK**: es de otro módulo y la notificación debe sobrevivir al borrado de la tarea |
+| title | text | `CHECK (char_length BETWEEN 1 AND 200)` |
+| body | text | NOT NULL DEFAULT `''`, `CHECK (char_length <= 500)` |
+| created_at | timestamptz | |
+| read_at | timestamptz | NULL = sin leer |
+
+Índice único `(kind, reference_id) WHERE reference_id IS NOT NULL` (la misma notificación no se crea dos veces) e índices por `created_at DESC` y sobre las no leídas.
+
+**`push_subscriptions`** (fase 2)
 | Columna | Tipo | Restricciones y notas |
 |---|---|---|
 | id | uuid | PK |
@@ -659,11 +676,15 @@ El archivo se recibe con `express.raw({ type: [...], limit: '5mb' })`, **sin mul
 **notifications**
 | Método | Ruta | Auth | Descripción |
 |---|---|---|---|
-| GET | `/notifications/vapid-public-key` | S | |
-| POST | `/notifications/subscriptions` | S | Inserta o actualiza por `endpoint` |
-| DELETE | `/notifications/subscriptions/:id` | S | |
-| POST | `/notifications/test` | S | Envía una notificación de prueba |
-| GET, PUT | `/notifications/preferences` | S | P. ej., mostrar u ocultar los importes en la pantalla de bloqueo |
+| GET | `/notifications` | S | Fase 4c. `{ items, unreadCount }`: las 50 más recientes y el total de no leídas |
+| GET | `/notifications/unread-count` | S | Fase 4c. `{ count }`, para la campana |
+| POST | `/notifications/:id/read` | S | Fase 4c. Idempotente: si ya estaba leída, no cambia `read_at`. 404 si no existe |
+| POST | `/notifications/read-all` | S | Fase 4c. 204 |
+| GET | `/notifications/vapid-public-key` | S | Fase 2 |
+| POST | `/notifications/subscriptions` | S | Fase 2. Inserta o actualiza por `endpoint` |
+| DELETE | `/notifications/subscriptions/:id` | S | Fase 2 |
+| POST | `/notifications/test` | S | Fase 2. Envía una notificación de prueba |
+| GET, PUT | `/notifications/preferences` | S | Fase 2. P. ej., mostrar u ocultar los importes en la pantalla de bloqueo |
 
 **tasks**
 | Método | Ruta | Auth | Descripción |
@@ -675,8 +696,8 @@ El archivo se recibe con `express.raw({ type: [...], limit: '5mb' })`, **sin mul
 | GET, POST | `/tasks/:id/time-entries` | S | Anotación manual `{ startedAt, endedAt }` o `{ startedAt, durationSeconds }` (ISO 8601 con zona; el fin debe ser posterior al inicio; máximo 7 días). 422 si termina en el futuro; 409 si se solapa con otra entrada o con el cronómetro en marcha |
 | POST | `/tasks/:id/timer/start`, `/tasks/:id/timer/stop` | S | 201 / 200 con la entrada. 409 si ya hay un cronómetro en marcha (de cualquier tarea) al iniciar, o si esa tarea no tiene ninguno al parar |
 | DELETE | `/time-entries/:id` | S | También descarta el cronómetro en marcha |
-| GET, POST | `/tasks/:id/reminders` | S | `{ remindAt }` |
-| DELETE | `/tasks/:id/reminders/:reminderId` | S | |
+| GET, POST | `/tasks/:id/reminders` | S | POST `{ remindAtLocal }` (`YYYY-MM-DDTHH:mm`, hora de Madrid; ver §2.6) → 201 con `{ id, taskId, remindAt, sentAt }`. 422 si la hora no existe (marzo) o no es posterior a ahora; 409 si ya hay uno a esa hora; 404 si la tarea no existe. GET lista pendientes y entregados por hora |
+| DELETE | `/tasks/:id/reminders/:reminderId` | S | 204; 404 si no existe o es de otra tarea |
 
 **notes**
 | Método | Ruta | Auth | Descripción |
@@ -1324,7 +1345,7 @@ Tamaños relativos (S, M, L, XL). No pongo días porque no conozco tu ritmo y un
     - Monitorización de disponibilidad y de las copias.
     - Runbooks de despliegue, copia y restauración y rotación de secretos.
     - **Limpieza automática** (pregunta 35): borrar las sesiones caducadas hace más de 30 días y los `audit_events` de más de 1 año. El trigger de solo inserción de `audit_events` rechaza `DELETE`; la purga necesita un camino explícito (rol de mantenimiento o función dedicada), que se decide con los roles separados de la base de datos (ASVS 16.4.2) y se anota en un ADR.
-  - **2c. PWA**: manifiesto, *service worker*, suscripción a push, notificación de prueba y contador en el icono.
+  - **2c. PWA**: manifiesto, *service worker*, suscripción a push, notificación de prueba y contador en el icono. Incluye el **envío por push de los recordatorios de tareas** (pasa aquí desde la fase 4c): implementar `NotificationChannel` con `web-push` y pasarlo a `createNotificationsModule({ channels })`; el planificador y la tabla `notifications` ya existen. Decidir también cómo se actualiza la campana con la app abierta sin sondear (ver `apps/web/src/notifications/queries.ts`).
   - **2d. Atajo**
     - Migración con las tablas `device_tokens` y `wallet_cards` y las columnas aplazadas de `movements` (`wallet_card_id`, `device_token_id`, `idempotency_key`, `raw_payload`), el valor `shortcut` en el `CHECK` de `source` y las restricciones marcadas «(fase 2)» en §2.3. Se hace con una migración nueva: la `0003_ledger` no se edita.
     - Tokens de dispositivo (crear y revocar, ambos con reautenticación).
@@ -1412,13 +1433,15 @@ Tamaños relativos (S, M, L, XL). No pongo días porque no conozco tu ritmo y un
 
 ### Fase 4 — Tareas con recordatorios · tamaño M
 
+> **Estado: TERMINADA** (4a, 4b y 4c), **salvo el envío por push, que pasa a la fase 2** (2c). Los recordatorios ya se entregan como notificación dentro de la app (campana, contador y lista); el canal de push queda preparado (`NotificationChannel`) y sin implementar.
+
 - **Reparto en PR**
   - **4a** — modelo de datos y API de tareas y de tiempo dedicado (sin recordatorios). Migración `0006_tasks`; módulo `apps/api/src/modules/tasks/`.
   - **4b** — pantallas: tablero, arrastrar, «Mover a…», cronómetro y anotación manual.
-  - **4c** — recordatorios por push y planificador de 60 s.
+  - **4c** — recordatorios y planificador de 60 s. Notificación dentro de la app; el push pasa a la fase 2.
 - **Alcance**
-  - Kanban de 4 columnas, arrastrar y reordenar (dnd-kit) y el menú «Mover a…».
-  - Fecha límite, tiempo dedicado (cronómetro **y** anotación manual, ambos guardados como intervalos) y recordatorios por push.
+  - Kanban de 4 columnas, arrastrar y reordenar y el menú «Mover a…».
+  - Fecha límite, tiempo dedicado (cronómetro **y** anotación manual, ambos guardados como intervalos) y recordatorios (notificación dentro de la app; el push, en la fase 2).
   - Planificador de 60 s.
 - **Terminado cuando**
   - Hay tests:
@@ -1426,7 +1449,7 @@ Tamaños relativos (S, M, L, XL). No pongo días porque no conozco tu ritmo y un
     - De que un recordatorio se envía **una sola vez**, incluso con un reinicio de por medio (`sent_at` y la reclamación con `SKIP LOCKED`).
     - Del cambio de horario de marzo y octubre.
     - De que solo puede haber un cronómetro en marcha.
-  - Arrastrar funciona en la PWA del iPhone y con el teclado.
+  - En la PWA del iPhone las tareas se mueven con «Mover a…»; el arrastre con el dedo se evalúa con el iPhone en la fase 2. Con el teclado se mueven con el asa «Reordenar».
 - **Riesgos**
   - Arrastrar y soltar en iOS en modo *standalone*.
   - Recordatorios perdidos si el host se duerme (mitigado por la elección del despliegue).

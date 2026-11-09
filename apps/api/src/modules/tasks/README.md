@@ -1,13 +1,14 @@
-# Módulo `tasks` — tareas y tiempo dedicado
+# Módulo `tasks` — tareas, tiempo dedicado y recordatorios
 
-Tablero de cuatro columnas (Por hacer, En curso, En prueba, Terminado) con fecha límite opcional y tiempo dedicado. Diseño: `docs/plan.md` §2.6 y §2.10.
+Tablero de cuatro columnas (Por hacer, En curso, En prueba, Terminado) con fecha límite opcional, tiempo dedicado y recordatorios. Diseño: `docs/plan.md` §2.6 y §2.10.
 
-**Estado (fase 4, PR 4a de 3):** modelo de datos y API. Las pantallas son el 4b y los recordatorios (`task_reminders`, push y planificador) en el 4c.
+**Estado (fase 4, PR 4c de 3): terminada.** Modelo de datos y API (4a), pantallas (4b) y recordatorios con su planificador (4c). Los recordatorios se entregan como notificación **dentro de la app**; el envío por push pasa a la fase 2.
 
 ## Responsabilidad
 
 - Guardar las tareas y su orden en el tablero.
 - Guardar el tiempo dedicado como intervalos (cronómetro y anotación manual) y calcular los totales al leer. **No se guarda ningún dato derivado.**
+- Guardar los recordatorios de cada tarea y **entregarlos una sola vez** a su hora, a través del módulo `notifications` (solo por su `index.ts`).
 
 ## Estructura
 
@@ -19,8 +20,11 @@ Tablero de cuatro columnas (Por hacer, En curso, En prueba, Terminado) con fecha
 | `time-entries.repository.ts` | Consultas sobre `task_time_entries`, con el tiempo agregado por tarea | Base de datos |
 | `tasks.service.ts` | Alta, edición, borrado, tablero y movimiento; transacciones y bloqueo | — |
 | `time-entries.service.ts` | Cronómetro y anotación manual; traduce los conflictos de la base de datos | — |
+| `domain/local-time.ts` | `resolveLocalDateTime`: hora local de una zona → instante, con huecos y horas repetidas | No |
+| `reminders.repository.ts` | Consultas sobre `task_reminders`; `claimDue` (reclamación con `SKIP LOCKED`) y `recordFailure` | Base de datos |
+| `reminders.service.ts` | Alta, lista y borrado de recordatorios; `deliverDue`, la entrega transaccional | — |
 | `tasks.controller.ts`, `tasks.routes.ts` | HTTP: validación con los esquemas de `@backoffice/shared` (`packages/shared/src/tasks/schemas.ts`) y respuestas | — |
-| `index.ts` | API pública: `createTasksModule({ db, clock })` → `{ tasks, timeEntries, router }` | — |
+| `index.ts` | API pública: `createTasksModule({ db, clock, notifications, timeZone? })` → `{ tasks, timeEntries, reminders, router }` | — |
 
 ## Endpoints (`/api/v1`, sesión activa; sin reautenticación)
 
@@ -33,6 +37,8 @@ Tablero de cuatro columnas (Por hacer, En curso, En prueba, Terminado) con fecha
 | GET, POST | `/tasks/:id/time-entries` | 200 `{ items }` · 201 entrada |
 | POST | `/tasks/:id/timer/start`, `/tasks/:id/timer/stop` | 201 · 200 entrada |
 | DELETE | `/time-entries/:id` | 204 |
+| GET, POST | `/tasks/:id/reminders` | 200 `{ items }` · 201 recordatorio `{ id, taskId, remindAt, sentAt }` |
+| DELETE | `/tasks/:id/reminders/:reminderId` | 204 |
 
 Cada tarea incluye `timeSpentSeconds` (total, calculado al leer; cuenta hasta ahora si el cronómetro está en marcha) y `timerStartedAt` (para que la web muestre el contador).
 
@@ -41,13 +47,13 @@ Códigos de error (mismo criterio que el libro):
 | Código | Cuándo |
 |---|---|
 | 400 | Cuerpo, consulta o identificador no válidos; `beforeId` y `afterId` a la vez; fin de una anotación no posterior al inicio; fin y duración a la vez (o ninguno); más de 7 días; fecha sin zona horaria |
-| 404 | La tarea o la entrada de la URL no existe |
-| 422 | El cuerpo es válido pero incoherente: la referencia de un movimiento es la propia tarea o **no está en la columna de destino** (no existe, o está en otra); una anotación que **termina en el futuro** |
-| 409 | El estado actual lo impide: **ya hay un cronómetro en marcha** (de cualquier tarea); no hay cronómetro que parar en esa tarea; la anotación **se solapa** con otra o con el cronómetro en marcha |
+| 404 | La tarea, la entrada o el recordatorio de la URL no existe (o el recordatorio es de otra tarea) |
+| 422 | El cuerpo es válido pero incoherente: la referencia de un movimiento es la propia tarea o **no está en la columna de destino** (no existe, o está en otra); una anotación que **termina en el futuro**; un recordatorio cuya **hora local no existe** (hueco de marzo) o que **no es posterior a ahora** |
+| 409 | El estado actual lo impide: **ya hay un cronómetro en marcha** (de cualquier tarea); no hay cronómetro que parar en esa tarea; la anotación **se solapa** con otra o con el cronómetro en marcha; la tarea **ya tiene un recordatorio a esa hora** |
 
 ## Tablas
 
-Migración `0006_tasks`: `tasks` y `task_time_entries`. Las restricciones están en la migración, con su porqué, y se prueban una a una en `test/tasks/tasks-schema.test.ts`.
+Migración `0006_tasks`: `tasks` y `task_time_entries`. Migración `0007_reminders_notifications`: `task_reminders` (y `notifications`, del módulo `notifications`). Las restricciones están en las migraciones, con su porqué; las de `tasks` y tiempo se prueban una a una en `test/tasks/tasks-schema.test.ts`.
 
 ## Decisiones
 
@@ -85,8 +91,43 @@ Para un solo usuario y decenas de tareas por columna, el coste extra de renumera
 - **Parar un cronómetro** pone `ended_at = ahora`, pero la base de datos exige `fin > inicio`: si el reloj no ha avanzado (o ha retrocedido) se usa `inicio + 1 ms` en vez de rechazar la parada (`stopInstant`).
 - **Mover una tarea a «Terminado» no para el cronómetro**; se para a mano. Borrar una tarea borra su tiempo en cascada, también el cronómetro en marcha.
 
-## Pendiente (fases 4b y 4c)
+### Recordatorios: la hora local se convierte en la API
 
-- Recordatorios (4c). Las pantallas (4b) están en `apps/web/src/tasks/`.
+El usuario elige una fecha y hora **de Madrid**; la base de datos guarda un instante (`timestamptz`). La web envía `remindAtLocal` (`YYYY-MM-DDTHH:mm`, sin zona) y `domain/local-time.ts` la convierte con `Intl` de Node (datos de zonas horarias completos), **sin dependencia**. Se hace aquí y no en el navegador para que la regla de los cambios de horario exista en un solo sitio, con tests, y no dependa de la zona ni de la versión del navegador de quien escribe el aviso.
+
+| Caso (Madrid) | Qué pasa |
+|---|---|
+| Hora normal | Un instante: `2026-12-10T09:30` → `08:30Z` (invierno, +1) · `2027-07-10T09:30` → `07:30Z` (verano, +2) |
+| **No existe** (último domingo de marzo, 02:00–02:59) | **422**. No hay instante que sea «02:30»; adivinar si quería antes o después movería el aviso sin que se note. `01:59` y `03:00` sí valen |
+| **Se repite** (último domingo de octubre, 02:00–02:59) | Se elige la **primera** ocurrencia (horario de verano): `2027-10-31T02:30` → `00:30Z`. Se respeta la hora literal, el aviso nunca llega tarde, y la web muestra CET/CEST. La segunda es `01:30Z`; quien quiera esa franja puede pedir `03:00`, que es única |
+
+El algoritmo prueba el desplazamiento de la zona un día antes y un día después, y acepta un candidato si en ese instante la zona tiene ese desplazamiento: ninguno → hueco, uno → único, dos → repetida. La zona es la constante `REMINDER_TIME_ZONE` (`Europe/Madrid`, `packages/shared`); con un solo usuario no se lee de `users.timezone` (que vale lo mismo por defecto) y el módulo `auth` no expone la zona.
+
+Un recordatorio no puede ser del pasado (422; el instante exacto de ahora tampoco). `UNIQUE (task_id, remind_at)` evita dos avisos idénticos (409). Se pueden borrar tanto los pendientes como los ya entregados. Mover una tarea a «Terminado» no cancela sus recordatorios pendientes.
+
+### Recordatorios: entrega una sola vez
+
+`RemindersService.deliverDue` (lo llama el planificador de `src/jobs/` cada 60 s; el primer ciclo, al arrancar):
+
+1. Abre una transacción.
+2. `UPDATE task_reminders SET sent_at = ahora WHERE id IN (SELECT id … WHERE sent_at IS NULL AND remind_at <= ahora ORDER BY remind_at LIMIT 50 FOR UPDATE SKIP LOCKED) RETURNING …`.
+3. Crea las notificaciones con `notifications.notify(trx, …)` **en esa misma transacción**.
+4. Confirma. Después, `notifications.dispatch(creadas)` las reparte a los canales externos (hoy ninguno).
+
+Garantías, y la prueba de cada una (`test/tasks/reminders-delivery.test.ts`):
+
+| Situación | Resultado |
+|---|---|
+| Dos procesos a la vez | El segundo se salta las filas bloqueadas por el primero (`SKIP LOCKED`): cada aviso lo entrega uno solo |
+| El proceso muere a mitad (se mata la conexión con `pg_terminate_backend`) | PostgreSQL deshace la transacción: `sent_at` sigue `NULL`, no hay notificación y el siguiente ciclo lo entrega, una vez. **No existe un estado «reclamado pero no entregado»**: por eso no hace falta un tiempo de espera para recuperar avisos colgados |
+| Falla la creación de la notificación | Se deshace todo; se anota `attempts` y `last_error` (diagnóstico) y se relanza el error para el log. Sin tope de intentos: un aviso nunca se abandona |
+| Otro proceso crea la misma notificación | El índice único `(kind, reference_id)` de `notifications` lo impide |
+
+Es entrega «exactamente una vez» dentro de la app. El push (fase 2) será «al menos una vez»: un envío externo no puede ir en la transacción, así que va después de confirmar y su fallo no repite el aviso. Un aviso vencido durante una parada se entrega al arrancar. Si hay más de 50 vencidos, cada ciclo entrega 50 más. La notificación lleva el título de la tarea **copiado** (`body`): sobrevive a que se borre o renombre la tarea.
+
+## Pendiente
+
+- Push (fase 2): implementar `NotificationChannel` y decidir qué texto se ve en la pantalla de bloqueo (`plan.md` §5.7).
+- Si en el futuro hay varios usuarios o zonas, la zona debe venir de `auth` (su `index.ts`), no de la constante.
 - La columna «Terminado» crece sin límite. La web (4b) solo **pinta** las 10 más recientes con «Ver más», pero la API sigue devolviendo la columna entera; paginar la descarga pide un `limit` en `GET /tasks?status=done`.
 - No hay edición de una entrada de tiempo: se borra y se vuelve a anotar.
