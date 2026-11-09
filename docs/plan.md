@@ -127,6 +127,7 @@ jobs (infraestructura) ──▶ tasks, notifications, imports, auth (limpiezas 
 │   │   │       ├── auth/           # README.md, index.ts, *.routes|controller|service|repository.ts, __tests__/
 │   │   │       ├── finance/
 │   │   │       │   ├── ledger/     # cuentas, categorías, movimientos, transferencias, informes, ingesta
+│   │   │       │   ├── budget/     # presupuesto por categoría y mes (fase 3a) y domain/ con el progreso
 │   │   │       │   └── plan/       # fotos del plan y domain/ con los cálculos
 │   │   │       ├── imports/        # lectura, validación, vista previa y confirmación del Excel
 │   │   │       ├── notifications/
@@ -336,6 +337,22 @@ Además, `UNIQUE (id, account_id)`: existe solo para la clave ajena compuesta de
 - **Excepción documentada a «no guardar derivados»**: `computed_balance_cents` no es una caché, sino el **registro histórico** de lo que la app calculó al conciliar. **Discrepancia**: la pantalla compara el saldo calculado **hoy** hasta `as_of` (incluidos los ajustes, el propio y los de otras conciliaciones) con `statement_balance_cents`, y avisa si ya no coinciden. Así se detectan un movimiento o una transferencia editados, añadidos o borrados en el periodo, un ajuste modificado o borrado, y una conciliación de un mes anterior creada después (su ajuste cambia este saldo). `computed_balance_cents` no interviene en esa comparación: se muestra aparte como lo que se calculó al conciliar.
 - **Ajuste explícito**: si `statement − computed ≠ 0`, en la **misma transacción** se crea un movimiento confirmado con `source = 'reconciliation'`, `kind` según el signo, `amount_cents = |diferencia|`, `booked_on = as_of` y `description` = «Ajuste de conciliación». Así, tras conciliar, saldo calculado = saldo del banco. El ajuste es visible y reversible: borrar la conciliación lo borra en cascada.
 
+**`category_budgets`** (fase 3a, migración `0005`: cuánto se quiere gastar como máximo en una categoría de gasto durante un mes)
+| Columna | Tipo | Restricciones y notas |
+|---|---|---|
+| id | uuid | PK |
+| month | date | NOT NULL, `CHECK (EXTRACT(DAY FROM month) = 1)`: primer día del mes (no `date_trunc`, por el mismo motivo que en `account_reconciliations`). La API usa `YYYY-MM` |
+| category_id | uuid | NOT NULL. FK **compuesta** `(category_id, kind) → categories(id, kind)` `ON DELETE RESTRICT` |
+| kind | text | NOT NULL DEFAULT `'expense'`, `CHECK (kind = 'expense')`. Existe solo para esa FK: **la base de datos impide presupuestar una categoría de ingreso**. La API no lo expone |
+| amount_cents | bigint | NOT NULL, `CHECK (amount_cents > 0)`. Sin presupuesto = sin fila, no una fila a 0 |
+| created_at, updated_at | timestamptz | |
+
+`UNIQUE (month, category_id)`: un único presupuesto por mes y categoría.
+- **Lo gastado y lo que queda no se guardan**: se calculan al leer con `domain/budget.ts` sobre los gastos **confirmados** del mes en la categoría (los mismos que el desglose por categoría: sin pendientes, sin ingresos, sin ajustes de conciliación; las transferencias no son movimientos). `restante = presupuesto − gastado`, negativo si te pasas.
+- **Categoría archivada**: conserva su presupuesto y su gasto en los meses ya hechos; no admite presupuestos nuevos ni cambiar el importe (409), pero el presupuesto se puede borrar. La copia al mes siguiente la omite.
+- **Copiar del mes anterior** es una acción explícita (`POST /budgets/copy-previous`), nunca automática. Solo rellena huecos (`ON CONFLICT DO NOTHING`): no sobrescribe lo que el mes ya tiene.
+- **Relación con la fase 3b**: la importación del Excel rellenará **esta misma tabla** a través del servicio de presupuestos (`createFinanceModule(...).budgets`), no con SQL propio. Quedan para 3b: agrupar en un importe por categoría las varias líneas de «Presupuesto» que compartan categoría, y decidir qué hacer con un importe 0 (aquí no cabe: se omite o se avisa). La tabla no tiene columna de origen a propósito: un presupuesto es el mismo dato venga de donde venga. Es independiente de `plan_budget_lines`, que es la foto del Excel con su concepto, tipo de coste y si es esencial.
+
 ### 2.4 Módulo `finance` — capa de plan (`plan`)
 
 Solo guarda **entradas** de la plantilla. No hay columnas de totales, proyecciones ni resultados de los checks.
@@ -522,6 +539,7 @@ El importador traduce `=0` (lista vacía), la referencia directa y `SUM` sobre u
 users 1─* sessions                         device_tokens 1─* movements
 accounts 1─* movements *─1 categories      wallet_cards *─1 accounts
 accounts 1─* transfers (origen y destino)  accounts 1─* account_reconciliations
+categories 1─* category_budgets (solo de gasto)
 import_batches 1─1 plan_snapshots 1─* plan_items
 plan_snapshots 1─* plan_budget_lines *─1 plan_items   (y *─1 categories)
 plan_snapshots 1─* plan_events|plan_goals *─0..1 plan_items
@@ -598,6 +616,10 @@ notes *─* tags (note_tags)
 | GET | `/reports/monthly/:month/categories` | S | Desglose por categoría (confirmados, sin ajustes de conciliación) |
 | GET | `/reports/balances?at=YYYY-MM-DD` | S | Saldo por cuenta, con los ajustes de conciliación en un campo aparte, y el total. `at` es **obligatorio**: el servidor no adivina «hoy» (zona horaria) |
 | GET | `/reports/balance-history?from=YYYY-MM&to=YYYY-MM` | S | Saldo a fin de cada mes por cuenta (`null` antes de abrirse) y el total (gráfico de líneas). `from` y `to` obligatorios |
+| GET | `/budgets?month=YYYY-MM` | S | Presupuestos del mes, ordenados por categoría, con `spentCents` y `remainingCents` (calculados al leer), el gasto de las categorías **sin presupuesto** (`unbudgeted`) y los totales. `month` es **obligatorio**: el servidor no adivina «hoy» |
+| POST | `/budgets` | S | `{ month, categoryId, amountCents }` → 201. 422 si la categoría no existe o es de ingreso; 409 si está archivada o ya hay presupuesto de esa categoría en ese mes |
+| PATCH, DELETE | `/budgets/:id` | S | PATCH solo cambia `{ amountCents }` (el mes y la categoría no cambian: se borra y se crea otro); 409 si la categoría está archivada. DELETE siempre que exista |
+| POST | `/budgets/copy-previous` | S | `{ month }` → 200 `{ month, sourceMonth, copied, skippedExisting, skippedArchived }`. Copia del mes anterior solo lo que falta. 409 si el mes anterior no tiene presupuestos; 422 si `month` es `0001-01` |
 | POST | `/ingest/wallet-transactions` | D(`ingest:write`) | Atajo de iPhone (§5.4) |
 | GET | `/ingest/catalog` | D(`ingest:read-catalog`) | Categorías para la mejora opcional del atajo |
 
@@ -1348,6 +1370,8 @@ Tamaños relativos (S, M, L, XL). No pongo días porque no conozco tu ritmo y un
 - **Antes de empezar:** migrar tu Excel a la v2 (`plantilla-excel.md` §14). La especificación de la plantilla no tiene puntos abiertos (§13).
 - **Alcance**
   - **3a. Presupuesto por categoría y mes dentro de la app, con progreso** · tamaño M. Se define en la propia app y muestra el avance (gastado frente a lo presupuestado) a partir de los movimientos reales, calculado al leer. Es el presupuesto que rellena 3b.
+    - **PR 1 de 2 (hecho): modelo de datos y API** (`category_budgets`, `/budgets`; ver §2.3 y §2.10). **PR 2 de 2: pantallas** (definir importes, copiar del mes anterior, barras de progreso).
+    - Fuera de 3a, a la espera de decidir: avisos al pasarse (pregunta 37) y gastos recurrentes (pregunta 38). Tampoco entra aún en la exportación (`GET /export`): añadirla cambiaría el formato (`EXPORT_FORMAT_VERSION`) y se decide aparte.
   - **3b. Importación del Excel** · tamaño XL. Rellena ese mismo presupuesto y trae el resto del plan; sus tres partes (antes 3a, 3b y 3c) son:
   - **3b.1. Importación**
     - Spike de la librería de Excel (§4.2).

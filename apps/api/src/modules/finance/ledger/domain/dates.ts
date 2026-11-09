@@ -83,3 +83,16 @@ export function monthsBetween(from: YearMonth, to: YearMonth): YearMonth[] {
   }
   return months;
 }
+
+/**
+ * Mes natural anterior (`2026-01` → `2025-12`), o `null` para `0001-01`: antes no hay año válido.
+ *
+ * @throws {RangeError} si el texto no es un mes válido.
+ */
+export function previousMonth(month: YearMonth): YearMonth | null {
+  assertYearMonth(month);
+  const year = Number(month.slice(0, 4));
+  const value = Number(month.slice(5, 7));
+  if (value > 1) return `${month.slice(0, 5)}${String(value - 1).padStart(2, '0')}`;
+  return year > 1 ? `${String(year - 1).padStart(4, '0')}-12` : null;
+}

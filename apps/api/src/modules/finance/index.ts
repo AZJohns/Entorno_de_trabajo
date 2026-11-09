@@ -11,10 +11,14 @@ import {
   createReportsController,
   type RecordExport,
 } from './ledger/ledger.controller.ts';
+import { createBudgetController } from './budget/budget.controller.ts';
+import { addBudgetRoutes } from './budget/budget.routes.ts';
+import { BudgetService } from './budget/budget.service.ts';
 import { createLedgerRouter } from './ledger/ledger.routes.ts';
 import { LedgerService } from './ledger/ledger.service.ts';
 import { ReportsService } from './ledger/reports.service.ts';
 
+export type { BudgetService } from './budget/budget.service.ts';
 export type { LedgerService } from './ledger/ledger.service.ts';
 
 /** Dependencias del módulo. */
@@ -27,14 +31,19 @@ export interface FinanceModuleDeps {
   readonly recordExport: RecordExport;
 }
 
-/** Crea el módulo: el servicio del libro y su router (se monta bajo `/api/v1`). */
+/**
+ * Crea el módulo: los servicios del libro y del presupuesto, y su router (se monta bajo `/api/v1`).
+ * `budgets` es la puerta de entrada de otros módulos al presupuesto (la importación de la fase 3b).
+ */
 export function createFinanceModule(deps: FinanceModuleDeps) {
   const ledger = new LedgerService(deps);
+  const budgets = new BudgetService(deps);
   const router = createLedgerRouter(
     createLedgerController(ledger),
     createReportsController(new ReportsService(deps.db)),
     createExportController(ledger, deps.recordExport),
     deps.requireReauth,
   );
-  return { ledger, router };
+  addBudgetRoutes(router, createBudgetController(budgets));
+  return { ledger, budgets, router };
 }
