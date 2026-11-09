@@ -74,7 +74,7 @@ docs/            Plan, ADR, seguridad y runbooks
    curl http://127.0.0.1:3000/api/v1/health
    ```
 
-7. Crea el único usuario (una sola vez). Pide la contraseña sin mostrarla (15 caracteres o más) y la comprueba contra Pwned Passwords, así que necesita conexión. Muestra **una sola vez** la clave TOTP, el enlace `otpauth://` y 10 códigos de recuperación: añade la clave a tu app de autenticación y guarda los códigos en el gestor de contraseñas:
+7. Crea el único usuario (una sola vez). Pide la contraseña sin mostrarla (15 caracteres o más) y la comprueba contra Pwned Passwords, así que necesita conexión. Muestra **una sola vez** el QR del TOTP (se genera en local), la clave, el enlace `otpauth://` y 10 códigos de recuperación: **escanea el QR** con tu app de autenticación (en Google Authenticator, con la clave escrita a mano no funcionará: el TOTP usa HMAC-SHA-256 y la app solo lo aplica al escanear) y guarda los códigos en el gestor de contraseñas:
 
    ```bash
    pnpm user:create

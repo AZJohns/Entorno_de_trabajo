@@ -1,13 +1,31 @@
 /**
- * TOTP (RFC 6238) sobre HOTP (RFC 4226), con HMAC-SHA1, 6 cifras y pasos de 30 s.
+ * TOTP (RFC 6238) sobre HOTP (RFC 4226), con HMAC-SHA-1 o HMAC-SHA-256, 6 cifras y pasos de 30 s.
  *
  * Se implementa aquí (unas decenas de líneas) en lugar de usar una librería: es pequeño, se prueba
  * con los vectores oficiales del RFC y evita una dependencia (docs/dependencias.md).
  *
- * HMAC-SHA1 es el algoritmo que entienden todas las apps de autenticación (incluida Contraseñas de
- * iOS). SHA-1 dentro de HMAC no se ve afectado por los ataques de colisión de SHA-1.
+ * Cada credencial guarda su algoritmo (`totp_authenticators.algorithm`):
+ * - `SHA256`: el de las altas nuevas (ASVS 11.4.1: HMAC-SHA-1 es *Legacy*). Solo lo aplican las apps
+ *   que lo reciben escaneando un QR con `algorithm=SHA256`; con la clave escrita a mano, Google
+ *   Authenticator usa SHA-1 y sus códigos no coincidirían.
+ * - `SHA1`: las credenciales anteriores a la migración 0004, que siguen funcionando hasta que se
+ *   cambie el TOTP. SHA-1 dentro de HMAC no se ve afectado por los ataques de colisión de SHA-1.
  */
 import { createHmac, timingSafeEqual } from 'node:crypto';
+
+/** Algoritmo HMAC de una credencial TOTP; coincide con el CHECK de la columna `algorithm`. */
+export type TotpAlgorithm = 'SHA1' | 'SHA256';
+
+/** Algoritmo de las altas nuevas. */
+export const NEW_TOTP_ALGORITHM: TotpAlgorithm = 'SHA256';
+
+/**
+ * Longitud de la semilla de las altas nuevas, en bytes: igual al tamaño de salida del hash
+ * (RFC 4226 §4 pide al menos 128 bits; RFC 6238 §5.1 recomienda la longitud del hash).
+ */
+export const TOTP_SECRET_BYTES: Readonly<Record<TotpAlgorithm, number>> = { SHA1: 20, SHA256: 32 };
+
+const HMAC_NAMES: Readonly<Record<TotpAlgorithm, string>> = { SHA1: 'sha1', SHA256: 'sha256' };
 
 /** Duración de cada paso, en segundos. */
 export const TOTP_PERIOD_SECONDS = 30;
@@ -22,11 +40,14 @@ export function timeStep(date: Date): number {
   return Math.floor(date.getTime() / 1000 / TOTP_PERIOD_SECONDS);
 }
 
-/** Código HOTP de 6 cifras para un contador (RFC 4226 §5.3, truncado dinámico). */
-export function hotp(secret: Buffer, counter: number): string {
+/**
+ * Código HOTP de 6 cifras para un contador (RFC 4226 §5.3, truncado dinámico) con el algoritmo
+ * indicado. El algoritmo es obligatorio: un valor por defecto aceptaría en silencio el equivocado.
+ */
+export function hotp(secret: Buffer, counter: number, algorithm: TotpAlgorithm): string {
   const message = Buffer.alloc(8);
   message.writeBigUInt64BE(BigInt(counter));
-  const digest = createHmac('sha1', secret).update(message).digest();
+  const digest = createHmac(HMAC_NAMES[algorithm], secret).update(message).digest();
   const offset = (digest[digest.length - 1] ?? 0) & 0x0f;
   const binary = digest.readUInt32BE(offset) & 0x7fffffff;
   return String(binary % 10 ** TOTP_DIGITS).padStart(TOTP_DIGITS, '0');
@@ -44,11 +65,13 @@ export type TotpVerification =
  * desviación documentada de ASVS 6.5.5 (vida máxima de 30 s): en el peor caso, un código vale 60 s.
  * Se compensa con el uso único: un paso igual o anterior al último aceptado se rechaza.
  *
+ * @param algorithm Algoritmo de la credencial. Un código calculado con el otro algoritmo no vale.
  * @param lastUsedStep Último paso aceptado para esta semilla, o `null` si nunca se usó.
  * @returns El paso aceptado (hay que guardarlo como nuevo `lastUsedStep`) o el motivo del rechazo.
  */
 export function verifyTotp(
   secret: Buffer,
+  algorithm: TotpAlgorithm,
   code: string,
   now: Date,
   lastUsedStep: number | null,
@@ -57,7 +80,7 @@ export function verifyTotp(
   const current = timeStep(now);
   for (const step of [current, current - 1]) {
     // Comparación en tiempo constante: no revela cuántas cifras coinciden.
-    if (timingSafeEqual(Buffer.from(hotp(secret, step)), Buffer.from(code))) {
+    if (timingSafeEqual(Buffer.from(hotp(secret, step, algorithm)), Buffer.from(code))) {
       if (lastUsedStep !== null && step <= lastUsedStep) return { ok: false, reason: 'reused' };
       return { ok: true, step };
     }
@@ -112,16 +135,22 @@ export function base32Decode(text: string): Buffer {
 }
 
 /**
- * URI `otpauth://` para dar de alta la semilla en una app de autenticación (en iOS, abre Contraseñas).
- * Se muestra una sola vez, al dar de alta o cambiar el TOTP.
+ * URI `otpauth://` para dar de alta la semilla en una app de autenticación. Se muestra una sola vez,
+ * al dar de alta o cambiar el TOTP, y debe escanearse como QR: es lo que hace que la app aplique
+ * `algorithm` (con la clave escrita a mano, Google Authenticator usa SHA-1).
  */
-export function otpauthUri(input: { secret: Buffer; issuer: string; account: string }): string {
+export function otpauthUri(input: {
+  secret: Buffer;
+  algorithm: TotpAlgorithm;
+  issuer: string;
+  account: string;
+}): string {
   const issuer = encodeURIComponent(input.issuer);
   const account = encodeURIComponent(input.account);
   const params = new URLSearchParams({
     secret: base32Encode(input.secret),
     issuer: input.issuer,
-    algorithm: 'SHA1',
+    algorithm: input.algorithm,
     digits: String(TOTP_DIGITS),
     period: String(TOTP_PERIOD_SECONDS),
   });

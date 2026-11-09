@@ -63,7 +63,8 @@ export function useAuthTestContext(
       service,
       database,
       recoveryCodes: credentials.recoveryCodes,
-      totp: (offset = 0) => hotp(secret, timeStep(t.clock.now()) + offset),
+      totp: (offset = 0) =>
+        hotp(secret, timeStep(t.clock.now()) + offset, credentials.totpAlgorithm),
       client: (ip?: string) => new TestClient(t.app, ip),
       async loggedIn(ip?: string) {
         const client = new TestClient(t.app, ip);

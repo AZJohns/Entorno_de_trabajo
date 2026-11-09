@@ -2,6 +2,7 @@
  * Acciones sensibles (reautenticación, contraseña, TOTP, códigos de recuperación, sesiones),
  * auditoría y operaciones de servidor. PostgreSQL real; reloj simulado; HIBP falso (sin red).
  */
+import { randomBytes } from 'node:crypto';
 import { sql } from 'kysely';
 import { describe, expect, it } from 'vitest';
 import {
@@ -11,6 +12,7 @@ import {
   sessionResponseSchema,
   totpEnrollResponseSchema,
 } from '@backoffice/shared';
+import { seal } from '../../src/modules/auth/crypto/secret-box.ts';
 import { base32Decode, hotp, timeStep } from '../../src/modules/auth/domain/totp.ts';
 import { REAUTH_WINDOW_MS } from '../../src/modules/auth/domain/session-rules.ts';
 import { buildTestApp } from '../support/app.ts';
@@ -165,7 +167,7 @@ describe('cambio de TOTP', () => {
     const { secret, otpauthUri } = totpEnrollResponseSchema.parse(enroll.body);
     expect(otpauthUri).toMatch(/^otpauth:\/\/totp\/Backoffice:/);
     const newSecret = base32Decode(secret);
-    const newCode = () => hotp(newSecret, timeStep(ctx.t.clock.now()));
+    const newCode = () => hotp(newSecret, timeStep(ctx.t.clock.now()), 'SHA256');
 
     // Con un código incorrecto no se confirma.
     expect(
@@ -204,12 +206,100 @@ describe('cambio de TOTP', () => {
       (await client.post('/api/v1/auth/totp/enroll')).body,
     );
     const res = await client.post('/api/v1/auth/totp/confirm', {
-      code: hotp(base32Decode(secret), timeStep(ctx.t.clock.now())),
+      code: hotp(base32Decode(secret), timeStep(ctx.t.clock.now()), 'SHA256'),
       terminateOtherSessions: true,
     });
     expect(res.status).toBe(204);
     expect((await other.get('/api/v1/auth/session')).status).toBe(401);
     expect((await client.get('/api/v1/auth/session')).status).toBe(200);
+  });
+
+  it('el alta nueva es SHA256 con una semilla de 32 bytes: URI, base de datos y verificación (ASVS 11.4.1)', async () => {
+    const ctx = getCtx();
+    const client = await ctx.loggedIn();
+    const { secret, otpauthUri } = totpEnrollResponseSchema.parse(
+      (await client.post('/api/v1/auth/totp/enroll')).body,
+    );
+    expect(new URL(otpauthUri).searchParams.get('algorithm')).toBe('SHA256');
+    expect(base32Decode(secret)).toHaveLength(32);
+    const pending = await ctx.database.db
+      .selectFrom('totp_authenticators')
+      .select('algorithm')
+      .where('confirmed_at', 'is', null)
+      .execute();
+    expect(pending).toEqual([{ algorithm: 'SHA256' }]);
+  });
+
+  it('el alta no se confirma con un código calculado con el algoritmo equivocado (SHA-1)', async () => {
+    const ctx = getCtx();
+    const client = await ctx.loggedIn();
+    const { secret } = totpEnrollResponseSchema.parse(
+      (await client.post('/api/v1/auth/totp/enroll')).body,
+    );
+    const seed = base32Decode(secret);
+    const step = timeStep(ctx.t.clock.now());
+    // Es lo que calcularía Google Authenticator con la clave escrita a mano (usa SHA-1).
+    const wrongCode = hotp(seed, step, 'SHA1');
+    expect(wrongCode).not.toBe(hotp(seed, step, 'SHA256'));
+    const rejected = await client.post('/api/v1/auth/totp/confirm', {
+      code: wrongCode,
+      terminateOtherSessions: false,
+    });
+    expect(rejected.status).toBe(400);
+    // El TOTP anterior sigue siendo el confirmado y el nuevo sigue pendiente.
+    const rows = await ctx.database.db
+      .selectFrom('totp_authenticators')
+      .select(['algorithm', 'confirmed_at'])
+      .orderBy('created_at')
+      .execute();
+    expect(rows.map((row) => [row.algorithm, row.confirmed_at !== null])).toEqual([
+      ['SHA256', true],
+      ['SHA256', false],
+    ]);
+    // Con el código del algoritmo correcto sí se confirma.
+    const accepted = await client.post('/api/v1/auth/totp/confirm', {
+      code: hotp(seed, step, 'SHA256'),
+      terminateOtherSessions: false,
+    });
+    expect(accepted.status).toBe(204);
+  });
+
+  it('una credencial SHA1 anterior sigue funcionando en el inicio de sesión y no acepta códigos SHA256', async () => {
+    const ctx = getCtx();
+    // Se convierte la credencial del usuario de prueba en una de antes de la migración 0004: semilla
+    // de 20 bytes y algoritmo SHA1.
+    const legacySeed = randomBytes(20);
+    const sealed = seal(ctx.t.totpKey, legacySeed);
+    await ctx.database.db
+      .updateTable('totp_authenticators')
+      .set({
+        secret_ciphertext: sealed.ciphertext,
+        secret_nonce: sealed.nonce,
+        algorithm: 'SHA1',
+        last_used_step: null,
+      })
+      .execute();
+    const step = () => timeStep(ctx.t.clock.now());
+
+    const wrong = ctx.client();
+    await wrong.post('/api/v1/auth/login', { username: USERNAME, password: PASSWORD });
+    expect(
+      (
+        await wrong.post('/api/v1/auth/login/second-factor', {
+          totp: hotp(legacySeed, step(), 'SHA256'),
+        })
+      ).status,
+    ).toBe(401);
+
+    const right = ctx.client();
+    await right.post('/api/v1/auth/login', { username: USERNAME, password: PASSWORD });
+    expect(
+      (
+        await right.post('/api/v1/auth/login/second-factor', {
+          totp: hotp(legacySeed, step(), 'SHA1'),
+        })
+      ).status,
+    ).toBe(200);
   });
 
   it('confirmar sin un alta en curso: 409', async () => {
@@ -422,7 +512,7 @@ describe('rotación de la clave de cifrado del TOTP (docs/adr/0006)', () => {
       (await client.post('/api/v1/auth/totp/enroll')).body,
     );
     const newSecret = base32Decode(enroll.secret);
-    const newCode = () => hotp(newSecret, timeStep(rotated.clock.now()));
+    const newCode = () => hotp(newSecret, timeStep(rotated.clock.now()), 'SHA256');
     const confirm = await client.post('/api/v1/auth/totp/confirm', {
       code: newCode(),
       terminateOtherSessions: true,

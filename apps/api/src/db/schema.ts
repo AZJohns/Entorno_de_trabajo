@@ -38,6 +38,8 @@ export interface TotpAuthenticatorsTable {
   secret_ciphertext: Buffer;
   secret_nonce: Buffer;
   key_version: number;
+  // Algoritmo HMAC con el que se calculan los códigos de esta semilla (CHECK en la base de datos).
+  algorithm: 'SHA1' | 'SHA256';
   // bigint de PostgreSQL: pg lo devuelve como cadena; se convierte en el repositorio.
   last_used_step: ColumnType<string | null, number | null, number | null>;
   confirmed_at: Date | null;
