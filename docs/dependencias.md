@@ -88,6 +88,18 @@ Verificación del override: ESLint analiza los mismos 31 archivos con los mismos
 
 No comprobado: el tamaño que añadiría Recharts al paquete de la web ni su comportamiento con la CSP del servidor (`style-src 'self'`); no hizo falta para decidir.
 
+## Arrastrar y soltar (fase 4b): sin librería en lugar de dnd-kit
+
+`docs/plan.md` preveía `@dnd-kit/core` + `@dnd-kit/sortable` (MIT, mantenimiento activo). No se añade, consultado el **2026-11-09**: el tablero necesita tres formas de mover una tarjeta y las tres se resuelven con lo que ya traen el navegador y React.
+
+| Necesidad | Solución sin dependencia |
+|---|---|
+| Ratón | Arrastrar y soltar nativo de HTML5 (`draggable`, `dragover`, `drop`) |
+| Teclado y lector de pantalla | Asa por tarjeta con estados «cogida/soltada» y flechas, anunciada en una región `aria-live` (unas 60 líneas probadas en `apps/web/test/tasks-page.test.tsx`) |
+| Táctil (incl. PWA en iOS) | Menú «Mover a…» (`<select>` nativo). dnd-kit lo haría arrastrando con retardo de activación, que es justo el riesgo que el plan señalaba en iOS |
+
+**Qué se pierde**: la animación de la tarjeta mientras se arrastra y el arrastre táctil. Para un solo usuario, el menú cubre el táctil. **Cuándo reconsiderarlo**: si el arrastre con el dedo en el iPhone resulta imprescindible; entonces `@dnd-kit/core` + `@dnd-kit/sortable` con `TouchSensor` (`delay` ≈ 200 ms) y los mismos tests de teclado, justificado aquí con versión, fecha y licencia verificadas en ese momento. La alternativa de arrastre nativo sin lógica propia (`@hello-pangea/dnd`, Apache-2.0) se descarta por la misma razón y por tener menos actividad.
+
 ## Dependencias descartadas en la fase 1
 
 - **`argon2`, `bcrypt`** (npm): Node ≥ 24.12 trae `crypto.argon2` y no hacen falta binarios nativos (ADR 0006).

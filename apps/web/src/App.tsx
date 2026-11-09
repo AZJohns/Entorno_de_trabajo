@@ -12,6 +12,7 @@ import { MovementsPage } from './finance/pages/MovementsPage.tsx';
 import { ReportsPage } from './finance/pages/ReportsPage.tsx';
 import { ReconciliationPage } from './finance/pages/ReconciliationPage.tsx';
 import { TransfersPage } from './finance/pages/TransfersPage.tsx';
+import { TasksPage } from './tasks/TasksPage.tsx';
 import { forgetSession, SESSION_QUERY_KEY } from './auth/session.ts';
 import { HomePage, Layout, NotFoundPage } from './pages/Layout.tsx';
 import { LoginPage } from './pages/LoginPage.tsx';
@@ -68,6 +69,7 @@ const router = createBrowserRouter([
       { path: 'movimientos', element: <MovementsPage /> },
       { path: 'transferencias', element: <TransfersPage /> },
       { path: 'presupuesto', element: <BudgetPage /> },
+      { path: 'tareas', element: <TasksPage /> },
       { path: 'informes', element: <ReportsPage /> },
       { path: 'ajustes/seguridad', element: <SecuritySettingsPage /> },
     ],
