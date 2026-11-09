@@ -1,8 +1,8 @@
 # Plan del backoffice personal
 
 - **Estado:** borrador v2 (diseño; todavía no hay código)
-- **Fecha:** 2026-11-03 · **Revisión 4:** hoja de ruta (1b terminada; la fase 2 añade atajos manuales, menús servidos por la API y «pagos habituales»; la fase 3 pasa a «Presupuestos»), pregunta 18 resuelta y preguntas 37 y 38 · **Revisión 3:** cierre de la parte 1 (correo del historial aceptado, desbloqueo con un factor según NIST, licencia MIT, RTO 24 h) · **Revisión 2:** incorpora las confirmaciones de la plantilla real y tus decisiones sobre §9 (repositorio público, ASVS 5.0 L2 + NIST SP 800-63B, conciliación, despliegue con medición)
-- **Documentos relacionados:** [`docs/plantilla-excel.md`](plantilla-excel.md) (contrato del importador), [`docs/seguridad/asvs-l2.md`](seguridad/asvs-l2.md) (matriz de cumplimiento), [`docs/runbooks/github.md`](runbooks/github.md) (configuración del repositorio público), [`SECURITY.md`](../SECURITY.md) y [`CLAUDE.md`](../CLAUDE.md) (reglas de trabajo)
+- **Fecha:** 2026-11-04 · **Revisión 5:** fase 2 planificada (servidor AWS Lightsail en la UE dentro de Tailscale, dominio propio con el DNS en Cloudflare y DNS-01, tercera copia en tu PC, orden de trabajo en PR pequeños, coste estimado y propuesta sobre el cifrado del disco; preguntas 31 y 32 resueltas y pregunta 39 nueva) · **Revisión 4:** hoja de ruta (1b terminada; la fase 2 añade atajos manuales, menús servidos por la API y «pagos habituales»; la fase 3 pasa a «Presupuestos»), pregunta 18 resuelta y preguntas 37 y 38 · **Revisión 3:** cierre de la parte 1 (correo del historial aceptado, desbloqueo con un factor según NIST, licencia MIT, RTO 24 h) · **Revisión 2:** incorpora las confirmaciones de la plantilla real y tus decisiones sobre §9 (repositorio público, ASVS 5.0 L2 + NIST SP 800-63B, conciliación, despliegue con medición)
+- **Documentos relacionados:** [`docs/plantilla-excel.md`](plantilla-excel.md) (contrato del importador), [`docs/seguridad/asvs-l2.md`](seguridad/asvs-l2.md) (matriz de cumplimiento), [`docs/runbooks/github.md`](runbooks/github.md) (configuración del repositorio público), [`docs/runbooks/servidor.md`](runbooks/servidor.md) (cuenta de AWS, servidor, dominio, Cloudflare y Tailscale), [`SECURITY.md`](../SECURITY.md) y [`CLAUDE.md`](../CLAUDE.md) (reglas de trabajo)
 
 **Marcas usadas en este documento**
 - **[VERIFICAR]**: dato que no he podido comprobar o que cambia con el tiempo (versiones, precios, comportamiento de iOS). Hay que confirmarlo antes de decidir nada que dependa de él.
@@ -1104,11 +1104,11 @@ La matriz requisito a requisito, con su fase, módulo y test, está en [`docs/se
 
 | Aspecto | Propuesta |
 |---|---|
-| **Regla 3-2-1** | **3 copias**: (1) la base de datos de producción; (2) un repositorio restic diario en un almacén de objetos de un **proveedor distinto** del servidor; (3) una copia semanal de ese repositorio (`restic copy`) en un **segundo destino**, que puede ser otro proveedor o un disco externo cifrado en casa [§9, pregunta 32]. **2 soportes o proveedores distintos** y **al menos 1 fuera del servidor**; en realidad son 2 |
+| **Regla 3-2-1** [RESUELTO, pregunta 32] | **3 copias en 3 sitios**: (1) la base de datos de producción **en el servidor**; (2) un repositorio restic diario en **almacenamiento en la nube de un proveedor distinto** del servidor (Backblaze B2, §7.6); (3) una copia en **tu PC**, hecha **desde el PC** con `restic copy` (el PC lee de la copia 2 y escribe en su disco; el servidor no tiene ninguna credencial ni ruta hacia el PC). **3 soportes distintos y 2 copias fuera del servidor y de su proveedor.** La copia 3 es la defensa contra el borrado: quien comprometa el servidor o la cuenta de AWS no llega al PC. Contrapartida: su antigüedad depende de cuándo esté encendido el PC (la copia 2 sigue siendo diaria) |
 | Qué | `pg_dump -Fc` completo y los logs del día |
 | Cómo | **restic**: cifrado en el cliente, deduplicación, retención y `restic check`. Licencia BSD-2 [VERIFICAR] |
 | Automático | Un temporizador `systemd` del **host**, no la app: la app no tiene credenciales del almacén |
-| Protección | Clave del almacén **sin permiso de borrado** o con bloqueo de objetos: quien comprometa el servidor no puede borrar las copias |
+| Protección | Clave del almacén **sin permiso de borrado** o con bloqueo de objetos: quien comprometa el servidor no puede borrar las copias. La clave **con** permiso de borrado (para `forget --prune`) vive solo en el PC. Si el almacén no permite esa restricción con restic, la defensa contra el borrado es la copia 3 [VERIFICAR con una prueba en el PR 7 de la fase 2] |
 | **RPO** (pérdida máxima aceptable) | **24 h**. Lo que entra por el atajo en un día se puede reconstruir con los movimientos del banco. Archivar el WAL sería excesivo aquí |
 | **RTO** (tiempo de recuperación) | **24 h**: crear un VPS nuevo, desplegar con el runbook y restaurar la última copia. Es un margen realista para una sola persona: incluye tener que hacerlo fuera del horario de trabajo |
 | **Retención escalonada** | 7 diarias, 4 semanales, 12 mensuales y 3 anuales (`restic forget --keep-daily 7 --keep-weekly 4 --keep-monthly 12 --keep-yearly 3`), aplicada desde una máquina con permisos de borrado, no desde el servidor |
@@ -1135,8 +1135,8 @@ La matriz requisito a requisito, con su fase, módulo y test, está en [`docs/se
 
 | Opción | Qué se expone | Coste/mes [VERIFICAR] | A favor | En contra |
 |---|---|---|---|---|
-| **A. Endurecida (pública)** | 80 y 443 a internet; SSH solo por Tailscale | VPS ~4–6 € (Hetzner CX23 tras las subidas de 2026) + dominio ~1 € + copias < 1 € → **~6–8 €** | Funciona desde cualquier red sin VPN en el iPhone | Superficie pública: escaneos y ataques automatizados. La aplicación tiene que resistirlos (ASVS L2, dos factores, límites de peticiones) |
-| **D. Privada (Tailscale)** | **Nada** a internet; todo dentro de la *tailnet* | El mismo servidor, **~6–8 €**. Plan personal de Tailscale gratuito [VERIFICAR] | **Ninguna superficie de ataque pública** | El atajo solo llega con la VPN activa. Hay que medir los fallos y la batería. Dependes de Tailscale |
+| **A. Endurecida (pública)** | 80 y 443 a internet; SSH solo por Tailscale | El mismo servidor y las mismas copias que en D: ver **§7.7** (la estimación de la revisión 2, ~6–8 €, queda sustituida) | Funciona desde cualquier red sin VPN en el iPhone | Superficie pública: escaneos y ataques automatizados. La aplicación tiene que resistirlos (ASVS L2, dos factores, límites de peticiones) |
+| **D. Privada (Tailscale)** | **Nada** a internet; todo dentro de la *tailnet* | Ver **§7.7**. Plan personal de Tailscale gratuito (§7.7) | **Ninguna superficie de ataque pública** | El atajo solo llega con la VPN activa. Hay que medir los fallos y la batería. Dependes de Tailscale |
 | B. PaaS + PostgreSQL gestionado | Pública | ~15–30 $ | Sin sistema operativo que mantener | Más caro; los planes gratuitos se duermen. **Descartada** |
 | C. Casa + Cloudflare Tunnel | Pública vía Cloudflare | ~0 € + hardware | Sin abrir puertos | **Cloudflare descifra el tráfico**. **Descartada** para datos financieros |
 | E. Supabase como base de datos | — | Gratuito: se pausa a los ~7 días y no tiene copias | — | **Descartada** |
@@ -1146,11 +1146,13 @@ La matriz requisito a requisito, con su fase, módulo y test, está en [`docs/se
 ### 7.3 Procedimiento de decisión [RESUELTO: se decide en la fase 2 con datos]
 
 1. **La fase 2 empieza con la opción D.**
-2. **Mismo origen en las dos opciones** (recomendación; §9, pregunta 31):
+2. **Mismo origen en las dos opciones** [RESUELTO, pregunta 31: dominio propio, DNS en Cloudflare y certificado por DNS-01; compra y configuración en `docs/runbooks/servidor.md` §7 y §8]:
    - Desde el primer día se usa un **dominio propio**. En D, su registro DNS apunta a la IP de Tailscale (100.x) y el certificado se obtiene con **ACME DNS-01**, que no necesita que el servidor sea accesible desde internet.
    - Así, pasar a A **solo cambia el registro DNS y el cortafuegos**. Se mantienen el origen, la PWA instalada, las suscripciones push, las cookies, el RP ID de las passkeys y la URL del atajo.
    - Con un nombre `*.ts.net`, en cambio, el cambio obligaría a reinstalar la PWA, volver a suscribirse al push, dar de alta de nuevo las passkeys y editar el atajo.
-   - Hay que verificar el plugin DNS de Caddy (o certbot) para tu proveedor de DNS [VERIFICAR]. El dominio **no se escribe en el repositorio**.
+   - Con Cloudflare hace falta el módulo de DNS de Caddy para Cloudflare, que **no viene en la imagen oficial**: hay que compilar Caddy con `xcaddy` o usar certbot o lego con su plugin de Cloudflare. Es una dependencia nueva: se justifica en `docs/dependencias.md` en el PR 3 de la fase 2 [VERIFICAR el módulo y sus permisos de API].
+   - El certificado público queda registrado en los registros de Transparencia de Certificados: el dominio **no es secreto**. Un certificado **comodín** (`*.dominio`) evita que aparezca el nombre del subdominio (`docs/runbooks/servidor.md` §7.2).
+   - El dominio **no se escribe en el repositorio**.
 3. **Medición durante 2 semanas de uso real**, anotada en `docs/atajo-iphone.md` **solo con recuentos, sin importes, comercios ni nombres de tarjeta**:
    - `N_wallet`: pagos con Wallet.
    - `N_fallo_vpn`: pagos en los que el atajo mostró la notificación de fallo **y** la causa era la VPN (Tailscale desconectado o la *tailnet* inaccesible).
@@ -1179,6 +1181,96 @@ La matriz requisito a requisito, con su fase, módulo y test, está en [`docs/se
 - Unos segundos de corte son aceptables con un solo usuario: no hace falta *blue/green*. Las migraciones van siempre hacia delante, con *expand/contract* para los cambios destructivos.
 - **Después**: un workflow de GitHub Actions que construye la imagen, la publica en GHCR y despliega por SSH **a través de Tailscale**, con una clave restringida a ese comando. Al ser un repositorio público, los workflows de despliegue **solo** se ejecutan en `main` y nunca con código de PR de terceros.
 - Entornos: **local** y **producción**. Sin *staging*.
+
+### 7.5 Servidor: comparativa y recomendación [DECIDIDO: AWS Lightsail en la UE; la recomendación es informativa]
+
+**Procedencia de los precios.** Son los de lista que **el propietario consultó el 2026-11-04 en la página oficial** de cada proveedor. Desde la sesión de Claude no se pudieron abrir esas páginas (el entorno bloquea el acceso), así que **no están verificados de forma independiente**. Lo que no se pudo comprobar lleva **[VERIFICAR]** y no tiene cifra. Los precios de Hetzner son **sin IVA**; los de Lightsail, en dólares y con el impuesto sin comprobar [VERIFICAR].
+
+| Opción | Precio de lista | Recursos | Observaciones |
+|---|---|---|---|
+| **Lightsail, Linux con IPv4, 2 GB** (elegida) | **12 USD/mes** | 2 vCPU, 2 GB de RAM, 60 GB de SSD, 3 TB de transferencia | Región de la UE [VERIFICAR cuáles ofrece Lightsail]. Fuente: [aws.amazon.com/lightsail/pricing](https://aws.amazon.com/lightsail/pricing/) |
+| Lightsail con IPv4, 1 GB | 7 USD/mes | 2 vCPU, 1 GB, 40 GB, 2 TB | Descartada (inferencia): PostgreSQL, Node, Caddy y Docker no dejan margen en 1 GB, y cada Argon2id usa 64 MiB (`limites.md` §6) |
+| Lightsail con IPv4, 4 GB | 24 USD/mes | 2 vCPU, 4 GB, 80 GB, 4 TB | Solo si el spike muestra falta de memoria |
+| Lightsail solo IPv6, 2 GB | 10 USD/mes | Igual que el de 12 USD | Ahorra 2 USD/mes, pero sin IPv4 hay servicios que quizá no se alcancen (repositorios de paquetes, registro de imágenes, GitHub) [VERIFICAR]. La decisión es con IPv4 |
+| EC2 con el plan gratuito de AWS | [VERIFICAR] | [VERIFICAR] | Sin cifras comprobadas. Cualitativo (inferencia): mismo proveedor, pero más piezas que mantener (red virtual, grupos de seguridad, discos), la IPv4 pública se cobra aparte [VERIFICAR] y el plan gratuito caduca, así que no es una base para un servidor de años |
+| **Hetzner Cost-Optimized, CX23** | **5,99 €/mes** sin IVA, IPv4 incluida | 2 vCPU, 4 GB, 40 GB, 20 TB | **Toda la gama figuraba como «currently unavailable» el 2026-11-04: no se puede contratar hoy.** Otros: CAX11 (ARM, 2 vCPU, 4 GB) 6,49 €; CX33 (4 vCPU, 8 GB, 80 GB) 8,99 €. Fuentes: [hetzner.com/cloud/cost-optimized](https://www.hetzner.com/cloud/cost-optimized/) y [hetzner.com/cloud](https://www.hetzner.com/cloud/) |
+
+**Diferencia de coste anual** (cifras nominales, sin convertir monedas ni impuestos): Lightsail 2 GB, **144 USD**; Hetzner CX23, **71,88 €**. Hetzner cuesta aproximadamente la mitad y tiene el doble de memoria; la diferencia exacta en euros depende del tipo de cambio y del IVA [VERIFICAR].
+
+**Recomendación (opinión, informativa): mantener Lightsail 2 GB.**
+1. Es lo decidido y se puede contratar hoy; Hetzner no.
+2. El sobrecoste (unos 70 al año en cifras nominales) es pequeño frente al riesgo de empezar el spike sin servidor.
+3. No hay dependencia del proveedor: todo va en Docker y el procedimiento de §6.3 (crear un VPS nuevo, desplegar con el runbook, restaurar) es la mudanza. Si Hetzner vuelve a tener existencias y el ahorro te interesa, es una decisión reversible **después** del spike, no antes.
+4. EC2 con el plan gratuito no se recomienda: ahorra poco tiempo y añade complejidad (inferencia).
+
+**Riesgo conocido**: 2 GB es justo. El spike mide la memoria en reposo y bajo carga (`free -m`, `docker stats`) y decide entre añadir *swap* (ya está en el runbook), subir a 4 GB (24 USD/mes) o cambiar de proveedor.
+
+### 7.6 Almacén de la copia 2: Backblaze B2 frente a Storage Box [RESUELTO: Backblaze B2]
+
+Precios consultados por el propietario el 2026-11-04 en las páginas oficiales; sin verificar de forma independiente (§7.5). No se compara S3: no se pidió.
+
+| | **Backblaze B2** ([precios](https://www.backblaze.com/cloud-storage/pricing)) | **Hetzner Storage Box** |
+|---|---|---|
+| Precio | **6,95 USD por TB al mes**; primeros **10 GB gratis**; descarga gratis hasta 3 veces lo almacenado y después 0,01 USD/GB | [VERIFICAR]. Son planes de capacidad fija; no hay cifra comprobada |
+| Coste con este volumen | **0** mientras el repositorio no pase de 10 GB (inferencia: un volcado de una base de datos de un solo usuario; se mide en la primera copia). Por encima: 0,00695 USD por GB y mes | Al menos el precio del plan más pequeño [VERIFICAR] |
+| restic | Conector propio de B2 (y compatible con S3) | Por SFTP |
+| Protección contra el borrado | Claves de aplicación con permisos limitados y bloqueo de objetos [VERIFICAR su efecto con restic] | Instantáneas y subcuentas gestionadas fuera de SFTP [VERIFICAR] |
+| Ubicación | Región de la UE [VERIFICAR] | UE [VERIFICAR] |
+
+**Recomendación: B2.** Cuesta 0 con este volumen, tiene precio público y soporte nativo en restic. Con un único proveedor de precio comprobado no se puede afirmar que Storage Box sea más caro, pero **no puede costar menos que 0**. La protección contra el borrado se comprueba con una prueba real en el PR 7 de la fase 2: restic necesita crear y borrar archivos de bloqueo, y una clave sin permiso de borrado podría no bastar [VERIFICAR]. Si no hay forma de hacerlo, la defensa es la **copia 3 en el PC** (§6.3), que el servidor no puede alcanzar. Las copias van cifradas en el cliente, así que el proveedor no puede leerlas.
+
+### 7.7 Coste mensual estimado
+
+Consultado el **2026-11-04** (por el propietario; sin verificar de forma independiente, §7.5). Precios de lista, **sin promociones**.
+
+| Concepto | Coste | Fuente |
+|---|---|---|
+| Servidor: Lightsail Linux con IPv4, 2 GB | **12 USD/mes** | [AWS Lightsail](https://aws.amazon.com/lightsail/pricing/) |
+| Copia 2: Backblaze B2 | **0** hasta 10 GB; después 6,95 USD por TB y mes | [Backblaze B2](https://www.backblaze.com/cloud-storage/pricing) |
+| Copia 3: tu PC | 0 (espacio en disco) | — |
+| Tailscale, plan Personal | **0** (hasta 6 usuarios, dispositivos ilimitados) | [Tailscale](https://tailscale.com/pricing) |
+| DNS en Cloudflare | [VERIFICAR] (el plan gratuito debería bastar) | — |
+| Dominio | [VERIFICAR] (precio de registro **y de renovación**, dividido entre 12) | — |
+| Monitorización de las copias (p. ej., healthchecks.io) | [VERIFICAR] (hay un plan gratuito) | — |
+| Instantáneas de Lightsail (opcional, puntual) | 0,05 USD por GB y mes; si se cobra por los 60 GB del disco, **hasta 3 USD/mes** mientras exista [VERIFICAR] | [AWS Lightsail](https://aws.amazon.com/lightsail/pricing/) |
+| IVA / impuestos de AWS | [VERIFICAR] | — |
+
+**Total estimado: 12 USD/mes + el dominio dividido entre 12** (144 USD al año más el dominio), más impuestos. En euros depende del tipo de cambio [VERIFICAR]. No incluye instantáneas, que son opcionales.
+
+- **Después de las promociones**: la cifra de arriba **ya es la de lista**. Si el periodo de prueba de Lightsail o los créditos de AWS existen, solo retrasan el primer cobro; su duración y condiciones no están comprobadas [VERIFICAR] y no se cuentan.
+- **Transferencia**: el plan incluye 3 TB. El tráfico de este uso es de MB al día (inferencia), muy por debajo. El precio del exceso no está comprobado [VERIFICAR].
+- **Sustituye** a la estimación de la revisión 2 (~6–8 €, §7.2), que partía de un VPS de Hetzner.
+- **Alertas de coste**: presupuesto de 20 USD/mes en AWS (`docs/runbooks/servidor.md` §1.4).
+
+### 7.8 Cifrado del disco del servidor [PROPUESTA: pendiente de tu confirmación; pregunta 39]
+
+`datos.md` §3 dejaba este punto abierto («se decide en la fase 2»). Esto es una **propuesta**: no se aplica hasta que la confirmes y, al confirmarla, se anota en un ADR.
+
+**Qué amenazas cubre y cuáles no** (análisis; las propiedades de Lightsail están por verificar):
+
+| Amenaza | ¿La cubre el cifrado del disco? |
+|---|---|
+| Robo o reciclaje de los discos físicos del proveedor | Sí, con el cifrado en reposo del proveedor, si lo aplica por defecto a discos e instantáneas [VERIFICAR] |
+| Alguien con acceso a la **cuenta de AWS** copia una instantánea o el disco | **Solo** si la clave no está en AWS (LUKS con una frase que solo tú conoces). El cifrado del proveedor es transparente para quien controla la cuenta |
+| Compromiso del servidor **en marcha** (vulnerabilidad, SSH robado) | **No**: el volumen está desbloqueado y la clave, en memoria |
+| Copias de seguridad | Ya van cifradas en el cliente (restic): no dependen de esto |
+
+**Opciones**
+
+| Opción | Qué es | Ventajas | Inconvenientes |
+|---|---|---|---|
+| **A. Cifrado del proveedor + cuenta endurecida** | Sin cifrado propio. Se apoya en el cifrado en reposo de Lightsail [VERIFICAR] y en el MFA, el usuario propio y el presupuesto de `servidor.md` §1 | Sin coste ni operación; reinicios automáticos sin intervención | Quien tome la cuenta puede leer una instantánea (datos N2 y el archivo de secretos N3). Riesgo **residual aceptado** |
+| **B. LUKS en el disco raíz** | Cifrar todo el sistema | Cubre todo | **Poco viable en Lightsail**: no controlas el arranque ni hay consola de rescate [VERIFICAR], y desbloquear en el arranque exigiría red antes de Tailscale, lo que contradice «SSH solo por Tailscale». **Descartada** |
+| **C. Volumen de datos con LUKS** | Un disco adicional (o un archivo) cifrado con una frase que solo tú tienes; ahí viven PostgreSQL, `/var/lib/docker`, el archivo de secretos y los volcados temporales. Se desbloquea **a mano por SSH (Tailscale) tras cada arranque** | Cubre la copia de una instantánea por alguien con acceso a la cuenta | Tras cada reinicio, la app y el atajo **no funcionan** hasta que desbloqueas (el RTO de 24 h lo tolera, pero es una operación más); frase perdida = datos perdidos (se restaura de las copias); reinicios automáticos desactivados; coste del disco adicional [VERIFICAR] |
+| **D. Cifrado de columnas** | Ya descartado en §6.2 | — | Quien compromete el servidor obtiene también la clave |
+| E. Claves gestionadas por el cliente del proveedor | Posible en EC2 con discos EBS y KMS, no en Lightsail [VERIFICAR] | Mantiene el cifrado sin desbloqueo manual | Aun así, quien tome la cuenta controla la clave. Cambiaría de producto |
+
+**Recomendación (opinión): A en la fase 2**, con estas condiciones:
+1. El único escenario en que C aporta algo es la **toma de la cuenta de AWS**, y ese riesgo se reduce con el MFA en la raíz, el usuario propio y el presupuesto (`servidor.md` §1). En ese escenario el atacante también podría borrar la instancia o abrir el cortafuegos, así que C no lo neutraliza del todo.
+2. C tiene un coste que se paga **en cada reinicio** de un servicio que ya depende de una sola persona, y el atajo de iPhone falla mientras esté bloqueado.
+3. Se documenta como **riesgo residual aceptado** en `datos.md` (N2/N3 sin cifrar con una clave que no controlas) y no se guardan instantáneas con datos reales más tiempo del necesario (`servidor.md` §10.2).
+
+**Cuándo revisarlo** (pasar a C): si se guardan datos más sensibles de los previstos, si la cuenta de AWS pasa a compartirse o si dejas de confiar en tu higiene de cuenta. Si prefieres C ya, dímelo: se escribe el ADR y se añade el volumen y su procedimiento de desbloqueo al runbook.
 
 ---
 
@@ -1285,11 +1377,11 @@ Tamaños relativos (S, M, L, XL). No pongo días porque no conozco tu ritmo y un
 
 - **Alcance**
   - **2a. Spike de iOS (primero; como máximo 1–2 días)**
-    - Servidor siempre encendido con la **opción D** (Tailscale), dominio propio y certificado por DNS-01 (§7.3).
+    - Servidor siempre encendido con la **opción D** (Tailscale): **AWS Lightsail** en una región de la UE, plan de 2 GB con IPv4 y todos los puertos públicos cerrados (§7.5). Dominio propio con el DNS en Cloudflare y certificado por DNS-01 (§7.3). Se monta con `docs/runbooks/servidor.md`.
     - `/health`, un endpoint de ingesta que solo registra en el log y una PWA con push.
     - Pasar T1–T3, T7–T9 y T16 **antes** de construir el resto.
   - **2b. Producción en D**
-    - Copias **3-2-1** automáticas con restic y la **primera prueba de restauración documentada**.
+    - Copias **3-2-1** automáticas con restic (copia 1 en el servidor, copia 2 en Backblaze B2 y copia 3 en tu PC con `restic copy`; §6.3 y §7.6) y la **primera prueba de restauración documentada**.
     - Monitorización de disponibilidad y de las copias.
     - Runbooks de despliegue, copia y restauración y rotación de secretos.
     - **Limpieza automática** (pregunta 35): borrar las sesiones caducadas hace más de 30 días y los `audit_events` de más de 1 año. El trigger de solo inserción de `audit_events` rechaza `DELETE`; la purga necesita un camino explícito (rol de mantenimiento o función dedicada), que se decide con los roles separados de la base de datos (ASVS 16.4.2) y se anota en un ADR.
@@ -1309,10 +1401,38 @@ Tamaños relativos (S, M, L, XL). No pongo días porque no conozco tu ritmo y un
     - Si T18 funciona: alta de passkeys con @simplewebauthn y su ADR.
   - **2f. Medición de 2 semanas y decisión D/A** según el criterio de §7.3, con su ADR.
   - **2g.** `docs/atajo-iphone.md`: configuración paso a paso (sin dominio ni token reales) y resultados de T1–T19 y de la medición, **solo con recuentos**.
+  - **Orden de trabajo en PR pequeños** (cada uno con su lint, typecheck, tests y las filas de `asvs-l2.md` que toque; los nombres «PR n» son para referirse a ellos):
+
+    | PR | Contenido | Tipo | Depende de |
+    |---|---|---|---|
+    | **0** | Esta planificación: decisiones, orden, `servidor.md`, coste y cifrado de disco | Solo documentación | — |
+    | *(manual)* | Montar cuenta de AWS, servidor, Tailscale, dominio y Cloudflare con `servidor.md`. **No es un PR**: se hace en paralelo a los PR 1 y 2 | Operación | PR 0 |
+    | **1** | **Test de atomicidad de la conciliación (ASVS 2.3.3)** y fila 2.3.3 de `asvs-l2.md` reasignada de F3 a F2. Sin cambio de comportamiento | Código (solo tests) | — |
+    | **2** | TOTP con HMAC-SHA-256 y algoritmo guardado junto a la semilla (pregunta 36). Va **antes** de dar de alta el TOTP de producción | Código + migración | — |
+    | **3** | **Spike 2a (1/2)**: imagen de producción, Compose, Caddy con DNS-01 y certificado comodín, `TRUST_PROXY_HOPS=1`; primera versión de `deploy.md`; `docs/dependencias.md` | Código + configuración | PR 2 y servidor montado |
+    | **4** | **Spike 2a (2/2)**: endpoint de ingesta que solo registra en el log (con un secreto temporal en una variable de entorno, que se retira en 2d [DECIDIR]) y PWA mínima con push | Código | PR 3 |
+    | **Puerta 2a** | Pasar T1–T3, T7–T9 y T16 en el iPhone, medir la memoria (§7.5) y anotar solo recuentos y versiones en `docs/atajo-iphone.md`. **Si fallan, se para y se replantea antes del PR 5** | Prueba en el dispositivo | PR 4 |
+    | **5** | Límite general de peticiones (300 por minuto; ASVS 2.4.1) y actualización de `limites.md` §7.1 | Código | Puerta 2a |
+    | **6** | Roles separados de la base de datos y **limpieza automática** (sesiones caducadas a los 30 días y `audit_events` a 1 año), con su ADR (ASVS 16.4.2) | Código + migración + ADR | PR 5 |
+    | **7** | Copias: restic con temporizador `systemd`, B2, copia 3 desde el PC, `restic check`, monitorización de las copias, `docs/runbooks/backup-restore.md` y la **primera restauración documentada**. Incluye la prueba de borrado de §7.6 | Código/scripts + runbook | PR 6 |
+    | **8** | Monitorización de disponibilidad y runbooks de despliegue y de rotación de secretos | Runbooks + configuración | PR 7 |
+    | **9** | 2c: PWA completa (manifiesto, *service worker*, suscripción a push, notificación de prueba y contador en el icono) | Código | PR 8 |
+    | **10** | 2d (1/5): migración con `device_tokens`, `wallet_cards` y las columnas aplazadas de `movements` | Migración | PR 9 |
+    | **11** | 2d (2/5): tokens de dispositivo (crear y revocar con reautenticación) y la matriz de permisos con un test por combinación de credencial y ruta (ASVS 8.2.2 y 8.2.3) | Código | PR 10 |
+    | **12** | 2d (3/5): `/ingest/wallet-transactions`, idempotencia, huella, correspondencia de tarjetas y marcas (T3 con cifras inventadas) | Código | PR 11 |
+    | **13** | 2d (4/5): bandeja de pendientes y formulario rápido | Código | PR 12 |
+    | **14** | 2d (5/5): `GET /ingest/catalog`, atajos manuales, opción «Otro» y pagos habituales | Código | PR 13 |
+    | **15** | 2e: T18 y T19; si T18 funciona, passkeys con @simplewebauthn y su ADR | Código + ADR | PR 14 |
+    | **16** | 2f y 2g: medición de 2 semanas, decisión D/A con su ADR y `docs/atajo-iphone.md` completo | Documentación + ADR | PR 15 |
+
+    - **El spike va primero**: el PR 1 es solo un test sin comportamiento nuevo y el PR 2 es un requisito de la pregunta 36 (el spike da de alta el primer TOTP real); por eso van delante, mientras tú montas el servidor. Ninguno de los dos «construye el resto» en el sentido de la regla de 2a. Todo lo demás (PR 5 en adelante) espera a la Puerta 2a.
+    - **PR 1, el test de atomicidad**: fuerza un fallo al guardar el movimiento de ajuste de una conciliación (por ejemplo, sustituyendo `insertMovement` del repositorio del libro para que falle) y comprueba que la conciliación **tampoco queda guardada**. Hoy `reconcileAccount` ya lo hace en una sola transacción (`ledger.service.ts`); el test fija ese comportamiento. Necesita PostgreSQL (`pnpm db:up`).
+    - Si el PR 2 se retrasara, el spike puede usar un alta de TOTP desechable que se borra antes de la producción real; no se da de alta el TOTP definitivo hasta que el PR 2 esté en `main`.
 - **Terminado cuando**
   - Protocolo T1–T19 pasado y documentado con la versión de iOS.
   - Medición de 2 semanas con al menos 20 pagos, completada y **decisión D/A tomada con el criterio de §7.3**.
-  - Primera restauración completa hecha y anotada; la tercera copia (`restic copy`) verificada.
+  - Primera restauración completa hecha y anotada; la copia 3 (`restic copy` desde el PC) verificada con `restic check`.
+  - El test de atomicidad de la conciliación (ASVS 2.3.3) existe y pasa; la fila 2.3.3 de `asvs-l2.md` está en F2.
   - La limpieza automática funciona y tiene tests: las sesiones caducadas hace más de 30 días se borran y las más recientes no; los `audit_events` de más de 1 año se borran y los demás no; la aplicación sigue sin poder modificar ni borrar eventos fuera de la purga.
   - Cabeceras verificadas: sin errores de CSP en la consola; HSTS presente.
   - Revocar un token → el atajo recibe 401 y muestra la notificación local.
@@ -1324,7 +1444,11 @@ Tamaños relativos (S, M, L, XL). No pongo días porque no conozco tu ritmo y un
 - **Riesgos**
   - **El comportamiento de iOS** (el spike va primero).
   - Que la VPN corte el atajo (la medición y el criterio objetivo lo cubren).
-  - Que el plugin DNS-01 no exista para tu proveedor de DNS: cambiar de DNS o usar certbot.
+  - Que el módulo DNS-01 de Cloudflare para Caddy no esté disponible o cambie de permisos: compilar Caddy con `xcaddy` o usar certbot o lego (§7.3).
+  - Que un router o DNS de casa descarte la respuesta que apunta a una IP `100.x` (protección contra *DNS rebinding*): se prueba en el spike (`servidor.md` §8.4).
+  - Que 2 GB de RAM no basten (§7.5): se mide en el spike.
+  - Que la cuenta de AWS sea el eslabón débil (§7.8): MFA, usuario propio y presupuesto antes de crear nada.
+  - Que la copia 3 se quede antigua porque el PC está apagado: se anota la fecha de la última `restic copy` en el runbook de copias.
   - Que la passkey no funcione en la PWA: el TOTP sigue disponible.
   - Pérdida de suscripciones push.
   - **Filtrar datos reales en la documentación del dispositivo** (el repositorio es público).
@@ -1490,12 +1614,13 @@ Estado tras la revisión 2: **RESUELTA** (con la decisión tomada) o **PENDIENTE
 | 23 | ¿Repositorio público? | RESUELTA | Sí, con las reglas de §6.2 y de `CLAUDE.md` |
 | 24 | ¿`user_id` en las tablas? | RESUELTA | No (YAGNI) |
 | 28 | ¿Licencia? | RESUELTA | MIT (`LICENSE`) |
-| 31 | ¿Dominio propio desde el principio, también en D? | PENDIENTE (inicio de la fase 2) | **R:** sí, con DNS-01. Mantiene el mismo origen si se pasa a A (§7.3) |
-| 32 | ¿Segundo destino de las copias (la tercera copia)? | PENDIENTE (fase 2) | **R:** un segundo proveedor de almacén de objetos si cuesta menos de ~1 €/mes con este volumen [VERIFICAR]; si no, un disco externo cifrado actualizado cada mes |
+| 31 | ¿Dominio propio desde el principio, también en D? | RESUELTA | Sí: dominio propio, DNS en Cloudflare y certificado por DNS-01. Mantiene el mismo origen si se pasa a A. El dominio nunca va en el repositorio (`PUBLIC_ORIGIN`). §7.3 y `docs/runbooks/servidor.md` §7–§8 |
+| 32 | ¿Segundo destino de las copias (la tercera copia)? | RESUELTA | Copia 1 en el servidor, copia 2 en Backblaze B2 y copia 3 en tu PC con `restic copy` hecho desde el PC. §6.3 y §7.6 |
 | 33 | ¿Ampliar la inactividad a 8 h si fallan la passkey y el autorrelleno? | RESUELTA: **ya no hace falta** | El desbloqueo tras inactividad pide solo la contraseña (o una passkey), sin TOTP, como permite NIST. El coste de usabilidad que justificaba las 8 h desaparece y se mantiene 1 h sin desviación |
 | 34 | ¿Adoptar passkeys? | PENDIENTE (fase 2, tras T18) | **R:** sí, si funcionan en la PWA; el TOTP se mantiene como respaldo |
 | 35 | ¿Retención de `audit_events` y de los logs técnicos? | RESUELTA | `audit_events` se conserva **1 año** y las sesiones caducadas se borran a los **30 días**. La limpieza automática se implementa en la **fase 2** (hoy no se borra nada). Logs técnicos: 30 días, como se proponía (y en las copias según su retención); la decisión no se ha reabierto |
-| 36 | ¿TOTP con HMAC-SHA-256 en lugar de HMAC-SHA-1? | PENDIENTE (fase 2, **antes** de dar de alta el TOTP de producción) | HMAC-SHA-1 es *Legacy* en el apéndice C de ASVS 5.0 (desviación documentada de 11.4.1). **R:** probar con la app de autenticación del usuario un alta con `algorithm=SHA256` y comprobar que genera códigos correctos; si funciona, usar HMAC-SHA-256 en producción y cerrar la desviación. Exige guardar el algoritmo junto a la semilla y un test con los vectores SHA-256 de RFC 6238 |
+| 36 | ¿TOTP con HMAC-SHA-256 en lugar de HMAC-SHA-1? | PENDIENTE (fase 2, **antes** de dar de alta el TOTP de producción; PR 2 de §8) | HMAC-SHA-1 es *Legacy* en el apéndice C de ASVS 5.0 (desviación documentada de 11.4.1). **R:** probar con la app de autenticación del usuario un alta con `algorithm=SHA256` y comprobar que genera códigos correctos; si funciona, usar HMAC-SHA-256 en producción y cerrar la desviación. Exige guardar el algoritmo junto a la semilla y un test con los vectores SHA-256 de RFC 6238 |
+| 39 | ¿Cifrar el disco del servidor? | PENDIENTE (fase 2, antes del spike en producción) | **R:** opción A (cifrado del proveedor + cuenta de AWS endurecida), con el riesgo residual documentado; pasar a la C (volumen LUKS desbloqueado a mano) si cambian las condiciones de §7.8. Necesita tu confirmación y un ADR |
 
 **Producto**
 
@@ -1505,7 +1630,7 @@ Estado tras la revisión 2: **RESUELTA** (con la decisión tomada) o **PENDIENTE
 | 26 | ¿Cómo se publica en el portfolio? | RESUELTA | Commits mediante la API de GitHub a Portfolio-v2 |
 | 27 | ¿Interfaz solo en español? | RESUELTA | Sí |
 
-Los números 29–35 son preguntas nuevas de la revisión 2 (la 30 se fusionó con la 18). La 36 surge en la fase 1 (autenticación); la 37 y la 38, en la revisión 4.
+Los números 29–35 son preguntas nuevas de la revisión 2 (la 30 se fusionó con la 18). La 36 surge en la fase 1 (autenticación); la 37 y la 38, en la revisión 4; la 39, en la revisión 5.
 
 ---
 
@@ -1526,6 +1651,7 @@ Los números 29–35 son preguntas nuevas de la revisión 2 (la 30 se fusionó c
 - pnpm `minimumReleaseAge`: [ThreatCluster](https://threatcluster.io/cluster/pnpm-11-introduces-default-minimum-release-age-to-mitigate-s-81fce868)
 - Calendario de Node: [InfoQ](https://infoq.com/news/2026/06/nodejs-release-changes)
 - Hetzner CX23: [VPSBenchmarks](https://www.vpsbenchmarks.com/hosters/hetzner/plans/cx23)
+- Precios de la fase 2, **consultados por el propietario el 2026-11-04 en la página oficial** (no verificados de forma independiente por Claude: el entorno bloquea esos sitios): [AWS Lightsail](https://aws.amazon.com/lightsail/pricing/), [Hetzner Cost-Optimized](https://www.hetzner.com/cloud/cost-optimized/), [Hetzner Cloud](https://www.hetzner.com/cloud/), [Backblaze B2](https://www.backblaze.com/cloud-storage/pricing) y [Tailscale](https://tailscale.com/pricing)
 - Pausa de los proyectos de Supabase: [Supabase](https://supabase.com/kb/faqs/platform/free-project-pausing)
 - Render: [plataformas gratuitas 2026](https://render.com/articles/platforms-with-a-real-free-tier-for-developers-in-2026.md)
 - Kysely: [unpkg](https://app.unpkg.com/kysely@0.28.8)
