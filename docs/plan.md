@@ -465,18 +465,21 @@ El importador traduce `=0` (lista vacía), la referencia directa y `SUM` sobre u
 
 ### 2.6 Módulo `tasks`
 
-**`tasks`**
+**`tasks`** (migración `0006_tasks`, fase 4a)
 | Columna | Tipo | Restricciones y notas |
 |---|---|---|
 | id | uuid | PK |
 | title | text | `CHECK (char_length(title) BETWEEN 1 AND 200)` |
-| description_md | text | NULL |
+| description_md | text | NULL. `CHECK (char_length(description_md) <= 10000)` |
 | status | text | `CHECK IN ('todo','in_progress','testing','done')` |
 | position | integer | `CHECK (position >= 0)` |
 | due_on | date | NULL (fecha límite) |
 | completed_at | timestamptz | `CHECK ((status = 'done') = (completed_at IS NOT NULL))` |
+| created_at, updated_at | timestamptz | `updated_at` cambia al editar o al cambiar de columna; renumerar a las vecinas no cuenta |
 
-`UNIQUE (status, position) DEFERRABLE INITIALLY DEFERRED`: al reordenar, las posiciones se renumeran dentro de una transacción y la unicidad se comprueba al final, no fila a fila. Índice `(due_on) WHERE status <> 'done'`.
+- **`due_on` es `date`, no `timestamptz`** [RESUELTO]: la fecha límite es un día del calendario («para el viernes»), no un instante. Un `timestamptz` arrastraría una hora y una zona, y el día mostrado cambiaría con la zona o con el cambio de horario; un `date` no. Si está vencida se decide al leer, comparando con «hoy» en la zona del usuario (`users.timezone`). El instante exacto en que avisar es del recordatorio (`task_reminders.remind_at`, `timestamptz`, fase 4c).
+- **Orden: enteros consecutivos con unicidad diferible** [RESUELTO]. `position` es el índice (0..n-1, sin huecos) dentro de la columna y `UNIQUE (status, position) DEFERRABLE INITIALLY DEFERRED` impide repetidos; se comprueba al confirmar la transacción, así que al reordenar se pueden renumerar varias filas sin que las posiciones intermedias choquen. Que sean *consecutivas* no lo impone la base de datos: lo mantiene el servicio (solo reescribe las filas que cambian, en una transacción serializada con `pg_advisory_xact_lock`) y lo comprueban los tests tras cada movimiento. Alternativa descartada: **índices fraccionarios** (LexoRank / claves de texto entre dos vecinas). Escriben una sola fila por movimiento y toleran mejor la concurrencia, pero necesitan reequilibrado cuando las claves crecen, son opacas al depurar y no dejan comprobar el orden con una igualdad exacta. Con un usuario y decenas de tareas por columna, renumerar es barato y la legibilidad pesa más. Detalle en `apps/api/src/modules/tasks/README.md`.
+- Índice `(due_on) WHERE status <> 'done'`.
 
 **`task_time_entries`** (tiempo dedicado)
 | Columna | Tipo | Restricciones y notas |
@@ -485,8 +488,11 @@ El importador traduce `=0` (lista vacía), la referencia directa y `SUM` sobre u
 | task_id | uuid | FK ON DELETE CASCADE; índice |
 | started_at | timestamptz | NOT NULL |
 | ended_at | timestamptz | NULL mientras el cronómetro está en marcha; `CHECK (ended_at IS NULL OR ended_at > started_at)` |
+| created_at | timestamptz | |
 
-Índice único `((true)) WHERE ended_at IS NULL`: solo puede haber **un cronómetro en marcha** en toda la aplicación. [RESUELTO] Se admiten **las dos formas**, y las dos se guardan como intervalos: el cronómetro (iniciar y parar, con un único cronómetro activo) y la anotación manual (inicio y fin, o inicio y duración convertida en fin).
+Índice único `((true)) WHERE ended_at IS NULL`: solo puede haber **un cronómetro en marcha** en toda la aplicación. [RESUELTO] Se admiten **las dos formas**, y las dos se guardan como intervalos: el cronómetro (iniciar y parar, con un único cronómetro activo) y la anotación manual (inicio y fin, o inicio y duración convertida en fin). El total de una tarea **no se guarda**: se calcula al leer (suma de segundos de las entradas cerradas, redondeando hacia abajo cada una, más lo que lleva el cronómetro en marcha).
+
+**Sin solapes** [RESUELTO]: `EXCLUDE USING gist (tstzrange(started_at, ended_at, '[)') WITH &&)` prohíbe que dos entradas cualesquiera, **de cualquier tarea**, se pisen. Una persona no dedica el mismo minuto a dos tareas, y así los totales no cuentan tiempo dos veces; es coherente con el cronómetro único. Un cronómetro en marcha es un rango sin fin, así que también impide anotar a mano tiempo posterior a su inicio. Los intervalos contiguos (el fin de uno es el inicio de otro) son válidos. La exclusión por sí sola ya impediría un segundo cronómetro; el índice único parcial se mantiene como invariante explícito e independiente.
 
 **`task_reminders`**
 | Columna | Tipo | Restricciones y notas |
@@ -662,13 +668,13 @@ El archivo se recibe con `express.raw({ type: [...], limit: '5mb' })`, **sin mul
 **tasks**
 | Método | Ruta | Auth | Descripción |
 |---|---|---|---|
-| GET | `/tasks?status=` | S | Ordenadas por `position` |
-| POST | `/tasks` | S | Se añade al final de la columna |
-| GET, PATCH, DELETE | `/tasks/:id` | S | |
-| POST | `/tasks/:id/move` | S | `{ status, beforeId?, afterId? }` → renumera las columnas afectadas en una transacción y devuelve su nuevo orden |
-| GET, POST | `/tasks/:id/time-entries` | S | Anotación manual `{ startedAt, endedAt }` |
-| POST | `/tasks/:id/timer/start`, `/tasks/:id/timer/stop` | S | 409 si ya hay un cronómetro en marcha |
-| DELETE | `/time-entries/:id` | S | |
+| GET | `/tasks?status=` | S | `{ columns: [{ status, tasks }] }`: las cuatro columnas en orden o, con `status`, solo esa; cada columna ordenada por `position`. Cada tarea trae `timeSpentSeconds` y `timerStartedAt` (calculados al leer) |
+| POST | `/tasks` | S | `{ title, descriptionMd?, dueOn?, status? }`; se añade al final de la columna (por defecto, `todo`) |
+| GET, PATCH, DELETE | `/tasks/:id` | S | El PATCH edita título, descripción y fecha límite; no admite `status` ni `position`. Borrar cierra el hueco de la columna |
+| POST | `/tasks/:id/move` | S | `{ status, beforeId?, afterId? }`: delante de `beforeId`, detrás de `afterId` o, sin ninguno, al final. **Uno solo de los dos** (con ambos podrían contradecirse: 400). Renumera las columnas afectadas en una transacción y responde `{ task, columns }` con el nuevo orden de la de origen y la de destino. 422 si la referencia es la propia tarea o no está en la columna de destino |
+| GET, POST | `/tasks/:id/time-entries` | S | Anotación manual `{ startedAt, endedAt }` o `{ startedAt, durationSeconds }` (ISO 8601 con zona; el fin debe ser posterior al inicio; máximo 7 días). 422 si termina en el futuro; 409 si se solapa con otra entrada o con el cronómetro en marcha |
+| POST | `/tasks/:id/timer/start`, `/tasks/:id/timer/stop` | S | 201 / 200 con la entrada. 409 si ya hay un cronómetro en marcha (de cualquier tarea) al iniciar, o si esa tarea no tiene ninguno al parar |
+| DELETE | `/time-entries/:id` | S | También descarta el cronómetro en marcha |
 | GET, POST | `/tasks/:id/reminders` | S | `{ remindAt }` |
 | DELETE | `/tasks/:id/reminders/:reminderId` | S | |
 
@@ -1406,6 +1412,10 @@ Tamaños relativos (S, M, L, XL). No pongo días porque no conozco tu ritmo y un
 
 ### Fase 4 — Tareas con recordatorios · tamaño M
 
+- **Reparto en PR**
+  - **4a** — modelo de datos y API de tareas y de tiempo dedicado (sin recordatorios). Migración `0006_tasks`; módulo `apps/api/src/modules/tasks/`.
+  - **4b** — pantallas: tablero, arrastrar, «Mover a…», cronómetro y anotación manual.
+  - **4c** — recordatorios por push y planificador de 60 s.
 - **Alcance**
   - Kanban de 4 columnas, arrastrar y reordenar (dnd-kit) y el menú «Mover a…».
   - Fecha límite, tiempo dedicado (cronómetro **y** anotación manual, ambos guardados como intervalos) y recordatorios por push.
