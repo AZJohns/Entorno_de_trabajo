@@ -1283,6 +1283,8 @@ Tamaños relativos (S, M, L, XL). No pongo días porque no conozco tu ritmo y un
 
 ### Fase 2 — Despliegue privado con medición + PWA + registro rápido + atajo de iPhone · tamaño L
 
+> **EN PAUSA: el servidor está sin decidir; la planificación está en el PR #17, abierto y sin fusionar.**
+
 - **Alcance**
   - **2a. Spike de iOS (primero; como máximo 1–2 días)**
     - Servidor siempre encendido con la **opción D** (Tailscale), dominio propio y certificado por DNS-01 (§7.3).
@@ -1339,6 +1341,8 @@ Tamaños relativos (S, M, L, XL). No pongo días porque no conozco tu ritmo y un
   - 3-2-1, RPO y RTO.
 
 ### Fase 3 — Presupuestos · tamaño M + XL (3a y 3b)
+
+> **Orden:** la fase 3a (presupuestos dentro de la app) se adelanta y se hace antes que el resto de la fase 2, que necesita servidor. La 3b sigue después, con el resto de las fases.
 
 - **Antes de empezar:** migrar tu Excel a la v2 (`plantilla-excel.md` §14). La especificación de la plantilla no tiene puntos abiertos (§13).
 - **Alcance**
