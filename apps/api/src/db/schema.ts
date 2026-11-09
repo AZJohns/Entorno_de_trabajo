@@ -159,6 +159,31 @@ export interface CategoryBudgetsTable {
   updated_at: Defaulted<Date>;
 }
 
+/** Fecha contable opcional (`date` NULL): mismo formato que `DateColumn`. */
+type NullableDateColumn = ColumnType<string | null, string | null | undefined, string | null>;
+
+export interface TasksTable {
+  id: Generated<string>;
+  title: string;
+  description_md: string | null;
+  status: 'todo' | 'in_progress' | 'testing' | 'done';
+  position: number;
+  /** Fecha límite: un día del calendario, sin hora ni zona. */
+  due_on: NullableDateColumn;
+  completed_at: Date | null;
+  created_at: Defaulted<Date>;
+  updated_at: Defaulted<Date>;
+}
+
+export interface TaskTimeEntriesTable {
+  id: Generated<string>;
+  task_id: string;
+  started_at: Date;
+  /** `NULL` mientras el cronómetro está en marcha. */
+  ended_at: Date | null;
+  created_at: Defaulted<Date>;
+}
+
 /** Esquema completo de la base de datos. */
 export interface Database {
   users: UsersTable;
@@ -172,4 +197,6 @@ export interface Database {
   movements: MovementsTable;
   transfers: TransfersTable;
   category_budgets: CategoryBudgetsTable;
+  tasks: TasksTable;
+  task_time_entries: TaskTimeEntriesTable;
 }

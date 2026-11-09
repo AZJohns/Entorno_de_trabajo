@@ -20,6 +20,7 @@ import { noStore, requireJsonBody, requireSameOrigin, securityHeaders } from './
 import type { Clock } from './lib/clock.ts';
 import { createAuthModule, getSession, type PasswordBreachChecker } from './modules/auth/index.ts';
 import { createFinanceModule } from './modules/finance/index.ts';
+import { createTasksModule } from './modules/tasks/index.ts';
 
 /** Dependencias externas de la aplicación (se inyectan para poder sustituirlas en los tests). */
 export interface AppDependencies {
@@ -90,6 +91,7 @@ export function createApp(deps: AppDependencies): Express {
       },
     }).router,
   );
+  api.use(createTasksModule({ db: deps.db, clock: deps.clock }).router);
   app.use('/api/v1', api);
 
   app.use(notFoundHandler);

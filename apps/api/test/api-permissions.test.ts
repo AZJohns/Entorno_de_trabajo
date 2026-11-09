@@ -1,23 +1,24 @@
 /**
- * Permisos de las rutas del libro (docs/plan.md §6.2): denegar por defecto. Se recorren TODAS las rutas
- * registradas y la lista se compara con las rutas reales del router, así que una ruta nueva sin
- * probar hace fallar este test.
+ * Permisos de las rutas de negocio (docs/plan.md §6.2): denegar por defecto. Se recorren TODAS las rutas
+ * registradas (libro, informes, exportación, presupuesto y tareas) y la lista se compara con las rutas
+ * reales de los routers, así que una ruta nueva sin probar hace fallar este test.
  */
 import { describe, expect, it } from 'vitest';
-import { createDatabase } from '../../src/db/database.ts';
-import { createFinanceModule } from '../../src/modules/finance/index.ts';
-import { systemClock } from '../../src/lib/clock.ts';
-import { useAuthTestContext } from '../support/auth.ts';
-import { PASSWORD, USERNAME } from '../support/auth.ts';
-import { REAUTH_WINDOW_MS } from '../../src/modules/auth/domain/session-rules.ts';
-import { expectProblem } from '../support/ledger.ts';
+import { createDatabase } from '../src/db/database.ts';
+import { createFinanceModule } from '../src/modules/finance/index.ts';
+import { createTasksModule } from '../src/modules/tasks/index.ts';
+import { systemClock } from '../src/lib/clock.ts';
+import { useAuthTestContext } from './support/auth.ts';
+import { PASSWORD, USERNAME } from './support/auth.ts';
+import { REAUTH_WINDOW_MS } from '../src/modules/auth/domain/session-rules.ts';
+import { expectProblem } from './support/ledger.ts';
 
 const getCtx = useAuthTestContext();
 
 const ID = '00000000-0000-4000-8000-000000000000';
 const BASE = '/api/v1';
 
-/** Todas las rutas del libro: método y ruta con un UUID de relleno. */
+/** Todas las rutas de negocio: método y ruta con un UUID de relleno. */
 const ROUTES: readonly (readonly [method: 'get' | 'post' | 'patch' | 'delete', path: string])[] = [
   ['get', '/accounts'],
   ['post', '/accounts'],
@@ -53,6 +54,17 @@ const ROUTES: readonly (readonly [method: 'get' | 'post' | 'patch' | 'delete', p
   ['patch', `/budgets/${ID}`],
   ['delete', `/budgets/${ID}`],
   ['get', '/export'],
+  ['get', '/tasks'],
+  ['post', '/tasks'],
+  ['get', `/tasks/${ID}`],
+  ['patch', `/tasks/${ID}`],
+  ['delete', `/tasks/${ID}`],
+  ['post', `/tasks/${ID}/move`],
+  ['get', `/tasks/${ID}/time-entries`],
+  ['post', `/tasks/${ID}/time-entries`],
+  ['post', `/tasks/${ID}/timer/start`],
+  ['post', `/tasks/${ID}/timer/stop`],
+  ['delete', `/time-entries/${ID}`],
 ];
 
 /** Rutas S+: además de la sesión, exigen reautenticación completa en los últimos 10 minutos. */
@@ -64,25 +76,30 @@ const MUTATING = ROUTES.filter(([method]) => method !== 'get');
 const asPattern = (method: string, path: string): string =>
   `${method.toUpperCase()} ${path.replaceAll(ID, ':id').replace('/monthly/2026-10/', '/monthly/:month/')}`;
 
-describe('rutas del libro', () => {
-  it('la lista de este test coincide con las rutas registradas en el router', () => {
-    const { router } = createFinanceModule({
-      db: createDatabase('postgres://nadie:nada@127.0.0.1:1/ninguna'),
+describe('rutas de negocio', () => {
+  it('la lista de este test coincide con las rutas registradas en los routers', () => {
+    const db = createDatabase('postgres://nadie:nada@127.0.0.1:1/ninguna');
+    const { router: finance } = createFinanceModule({
+      db,
       clock: systemClock,
       requireReauth: (_req, _res, next) => {
         next();
       },
       recordExport: () => Promise.resolve(),
     });
-    const stack = (router as unknown as { stack: { route?: { path: string; methods: object } }[] })
-      .stack;
-    const registered = stack.flatMap((layer) =>
-      layer.route === undefined
-        ? []
-        : Object.keys(layer.route.methods).map(
-            (method) => `${method.toUpperCase()} ${layer.route?.path ?? ''}`,
-          ),
-    );
+    const { router: tasks } = createTasksModule({ db, clock: systemClock });
+    const registered = [finance, tasks].flatMap((router) => {
+      const stack = (
+        router as unknown as { stack: { route?: { path: string; methods: object } }[] }
+      ).stack;
+      return stack.flatMap((layer) =>
+        layer.route === undefined
+          ? []
+          : Object.keys(layer.route.methods).map(
+              (method) => `${method.toUpperCase()} ${layer.route?.path ?? ''}`,
+            ),
+      );
+    });
     expect(registered.sort()).toEqual(ROUTES.map(([m, p]) => asPattern(m, p)).sort());
   });
 
