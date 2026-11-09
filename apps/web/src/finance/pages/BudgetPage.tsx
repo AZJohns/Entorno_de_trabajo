@@ -4,9 +4,9 @@
  * API; aquí solo se dibujan y se gestionan altas, cambios, borrados y la copia del mes anterior.
  */
 import type { BudgetMonthResponse } from '@backoffice/shared';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { Button, ErrorMessage, Loading, SuccessMessage } from '../../ui/forms.tsx';
-import { ConfirmBar, ProblemNotice, SelectField } from '../../ui/finance-forms.tsx';
+import { ConfirmBar, ProblemNotice } from '../../ui/finance-forms.tsx';
 import { money } from '../amount.ts';
 import { BudgetBar } from '../budget/BudgetBar.tsx';
 import { copyResultMessage } from '../budgetLogic.ts';
@@ -117,6 +117,69 @@ function BudgetRow({ item, month }: { item: Item; month: string }) {
   );
 }
 
+const NAV_BUTTON =
+  'shrink-0 rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-100 disabled:opacity-50';
+
+/**
+ * Selector de mes en una tarjeta: «anterior», desplegable y «siguiente» en la misma línea (también en
+ * móvil, donde los botones se acortan a una flecha). La etiqueta «Mes» es solo para lectores de
+ * pantalla: el propio desplegable ya dice qué mes es.
+ */
+function MonthPicker(props: {
+  month: string;
+  options: readonly string[];
+  canGoBack: boolean;
+  onChange: (month: string) => void;
+}) {
+  const id = useId();
+  return (
+    <div
+      role="group"
+      aria-label="Elegir mes"
+      className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white p-3"
+    >
+      <button
+        type="button"
+        aria-label="Mes anterior"
+        disabled={!props.canGoBack}
+        onClick={() => props.onChange(shiftMonth(props.month, -1))}
+        className={NAV_BUTTON}
+      >
+        <span aria-hidden="true">←</span>
+        <span aria-hidden="true" className="ml-1 hidden sm:inline">
+          Anterior
+        </span>
+      </button>
+      <label htmlFor={id} className="sr-only">
+        Mes
+      </label>
+      <select
+        id={id}
+        value={props.month}
+        onChange={(event) => props.onChange(event.target.value)}
+        className="min-w-0 flex-1 rounded-md border border-slate-300 px-3 py-2 text-base focus:border-slate-600 focus:outline-none"
+      >
+        {props.options.map((value) => (
+          <option key={value} value={value}>
+            {formatMonth(value)}
+          </option>
+        ))}
+      </select>
+      <button
+        type="button"
+        aria-label="Mes siguiente"
+        onClick={() => props.onChange(shiftMonth(props.month, 1))}
+        className={NAV_BUTTON}
+      >
+        <span aria-hidden="true" className="mr-1 hidden sm:inline">
+          Siguiente
+        </span>
+        <span aria-hidden="true">→</span>
+      </button>
+    </div>
+  );
+}
+
 export function BudgetPage() {
   const current = monthOf(todayLocal());
   const [month, setMonth] = useState(current);
@@ -147,27 +210,12 @@ export function BudgetPage() {
     <div className="flex flex-col gap-4">
       <h1 className="text-2xl font-semibold">Presupuesto</h1>
 
-      <div className="flex flex-wrap items-end gap-2">
-        <Button
-          type="button"
-          variant="secondary"
-          disabled={month <= FIRST_MONTH}
-          onClick={() => goTo(shiftMonth(month, -1))}
-        >
-          Mes anterior
-        </Button>
-        <div className="min-w-48">
-          <SelectField
-            label="Mes"
-            value={month}
-            onChange={goTo}
-            options={monthOptions.map((value) => ({ value, label: formatMonth(value) }))}
-          />
-        </div>
-        <Button type="button" variant="secondary" onClick={() => goTo(shiftMonth(month, 1))}>
-          Mes siguiente
-        </Button>
-      </div>
+      <MonthPicker
+        month={month}
+        options={monthOptions}
+        canGoBack={month > FIRST_MONTH}
+        onChange={goTo}
+      />
 
       {budgets.isPending && <Loading />}
       <ErrorMessage error={budgets.error} />

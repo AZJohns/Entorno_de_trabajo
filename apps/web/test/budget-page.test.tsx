@@ -300,3 +300,22 @@ describe('BudgetPage', () => {
     });
   });
 });
+
+describe('Selector de mes', () => {
+  it('el desplegable tiene su etiqueta «Mes» y los botones cambian de mes', async () => {
+    const fetchMock = renderPage(() => undefined);
+    await screen.findByRole('heading', { name: 'Comida' });
+    const select = screen.getByLabelText<HTMLSelectElement>('Mes');
+    const before = select.value;
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Mes anterior' }));
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([url]) => String(url).includes('/budgets?month=') && !String(url).endsWith(before),
+        ),
+      ).toBe(true);
+    });
+    expect(select.value).not.toBe(before);
+    expect(screen.getByRole('button', { name: 'Mes siguiente' })).toBeTruthy();
+  });
+});
