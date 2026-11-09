@@ -29,6 +29,7 @@ import {
   type ReconciliationResponse,
   type TransferResponse,
 } from '@backoffice/shared';
+import { budgetDto } from '../budget/budget.controller.ts';
 import type { CategoryRecord, MovementRecord, TransferRecord } from './ledger.repository.ts';
 import type { AccountView, LedgerService, ReconciliationView } from './ledger.service.ts';
 import type { ReportsService } from './reports.service.ts';
@@ -297,6 +298,7 @@ export function createExportController(service: LedgerService, recordExport: Rec
       categories: data.categories.map(categoryDto),
       movements: data.movements.map(movementDto),
       transfers: data.transfers.map(transferDto),
+      budgets: data.budgets.map(budgetDto),
       reconciliations: data.reconciliations.map((record) => ({
         id: record.id,
         accountId: record.accountId,
@@ -315,6 +317,7 @@ export function createExportController(service: LedgerService, recordExport: Rec
       categories: body.categories.length,
       movements: body.movements.length,
       transfers: body.transfers.length,
+      budgets: body.budgets.length,
       reconciliations: body.reconciliations.length,
     });
     // Nombre generado por el servidor: ASCII, sin datos del usuario (ASVS 5.4.1 y 5.4.2).

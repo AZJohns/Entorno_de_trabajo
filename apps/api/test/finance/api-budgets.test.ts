@@ -426,15 +426,19 @@ describe('copiar del mes anterior', () => {
     expect((await listMonth(client, '2027-01')).items[0]?.amountCents).toBe(30_000);
   });
 
-  it('si el mes anterior no tiene presupuestos, 409', async () => {
+  it('si el mes anterior no tiene presupuestos, 200 con todo a cero (no 409) y no crea nada', async () => {
     const client = await getCtx().loggedIn();
     const food = await createCategory(client);
     await addBudget(client, '2026-08', food, 30_000); // dos meses antes: no cuenta
-    expectProblem(
-      await client.post(`${BASE}/copy-previous`, { month: '2026-10' }),
-      409,
-      'CONFLICT',
-    );
+    const res = await client.post(`${BASE}/copy-previous`, { month: '2026-10' });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(copyBudgetsResponseSchema.parse(res.body)).toEqual({
+      month: '2026-10',
+      sourceMonth: '2026-09',
+      copied: 0,
+      skippedExisting: 0,
+      skippedArchived: 0,
+    });
     expect(await rowCount()).toBe(1);
   });
 

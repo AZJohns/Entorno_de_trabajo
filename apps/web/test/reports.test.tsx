@@ -203,7 +203,7 @@ describe('ReportsPage', () => {
 describe('Exportar datos', () => {
   const FILE = {
     format: 'backoffice-export',
-    version: 1,
+    version: 2,
     exportedAt: '2026-11-03T10:00:00.000Z',
     currency: 'EUR',
     amountUnit: 'cents',
@@ -211,6 +211,7 @@ describe('Exportar datos', () => {
     categories: [],
     movements: [],
     transfers: [],
+    budgets: [],
     reconciliations: [],
   };
 
@@ -250,7 +251,7 @@ describe('Exportar datos', () => {
     expect(names).toEqual(['backoffice-export-2026-11-03.json']);
     expect(JSON.parse(await blobs[0]!.text())).toMatchObject({
       format: 'backoffice-export',
-      version: 1,
+      version: 2,
     });
   });
 

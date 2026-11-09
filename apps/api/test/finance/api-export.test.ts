@@ -3,7 +3,7 @@
  * reautenticación obligatoria y constancia en la auditoría.
  */
 import { beforeEach, describe, expect, it } from 'vitest';
-import { exportResponseSchema } from '@backoffice/shared';
+import { EXPORT_FORMAT_VERSION, exportResponseSchema } from '@backoffice/shared';
 import { REAUTH_WINDOW_MS } from '../../src/modules/auth/domain/session-rules.ts';
 import { PASSWORD, USERNAME, useAuthTestContext } from '../support/auth.ts';
 import type { TestClient } from '../support/client.ts';
@@ -81,6 +81,12 @@ async function populate(client: TestClient) {
     note: 'Ahorro',
   });
   expect(transfer.status).toBe(201);
+  const budget = await client.post('/api/v1/budgets', {
+    month: '2026-10',
+    categoryId: expense.id,
+    amountCents: 25_000,
+  });
+  expect(budget.status, JSON.stringify(budget.body)).toBe(201);
   const rec = await client.post(`/api/v1/accounts/${a.id}/reconciliations`, {
     month: '2026-10',
     asOf: '2026-10-25',
@@ -121,6 +127,15 @@ describe('GET /export', () => {
     );
     expect(file.transfers).toHaveLength(1);
     expect(file.transfers.some((t) => t.note === 'Ahorro' && t.fromAccountId === a.id)).toBe(true);
+    expect(file).toMatchObject({ version: EXPORT_FORMAT_VERSION });
+    expect(file.budgets).toEqual([
+      {
+        id: expect.any(String) as string,
+        month: '2026-10',
+        categoryId: file.categories.find((c) => c.name === 'Comida')?.id,
+        amountCents: 25_000,
+      },
+    ]);
     expect(file.reconciliations).toHaveLength(1);
     expect(file.reconciliations[0]?.adjustmentMovementId).toBe(
       file.movements.find((m) => m.source === 'reconciliation')?.id,
@@ -137,6 +152,7 @@ describe('GET /export', () => {
       categories: [],
       movements: [],
       transfers: [],
+      budgets: [],
       reconciliations: [],
     });
   });
@@ -152,6 +168,7 @@ describe('GET /export', () => {
     expect(Object.keys(res.body as object).sort()).toEqual([
       'accounts',
       'amountUnit',
+      'budgets',
       'categories',
       'currency',
       'exportedAt',
@@ -211,7 +228,14 @@ describe('GET /export', () => {
     const event = events[0];
     expect(event?.actor).toMatch(/^user:/u);
     expect(event?.metadata).toEqual({
-      counts: { accounts: 3, categories: 2, movements: 4, transfers: 1, reconciliations: 1 },
+      counts: {
+        accounts: 3,
+        categories: 2,
+        movements: 4,
+        transfers: 1,
+        budgets: 1,
+        reconciliations: 1,
+      },
     });
     expect(JSON.stringify(event)).not.toContain('Compra ficticia');
   });

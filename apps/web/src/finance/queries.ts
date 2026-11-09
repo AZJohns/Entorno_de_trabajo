@@ -7,8 +7,11 @@ import {
   accountResponseSchema,
   balanceHistoryResponseSchema,
   balancesReportResponseSchema,
+  budgetMonthResponseSchema,
+  budgetResponseSchema,
   categoryReportResponseSchema,
   categoryResponseSchema,
+  copyBudgetsResponseSchema,
   createReconciliationResponseSchema,
   exportResponseSchema,
   monthlyReportResponseSchema,
@@ -19,6 +22,7 @@ import {
   type AccountResponse,
   type CategoryResponse,
   type CreateAccountRequest,
+  type CreateBudgetRequest,
   type CreateCategoryRequest,
   type CreateMovementRequest,
   type CreateReconciliationRequest,
@@ -26,6 +30,7 @@ import {
   type MovementResponse,
   type TransferResponse,
   type UpdateAccountRequest,
+  type UpdateBudgetRequest,
   type UpdateMovementRequest,
   type UpdateTransferRequest,
 } from '@backoffice/shared';
@@ -321,6 +326,60 @@ export function useDeleteReconciliation() {
 }
 
 export type { AccountResponse, CategoryResponse, MovementResponse, TransferResponse };
+
+// --- presupuesto ---------------------------------------------------------------------------------
+// Lo gastado y lo que queda los calcula la API (`/budgets?month=`); la web solo lo dibuja.
+
+export function useBudgets(month: string) {
+  return useQuery({
+    queryKey: [ROOT, 'budgets', month],
+    queryFn: () => api(`/budgets${queryString({ month })}`, { schema: budgetMonthResponseSchema }),
+  });
+}
+
+export function useCreateBudget() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: CreateBudgetRequest) =>
+      api('/budgets', { method: 'POST', body, schema: budgetResponseSchema }),
+    onSuccess: () => invalidate(queryClient),
+  });
+}
+
+export function useUpdateBudget() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { id: string; body: UpdateBudgetRequest }) =>
+      api(`/budgets/${segment(input.id)}`, {
+        method: 'PATCH',
+        body: input.body,
+        schema: budgetResponseSchema,
+      }),
+    onSuccess: () => invalidate(queryClient),
+  });
+}
+
+export function useDeleteBudget() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api(`/budgets/${segment(id)}`, { method: 'DELETE' }),
+    onSuccess: () => invalidate(queryClient),
+  });
+}
+
+/** Copia del mes anterior: la API responde siempre 200 con recuentos (ver `copyResultMessage`). */
+export function useCopyBudgets() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (month: string) =>
+      api('/budgets/copy-previous', {
+        method: 'POST',
+        body: { month },
+        schema: copyBudgetsResponseSchema,
+      }),
+    onSuccess: () => invalidate(queryClient),
+  });
+}
 
 // --- informes ------------------------------------------------------------------------------------
 // Los importes ya vienen calculados por la API (`/reports/*`); la web solo los dibuja.

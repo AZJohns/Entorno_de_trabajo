@@ -54,6 +54,17 @@ export class BudgetRepository {
     return rows.map(toBudget);
   }
 
+  /** Todos los presupuestos de todos los meses, para la exportación. Orden fijo: mes, id. */
+  async listAll(): Promise<BudgetRecord[]> {
+    const rows = await this.#db
+      .selectFrom('category_budgets')
+      .selectAll()
+      .orderBy('month')
+      .orderBy('id')
+      .execute();
+    return rows.map(toBudget);
+  }
+
   async find(id: string): Promise<BudgetRecord | undefined> {
     const row = await this.#db
       .selectFrom('category_budgets')
