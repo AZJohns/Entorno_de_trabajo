@@ -2,7 +2,7 @@
 
 Tablero de cuatro columnas (Por hacer, En curso, En prueba, Terminado) con fecha límite opcional y tiempo dedicado. Diseño: `docs/plan.md` §2.6 y §2.10.
 
-**Estado (fase 4, PR 4a de 3):** modelo de datos y API. Las pantallas llegan en el 4b y los recordatorios (`task_reminders`, push y planificador) en el 4c.
+**Estado (fase 4, PR 4a de 3):** modelo de datos y API. Las pantallas son el 4b y los recordatorios (`task_reminders`, push y planificador) en el 4c.
 
 ## Responsabilidad
 
@@ -87,6 +87,6 @@ Para un solo usuario y decenas de tareas por columna, el coste extra de renumera
 
 ## Pendiente (fases 4b y 4c)
 
-- Pantallas (4b) y recordatorios (4c).
-- La columna «Terminado» crece sin límite. No afecta al diseño ni a la API, pero la web tendrá que decidir si pagina o archiva las terminadas hace tiempo.
+- Recordatorios (4c). Las pantallas (4b) están en `apps/web/src/tasks/`.
+- La columna «Terminado» crece sin límite. La web (4b) solo **pinta** las 10 más recientes con «Ver más», pero la API sigue devolviendo la columna entera; paginar la descarga pide un `limit` en `GET /tasks?status=done`.
 - No hay edición de una entrada de tiempo: se borra y se vuelve a anotar.
