@@ -32,6 +32,7 @@ import type { Database } from '../../../db/schema.ts';
 import { isUniqueViolation } from '../../../db/errors.ts';
 import { AppError } from '../../../http/errors.ts';
 import type { Clock } from '../../../lib/clock.ts';
+import { BudgetRepository, type BudgetRecord } from '../budget/budget.repository.ts';
 import type { LocalDate } from './domain/dates.ts';
 import { balanceAsOf } from './domain/balances.ts';
 import { reconcile, reconciliationDiscrepancy } from './domain/reconciliation.ts';
@@ -131,6 +132,8 @@ export interface LedgerExport {
   readonly categories: readonly CategoryRecord[];
   readonly movements: readonly MovementRecord[];
   readonly transfers: readonly TransferRecord[];
+  /** Presupuestos de todos los meses (el mes como `YYYY-MM-01`). */
+  readonly budgets: readonly BudgetRecord[];
   readonly reconciliations: readonly (ReconciliationRecord & {
     readonly adjustmentMovementId: string | null;
   })[];
@@ -688,13 +691,16 @@ export class LedgerService {
       .execute(async (trx) => {
         const repo = new LedgerRepository(trx);
         const accounts = await repo.listAccounts(true);
-        const [ledgers, categories, movements, transfers, reconciliations] = await Promise.all([
-          repo.loadLedgers(accounts),
-          repo.listCategories(true),
-          repo.listAllMovements(),
-          repo.listAllTransfers(),
-          repo.listAllReconciliations(),
-        ]);
+        const [ledgers, categories, movements, transfers, reconciliations, budgets] =
+          await Promise.all([
+            repo.loadLedgers(accounts),
+            repo.listCategories(true),
+            repo.listAllMovements(),
+            repo.listAllTransfers(),
+            repo.listAllReconciliations(),
+            // Misma transacción y mismo snapshot que el resto del libro.
+            new BudgetRepository(trx).listAll(),
+          ]);
         const adjustments = await repo.adjustmentIds(reconciliations.map((record) => record.id));
         return {
           exportedAt: this.#deps.clock.now(),
@@ -709,6 +715,7 @@ export class LedgerService {
           categories,
           movements,
           transfers,
+          budgets,
           reconciliations: reconciliations.map((record) => ({
             ...record,
             adjustmentMovementId: adjustments.get(record.id) ?? null,

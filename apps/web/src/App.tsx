@@ -7,6 +7,7 @@ import { ApiError, isApiError } from './api/client.ts';
 import { Gate } from './auth/Gate.tsx';
 import { AccountsPage } from './finance/pages/AccountsPage.tsx';
 import { CategoriesPage } from './finance/pages/CategoriesPage.tsx';
+import { BudgetPage } from './finance/pages/BudgetPage.tsx';
 import { MovementsPage } from './finance/pages/MovementsPage.tsx';
 import { ReportsPage } from './finance/pages/ReportsPage.tsx';
 import { ReconciliationPage } from './finance/pages/ReconciliationPage.tsx';
@@ -66,6 +67,7 @@ const router = createBrowserRouter([
       { path: 'categorias', element: <CategoriesPage /> },
       { path: 'movimientos', element: <MovementsPage /> },
       { path: 'transferencias', element: <TransfersPage /> },
+      { path: 'presupuesto', element: <BudgetPage /> },
       { path: 'informes', element: <ReportsPage /> },
       { path: 'ajustes/seguridad', element: <SecuritySettingsPage /> },
     ],

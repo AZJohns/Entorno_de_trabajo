@@ -2,14 +2,15 @@
 
 Interfaz de `apps/api/src/modules/finance/ledger`. Diseño y API: `docs/plan.md` §2.3 y §2.10.
 
-| Ruta | Pantalla | Archivo |
-|---|---|---|
-| `/cuentas` | Lista con saldo, alta, edición y archivado | `pages/AccountsPage.tsx` |
-| `/cuentas/:id/conciliacion` | Conciliar, historial con aviso de discrepancia y borrar | `pages/ReconciliationPage.tsx` |
-| `/categorias` | Alta, renombrar y archivar (gastos e ingresos) | `pages/CategoriesPage.tsx` |
-| `/movimientos` | Filtros de la API, alta, edición, borrado con confirmación y confirmar pendientes | `pages/MovementsPage.tsx` |
-| `/informes` | Botón «Exportar datos» (JSON) y balance mensual, desglose por categoría, saldo por cuenta (ajustes en su columna) y evolución del saldo; 3 gráficos | `pages/ReportsPage.tsx`, `charts/` |
-| `/transferencias` | Filtros, alta, edición y borrado con confirmación | `pages/TransfersPage.tsx` |
+| Ruta                        | Pantalla                                                                                                                                            | Archivo                            |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| `/cuentas`                  | Lista con saldo, alta, edición y archivado                                                                                                          | `pages/AccountsPage.tsx`           |
+| `/cuentas/:id/conciliacion` | Conciliar, historial con aviso de discrepancia y borrar                                                                                             | `pages/ReconciliationPage.tsx`     |
+| `/categorias`               | Alta, renombrar y archivar (gastos e ingresos)                                                                                                      | `pages/CategoriesPage.tsx`         |
+| `/movimientos`              | Filtros de la API, alta, edición, borrado con confirmación y confirmar pendientes                                                                   | `pages/MovementsPage.tsx`          |
+| `/presupuesto`              | Selector de mes; una fila por categoría con presupuesto (presupuestado, gastado, restante y barra con texto e icono al llegar al 80 % y al pasarse), gastos sin presupuesto, totales, alta, edición y borrado, y «Copiar del mes anterior» | `pages/BudgetPage.tsx`, `budget/BudgetBar.tsx`, `forms/BudgetForm.tsx`, `budgetLogic.ts` |
+| `/informes`                 | Botón «Exportar datos» (JSON) y balance mensual, desglose por categoría, saldo por cuenta (ajustes en su columna) y evolución del saldo; 3 gráficos | `pages/ReportsPage.tsx`, `charts/` |
+| `/transferencias`           | Filtros, alta, edición y borrado con confirmación                                                                                                   | `pages/TransfersPage.tsx`          |
 
 ## Estructura
 

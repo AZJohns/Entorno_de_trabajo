@@ -7,8 +7,8 @@
  * - 404: el presupuesto de la URL no existe.
  * - 422 (`UNPROCESSABLE`): el cuerpo es válido pero incoherente con el libro: la categoría no existe o
  *   es de ingreso, o no hay mes anterior al `0001-01`.
- * - 409 (`CONFLICT`): el estado actual lo impide: categoría archivada, ya existe el presupuesto de ese
- *   mes y categoría, o el mes anterior no tiene nada que copiar.
+ * - 409 (`CONFLICT`): el estado actual lo impide: categoría archivada o ya existe el presupuesto de ese
+ *   mes y categoría. Copiar del mes anterior nunca da 409 (ver `copyFromPreviousMonth`).
  */
 import type { Kysely } from 'kysely';
 import type {
@@ -146,6 +146,10 @@ export class BudgetService {
    * `skippedExisting`) y las categorías archivadas no se copian (`skippedArchived`). Es idempotente.
    * Va en una transacción y el alta ignora los duplicados en la propia base de datos, así que dos copias
    * a la vez no duplican nada.
+   *
+   * Respuesta coherente: siempre 200 con los recuentos, también cuando no queda nada por copiar (mes
+   * anterior sin presupuestos o todo ya copiado: `copied: 0`). Es una acción idempotente y repetirla no
+   * es un conflicto. El único error es el 422 cuando no existe mes anterior (`0001-01`).
    */
   async copyFromPreviousMonth(month: YearMonth): Promise<CopyBudgetsResponse> {
     const sourceMonth = previousMonth(month);
@@ -153,9 +157,6 @@ export class BudgetService {
     return this.#deps.db.transaction().execute(async (trx) => {
       const budgets = new BudgetRepository(trx);
       const source = await budgets.listByMonth(`${sourceMonth}-01`);
-      if (source.length === 0) {
-        throw conflict(`El mes ${sourceMonth} no tiene presupuestos que copiar`);
-      }
       const categories = await new LedgerRepository(trx).listCategories(true);
       const archived = new Set(
         categories.filter((category) => category.archivedAt !== null).map(({ id }) => id),

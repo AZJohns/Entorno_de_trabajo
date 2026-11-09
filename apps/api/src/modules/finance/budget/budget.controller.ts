@@ -16,7 +16,7 @@ import type { BudgetService } from './budget.service.ts';
 
 const idSchema = z.uuid();
 
-function budgetDto(budget: BudgetRecord): BudgetResponse {
+export function budgetDto(budget: BudgetRecord): BudgetResponse {
   return {
     id: budget.id,
     month: budget.month.slice(0, 7),

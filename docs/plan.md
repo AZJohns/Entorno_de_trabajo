@@ -619,7 +619,7 @@ notes *─* tags (note_tags)
 | GET | `/budgets?month=YYYY-MM` | S | Presupuestos del mes, ordenados por categoría, con `spentCents` y `remainingCents` (calculados al leer), el gasto de las categorías **sin presupuesto** (`unbudgeted`) y los totales. `month` es **obligatorio**: el servidor no adivina «hoy» |
 | POST | `/budgets` | S | `{ month, categoryId, amountCents }` → 201. 422 si la categoría no existe o es de ingreso; 409 si está archivada o ya hay presupuesto de esa categoría en ese mes |
 | PATCH, DELETE | `/budgets/:id` | S | PATCH solo cambia `{ amountCents }` (el mes y la categoría no cambian: se borra y se crea otro); 409 si la categoría está archivada. DELETE siempre que exista |
-| POST | `/budgets/copy-previous` | S | `{ month }` → 200 `{ month, sourceMonth, copied, skippedExisting, skippedArchived }`. Copia del mes anterior solo lo que falta. 409 si el mes anterior no tiene presupuestos; 422 si `month` es `0001-01` |
+| POST | `/budgets/copy-previous` | S | `{ month }` → 200 `{ month, sourceMonth, copied, skippedExisting, skippedArchived }`. Copia del mes anterior solo lo que falta. Siempre 200, también si no hay nada que copiar (todo a cero); 422 si `month` es `0001-01` |
 | POST | `/ingest/wallet-transactions` | D(`ingest:write`) | Atajo de iPhone (§5.4) |
 | GET | `/ingest/catalog` | D(`ingest:read-catalog`) | Categorías para la mejora opcional del atajo |
 
@@ -1274,7 +1274,7 @@ Tamaños relativos (S, M, L, XL). No pongo días porque no conozco tu ritmo y un
   - **1c. Informes** — **TERMINADA** (PR #13): balance mensual, desglose por categoría, saldo por cuenta (con los ajustes en una línea propia) y 3 gráficos.
     - Los 3 gráficos: **ingresos frente a gastos por mes**, **gastos por categoría de un mes** y **evolución del saldo por cuenta con el total**. Se dibujan en **SVG propio**, no con Recharts ([comparación](dependencias.md#librería-de-gráficos-fase-1c-svg-propio-en-lugar-de-recharts)).
     - Los pendientes se informan con ingresos y gastos por separado. `from`, `to` y `at` son obligatorios.
-  - **1d. Exportación** — **TERMINADA** (PR #14): `GET /export` con reautenticación (S+). JSON versionado (`format`, `version`) con cuentas, categorías, movimientos, transferencias y conciliaciones, importes en céntimos; sin datos de autenticación. Registra `data.exported` en la auditoría con recuentos. Botón «Exportar datos» en `/informes`.
+  - **1d. Exportación** — **TERMINADA** (PR #14): `GET /export` con reautenticación (S+). JSON versionado (`format`, `version`) con cuentas, categorías, movimientos, transferencias, conciliaciones y (desde la fase 3a, formato v2) presupuestos, importes en céntimos; sin datos de autenticación. Registra `data.exported` en la auditoría con recuentos. Botón «Exportar datos» en `/informes`.
   - Todo **en local**.
 - **Terminado cuando**
   - Hay tests de:
@@ -1369,9 +1369,10 @@ Tamaños relativos (S, M, L, XL). No pongo días porque no conozco tu ritmo y un
 
 - **Antes de empezar:** migrar tu Excel a la v2 (`plantilla-excel.md` §14). La especificación de la plantilla no tiene puntos abiertos (§13).
 - **Alcance**
-  - **3a. Presupuesto por categoría y mes dentro de la app, con progreso** · tamaño M. Se define en la propia app y muestra el avance (gastado frente a lo presupuestado) a partir de los movimientos reales, calculado al leer. Es el presupuesto que rellena 3b.
-    - **PR 1 de 2 (hecho): modelo de datos y API** (`category_budgets`, `/budgets`; ver §2.3 y §2.10). **PR 2 de 2: pantallas** (definir importes, copiar del mes anterior, barras de progreso).
-    - Fuera de 3a, a la espera de decidir: avisos al pasarse (pregunta 37) y gastos recurrentes (pregunta 38). Tampoco entra aún en la exportación (`GET /export`): añadirla cambiaría el formato (`EXPORT_FORMAT_VERSION`) y se decide aparte.
+  - **3a. Presupuesto por categoría y mes dentro de la app, con progreso** · tamaño M · **TERMINADA** (PR #24 y PR 2). Se define en la propia app y muestra el avance (gastado frente a lo presupuestado) a partir de los movimientos reales, calculado al leer. Es el presupuesto que rellena 3b.
+    - **PR 1 de 2 (hecho, PR #24): modelo de datos y API** (`category_budgets`, `/budgets`; ver §2.3 y §2.10).
+    - **PR 2 de 2 (hecho): pantalla «Presupuesto»** (`/presupuesto`: selector de mes, una fila por categoría con presupuestado, gastado, restante y barra con aviso por texto e icono al llegar al 80 % y al pasarse, gastos sin presupuesto, totales, alta, edición y borrado, y «Copiar del mes anterior»). `GET /export` incluye ya los presupuestos (`EXPORT_FORMAT_VERSION` = 2). `POST /budgets/copy-previous` responde siempre 200 con los recuentos.
+    - Fuera de 3a, a la espera de decidir: avisos al pasarse (pregunta 37) y gastos recurrentes (pregunta 38).
   - **3b. Importación del Excel** · tamaño XL. Rellena ese mismo presupuesto y trae el resto del plan; sus tres partes (antes 3a, 3b y 3c) son:
   - **3b.1. Importación**
     - Spike de la librería de Excel (§4.2).

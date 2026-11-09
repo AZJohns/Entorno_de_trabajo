@@ -52,9 +52,10 @@ export function ReportsPage() {
 
       <Section title="Exportar datos">
         <p className="mb-3 text-sm text-slate-600">
-          Descarga una copia legible (JSON) de cuentas, categorías, movimientos, transferencias y
-          conciliaciones, con los importes en céntimos. Pide volver a introducir la contraseña y el
-          código si hace más de 10 minutos que lo hiciste. No incluye datos de acceso.
+          Descarga una copia legible (JSON) de cuentas, categorías, movimientos, transferencias,
+          presupuestos y conciliaciones, con los importes en céntimos. Pide volver a introducir la
+          contraseña y el código si hace más de 10 minutos que lo hiciste. No incluye datos de
+          acceso.
         </p>
         <Button
           type="button"
