@@ -12,6 +12,7 @@ import type { TestClient } from './client.ts';
 
 /** Borra los datos del libro (las tablas de autenticación las limpia `useAuthTestContext`). */
 export async function resetLedger(db: Kysely<Database>): Promise<void> {
+  await db.deleteFrom('category_budgets').execute();
   await db.deleteFrom('movements').execute();
   await db.deleteFrom('transfers').execute();
   await db.deleteFrom('account_reconciliations').execute();

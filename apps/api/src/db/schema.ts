@@ -147,6 +147,18 @@ export interface TransfersTable {
   updated_at: Defaulted<Date>;
 }
 
+export interface CategoryBudgetsTable {
+  id: Generated<string>;
+  /** Primer día del mes presupuestado (`YYYY-MM-01`). */
+  month: DateColumn;
+  category_id: string;
+  /** Constante `'expense'`: solo existe para la clave ajena compuesta con `categories`. */
+  kind: Defaulted<'expense'>;
+  amount_cents: CentsColumn;
+  created_at: Defaulted<Date>;
+  updated_at: Defaulted<Date>;
+}
+
 /** Esquema completo de la base de datos. */
 export interface Database {
   users: UsersTable;
@@ -159,4 +171,5 @@ export interface Database {
   account_reconciliations: AccountReconciliationsTable;
   movements: MovementsTable;
   transfers: TransfersTable;
+  category_budgets: CategoryBudgetsTable;
 }

@@ -47,6 +47,11 @@ const ROUTES: readonly (readonly [method: 'get' | 'post' | 'patch' | 'delete', p
   ['get', '/reports/monthly/2026-10/categories'],
   ['get', '/reports/balances'],
   ['get', '/reports/balance-history'],
+  ['get', '/budgets'],
+  ['post', '/budgets'],
+  ['post', '/budgets/copy-previous'],
+  ['patch', `/budgets/${ID}`],
+  ['delete', `/budgets/${ID}`],
   ['get', '/export'],
 ];
 

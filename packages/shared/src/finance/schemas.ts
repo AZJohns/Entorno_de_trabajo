@@ -414,3 +414,95 @@ export const exportResponseSchema = z.strictObject({
   ),
 });
 export type ExportResponse = z.infer<typeof exportResponseSchema>;
+
+// --- presupuesto por categoría y mes (docs/plan.md §2.3b y §2.10, `/budgets`) ------------------------
+
+/**
+ * Mes presupuestado `YYYY-MM`, desde el año 0001: `0000-xx` pasa `monthSchema` pero no es una fecha de
+ * PostgreSQL ni del calendario que usa el dominio.
+ */
+export const budgetMonthSchema = monthSchema.refine((month) => month >= '0001-01', {
+  message: 'Mes no válido',
+});
+
+/** `?month=YYYY-MM` de la lista. Obligatorio: el servidor no adivina «hoy» (zona horaria). */
+export const listBudgetsQuerySchema = z.strictObject({ month: budgetMonthSchema });
+
+/** Alta de un presupuesto: límite de gasto de una categoría en un mes, en céntimos (> 0). */
+export const createBudgetRequestSchema = z.strictObject({
+  month: budgetMonthSchema,
+  categoryId: z.uuid(),
+  amountCents: positiveCents,
+});
+
+/** El mes y la categoría no cambian (serían otro presupuesto): se borra y se crea otro. */
+export const updateBudgetRequestSchema = z.strictObject({ amountCents: positiveCents });
+
+/** Copia explícita de los presupuestos del mes anterior a `month`. */
+export const copyBudgetsRequestSchema = z.strictObject({ month: budgetMonthSchema });
+
+export const budgetResponseSchema = z.object({
+  id: z.uuid(),
+  month: monthSchema,
+  categoryId: z.uuid(),
+  amountCents: positiveCents,
+});
+
+export const budgetMonthResponseSchema = z.object({
+  month: monthSchema,
+  /** Un presupuesto por línea, ordenado por nombre de categoría. */
+  items: z.array(
+    z.object({
+      id: z.uuid(),
+      categoryId: z.uuid(),
+      categoryName: z.string(),
+      /** Una categoría archivada conserva su presupuesto y su gasto; la web puede atenuarla. */
+      categoryArchived: z.boolean(),
+      /** Límite del mes. */
+      amountCents: positiveCents,
+      /** Gastos confirmados del mes en la categoría (sin ajustes de conciliación ni transferencias). */
+      spentCents: signedCents,
+      /** `amountCents − spentCents`: negativo si el gasto supera el presupuesto. */
+      remainingCents: signedCents,
+    }),
+  ),
+  /** Categorías con gasto confirmado en el mes y sin presupuesto, de mayor a menor gasto. */
+  unbudgeted: z.array(
+    z.object({
+      /** `null` si el gasto no tiene categoría. */
+      categoryId: z.uuid().nullable(),
+      categoryName: z.string().nullable(),
+      spentCents: signedCents,
+    }),
+  ),
+  totals: z.object({
+    /** Suma de los presupuestos del mes. */
+    budgetedCents: signedCents,
+    /** Gasto en las categorías con presupuesto. */
+    spentCents: signedCents,
+    /** `budgetedCents − spentCents`. */
+    remainingCents: signedCents,
+    /** Gasto en categorías sin presupuesto. */
+    unbudgetedSpentCents: signedCents,
+  }),
+});
+
+export const copyBudgetsResponseSchema = z.object({
+  month: monthSchema,
+  /** Mes del que se copió (el anterior a `month`). */
+  sourceMonth: monthSchema,
+  /** Presupuestos creados en `month`. */
+  copied: z.int().min(0),
+  /** No copiados porque `month` ya tenía presupuesto para esa categoría (nunca se sobrescribe). */
+  skippedExisting: z.int().min(0),
+  /** No copiados porque su categoría está archivada. */
+  skippedArchived: z.int().min(0),
+});
+
+export type ListBudgetsQuery = z.infer<typeof listBudgetsQuerySchema>;
+export type CreateBudgetRequest = z.infer<typeof createBudgetRequestSchema>;
+export type UpdateBudgetRequest = z.infer<typeof updateBudgetRequestSchema>;
+export type CopyBudgetsRequest = z.infer<typeof copyBudgetsRequestSchema>;
+export type BudgetResponse = z.infer<typeof budgetResponseSchema>;
+export type BudgetMonthResponse = z.infer<typeof budgetMonthResponseSchema>;
+export type CopyBudgetsResponse = z.infer<typeof copyBudgetsResponseSchema>;
