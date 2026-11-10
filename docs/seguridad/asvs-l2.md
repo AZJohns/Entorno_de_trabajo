@@ -26,8 +26,8 @@
 |---|---|
 | Verificado (fase 0) | 9 |
 | Verificado (fase 1) | 92 |
-| Verificado (fase 5) | 1 |
-| Planificado | 74 |
+| Verificado (fase 5) | 3 |
+| Planificado | 72 |
 | Desviación documentada | 7 |
 | No aplica | 70 |
 | **Total L1 + L2** | **253** |
@@ -42,7 +42,9 @@
 - **13.3.1**: Gestor de secretos (*vault*).
 - **16.4.3**: Logs enviados a un sistema separado.
 
-**Fase 5 (PR 5a, notas: modelo, API y búsqueda):** se cierra 1.2.9 (la búsqueda no construye expresiones regulares y la consulta de texto completo solo lleva letras y cifras). 1.3.1 y 1.3.5 siguen «Planificado» hasta el PR 5b (la web que pinta el Markdown); de 1.3.1 se anota la parte de la API, que nunca devuelve HTML. Las rutas de notas y etiquetas entran en la matriz de permisos (8.1.1, 8.2.1) y en las filas de validación (2.2.2, 2.2.3).
+**Fase 5 (PR 5a, notas: modelo, API y búsqueda):** se cierra 1.2.9 (la búsqueda no construye expresiones regulares y la consulta de texto completo solo lleva letras y cifras). 1.3.1 y 1.3.5 se cierran en el PR 5b (ver abajo). Las rutas de notas y etiquetas entran en la matriz de permisos (8.1.1, 8.2.1) y en las filas de validación (2.2.2, 2.2.3).
+
+**Fase 5 (PR 5b, notas: pantallas):** se cierran 1.3.1 y 1.3.5. La vista previa del Markdown es de elementos de React hechos desde los tokens de `marked.lexer` (se descartó `react-markdown`; `docs/dependencias.md`): el HTML escrito en la nota se muestra como texto, los enlaces solo van a `http`, `https` o `mailto` con `rel="noopener noreferrer"` y las imágenes no se cargan. La CSP no cambia: ya tiene `img-src 'self' data:`, y la vista previa no crea ningún `<img>`. 3.2.2 ya estaba verificada; el resaltado de la búsqueda se pinta también como texto.
 
 **Fase 1 (revisión de las filas de F0):** se cierran 1.1.1, 1.2.3, 1.2.5, 1.3.7, 1.3.10, 1.5.2, 3.7.1, 14.2.3 y 15.1.2 (revisión del código del 2026-11-03, más una regla de lint nueva para 1.2.5 y la comprobación del SBOM) y 16.1.1 (inventario `logs.md`). Después de integrar el #15 se cierra también 1.4.2 (test nuevo `packages/shared/test/finance-schemas.test.ts`); 5.4.1 conserva su parte de F1 anotada y se completa en la F3; 2.3.3 se cierra en la F1 con el test de atomicidad de la conciliación (`reconciliation-atomicity.test.ts`). Ninguna fila asignada solo a F0 queda sin cerrar (las que tienen un rango, como «F0+» o «F0–F1», siguen su regla).
 
@@ -60,10 +62,10 @@
 | 1.2.4 | L1 | Consultas parametrizadas | Planificado | Kysely parametriza; `sql.raw` prohibido salvo justificación (regla de lint) | F0–F5 · repositorios | Lint + revisión |
 | 1.2.5 | L1 | Sin inyección de comandos del sistema | **Verificado (F1)** | La app no ejecuta comandos; las copias las hace el host con argumentos fijos. Solo los scripts de desarrollo y CI (`scripts/`, `apps/api/scripts/`) usan `execFileSync` con argumentos fijos | F0 · — | Lint: `no-restricted-imports` de `child_process` en `apps/api/src`, `apps/web/src` y `packages/*/src` (`eslint.config.js`) |
 | 1.2.9 | L2 | Escapar los metacaracteres al construir expresiones regulares | **Verificado (F5)** | La búsqueda de notas no construye expresiones regulares: usa la búsqueda de texto completo de PostgreSQL. La consulta (`to_tsquery`) se arma con `buildPrefixQuery`, que solo conserva letras y cifras de cada término (ningún operador de `tsquery` llega a la consulta) y va como parámetro, nunca concatenada | F5 · notes | Test: `apps/api/test/notes/search-domain.test.ts` («los operadores de tsquery no llegan a la consulta») y `api-notes-search.test.ts` («los operadores de tsquery se tratan como texto…») |
-| 1.3.1 | L1 | Sanitizar el HTML de editores WYSIWYG | Planificado | No hay WYSIWYG ni HTML del usuario; Markdown sin HTML crudo · Parte de la API (F5, PR 5a): la API nunca devuelve HTML; el fragmento resaltado de una búsqueda sale como tramos de TEXTO (`{ text, match }`), con marcas privadas en lugar de `<b>` y sin insertar ningún marcado | F5 · notes | Test XSS (web: PR 5b) · API: `apps/api/test/notes/api-notes-search.test.ts` («fragmentos resaltados: texto, nunca HTML») |
+| 1.3.1 | L1 | Sanitizar el HTML de editores WYSIWYG | **Verificado (F5)** | No hay WYSIWYG ni HTML del usuario: Markdown en un `textarea`, y el HTML escrito se muestra como texto · Web (PR 5b): la vista previa son elementos de React, sin `dangerouslySetInnerHTML` · API (PR 5a): la API nunca devuelve HTML; el fragmento resaltado de una búsqueda sale como tramos de TEXTO (`{ text, match }`), con marcas privadas en lugar de `<b>` y sin insertar ningún marcado | F5 · notes | Web: `apps/web/test/notes-markdown.test.tsx` y `notes-page.test.tsx` (resaltado como texto) · API: `apps/api/test/notes/api-notes-search.test.ts` («fragmentos resaltados: texto, nunca HTML») |
 | 1.3.2 | L1 | Sin `eval` ni ejecución dinámica de código | **Verificado (F0)** | Reglas de ESLint `no-eval` y `no-implied-eval`; CSP sin `unsafe-eval` | F0 · todos | Lint: `no-eval`, `no-new-func`, `@typescript-eslint/no-implied-eval` (`eslint.config.js`) |
 | 1.3.3 | L2 | Sanitizar los datos que van a contextos peligrosos | Planificado | Nombre de archivo de la exportación generado (hecho en F1, `apps/api/test/finance/api-export.test.ts`); textos de push sin HTML (F2) | F1–F2 · finance, notifications | Revisión |
-| 1.3.5 | L2 | Sanitizar o desactivar contenido de plantillas o Markdown | Planificado | react-markdown sin `rehype-raw`; solo enlaces `http`, `https` y `mailto` | F5 · notes | Test XSS (`javascript:`, `<img onerror>`) |
+| 1.3.5 | L2 | Sanitizar o desactivar contenido de plantillas o Markdown | **Verificado (F5)** | `marked.lexer` (solo tokens) + renderizador propio a elementos de React (`apps/web/src/notes/markdown.tsx`): HTML crudo como texto; enlaces solo `http`, `https` y `mailto` (`safeHref`); imágenes sin cargar | F5 · notes | `apps/web/test/notes-markdown.test.tsx` (`<script>`, `<img onerror>`, `javascript:`, `data:`, HTML crudo) |
 | 1.3.6 | L2 | Protección contra SSRF | Planificado | **Lista de hosts permitidos para los endpoints de push** (servicios de push de Apple, Google y Mozilla) al suscribirse y al enviar; solo `https`. El resto de destinos salientes es fijo | F2 · notifications | Test: suscripción con un endpoint interno → 400 |
 | 1.3.7 | L2 | Sin inyección de plantillas | **Verificado (F1)** | No se construyen plantillas con entrada del usuario | F0 · — | Revisión (2026-11-03): sin motor de plantillas entre las dependencias ni `res.render`; lint: `no-eval`, `no-new-func` |
 | 1.3.10 | L2 | Sanitizar las cadenas de formato | **Verificado (F1)** | Logs estructurados (pino con objetos); sin `printf` con entrada del usuario | F0 · http | Revisión (2026-11-03): los mensajes de log son literales y los datos van en el objeto (`apps/api/src/http/errors.ts`, `apps/api/src/server.ts`); test de la redacción: `apps/api/test/logger.test.ts` |

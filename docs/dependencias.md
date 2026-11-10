@@ -25,6 +25,7 @@ Cada dependencia directa tiene que estar aquí con su justificación. **Antes de
 | `react-router` | 7.18.5 (2026-10-27) | web | Rutas de la SPA (modo de datos: `createBrowserRouter`), redirecciones entre pantallas de acceso. Trae `cookie` y `set-cookie-parser` (MIT), que solo usa el modo servidor y no entran en el paquete del navegador | TanStack Router (tipado de rutas más estricto, pero menos conocido); enrutado propio con `history` (reinventar los casos límite) | MIT |
 | `@tanstack/react-query` | 5.105.0 (2026-10-26) | web | Caché de las consultas a la API, reintentos y reacción común a los errores de sesión; al salir se vacía (ASVS 14.3.1). Trae `@tanstack/query-core` (MIT) | `fetch` + `useEffect`: sin caché ni invalidación coherentes; SWR (menos control sobre mutaciones) | MIT |
 | `qrcode-generator` | 2.0.4 (2025-08-07, consultado el 2026-11-09) | shared (la usan web y api) | Codifica el `otpauth://` del TOTP como QR **en local**, sin servicios externos: la semilla no sale del equipo. Se usa solo la matriz de módulos (`qrMatrix`); la web la dibuja como SVG y `user:create` como bloques Unicode en la terminal. Google Authenticator solo aplica `algorithm=SHA256` al escanear un QR (ASVS 11.4.1, pregunta 36). Sin dependencias, 56 KB sin minificar | Escribir el codificador: Node y el navegador no traen ninguno, y un QR exige códigos Reed-Solomon, máscaras y tablas de versiones (cientos de líneas, no «unas 50» probables). `qrcode` (más popular, pero trae `dijkstrajs`, `pngjs` y `yargs` para Node), `qr-code-styling` y los servicios web que devuelven una imagen (descartados por enviar la semilla a un tercero) | MIT |
+| `marked` | 18.1.2 (2026-10-26, consultado el 2026-11-10) | web | Analizador de Markdown de la vista previa de las notas. Se usa **solo `marked.lexer`** (tokens); el renderizado a elementos de React es propio (`apps/web/src/notes/markdown.tsx`). Sin dependencias; ver la comparación más abajo | `react-markdown` + `remark-rehype` (75 paquetes nuevos), `markdown-to-jsx`, `marked` con `parse()` + sanear el HTML | MIT |
 
 ## Desarrollo
 
@@ -99,6 +100,21 @@ No comprobado: el tamaño que añadiría Recharts al paquete de la web ni su com
 | Táctil (incl. PWA en iOS) | Menú «Mover a…» (`<select>` nativo). dnd-kit lo haría arrastrando con retardo de activación, que es justo el riesgo que el plan señalaba en iOS |
 
 **Qué se pierde**: la animación de la tarjeta mientras se arrastra y el arrastre táctil. Para un solo usuario, el menú cubre el táctil. **Cuándo reconsiderarlo**: si el arrastre con el dedo en el iPhone resulta imprescindible; entonces `@dnd-kit/core` + `@dnd-kit/sortable` con `TouchSensor` (`delay` ≈ 200 ms) y los mismos tests de teclado, justificado aquí con versión, fecha y licencia verificadas en ese momento. La alternativa de arrastre nativo sin lógica propia (`@hello-pangea/dnd`, Apache-2.0) se descarta por la misma razón y por tener menos actividad.
+
+## Markdown de la vista previa (fase 5b): `marked` (solo el analizador) en lugar de `react-markdown`
+
+La vista previa de una nota tiene que dibujar Markdown sin `dangerouslySetInnerHTML` (ESLint lo prohíbe) y sin interpretar HTML. Se compararon, consultado el **2026-11-10**:
+
+| | `react-markdown` 10.1.0 | `markdown-to-jsx` 9.10.6 | `marked` 18.1.2 (solo `lexer`) + renderizador propio |
+|---|---|---|---|
+| Resultado | Elementos de React | Elementos de React | Tokens → elementos de React (código propio) |
+| Licencia | MIT | MIT | MIT |
+| Mantenimiento | Última publicación 2025-03-07; el ecosistema unified/remark es activo | Publicación del 2026-11-06 | Publicación del 2026-11-09 (la 18.1.2 es de 2026-10-26: `minimumReleaseAge` exige 3 días) |
+| Dependencias | Instalado en una prueba: **+75 paquetes** en el árbol (unified, remark, mdast, hast, micromark…) | Sin dependencias | **Sin dependencias** |
+| HTML crudo | Sin `rehype-raw` **se descarta**, no se muestra; mostrarlo como texto exige un plugin propio sobre el árbol | No comprobado: no se instaló; se descartó por ser el mismo caso que `react-markdown` en cuanto al HTML y menos conocido | El token `html` llega con su texto original: se pinta como texto |
+| Enlaces e imágenes | `urlTransform` y `components` | Sustitución por reglas | Control total en el propio renderizador |
+
+**Decisión**: `marked.lexer` + renderizador propio (~250 líneas, con tests). La razón principal es la superficie de cadena de suministro de un repositorio público: 75 paquetes más frente a ninguno, para una vista previa de un solo usuario. Además, ninguna cadena pasa por HTML: no hay una etapa de «generar HTML y sanearlo» que pueda fallar. **Qué se pierde**: `react-markdown` es el camino más trillado y tiene más pruebas ajenas; aquí el renderizado es código propio y se cubre con `apps/web/test/notes-markdown.test.tsx`. No se admiten extensiones (notas al pie, matemáticas, resaltado de código). **Cuándo reconsiderarlo**: si hacen falta esas extensiones, `react-markdown` con sus plugins.
 
 ## Dependencias descartadas en la fase 1
 
