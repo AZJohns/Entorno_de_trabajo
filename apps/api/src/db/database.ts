@@ -28,15 +28,57 @@ const pgTypes = {
   },
 };
 
+/** Qué se sabe de un error de conexión, sin nada que pueda ser sensible. */
+export interface ConnectionErrorInfo {
+  /** Nombre de la clase del error (`Error`, `DatabaseError`…). */
+  readonly name: string;
+  /** Código SQLSTATE (p. ej. `57P01`) o de red (p. ej. `ECONNRESET`), si lo hay. */
+  readonly code: string | undefined;
+}
+
+/** Opciones de `createDatabase`. */
+export interface DatabaseOptions {
+  /**
+   * Se llama cuando PostgreSQL corta una conexión (reinicio, `pg_terminate_backend`, fallo de red). Recibe
+   * solo `ConnectionErrorInfo`: el mensaje del error de `pg` puede traer el servidor y el puerto, y el de
+   * PostgreSQL, fragmentos de la consulta, así que no se pasa.
+   */
+  readonly onConnectionError?: (info: ConnectionErrorInfo) => void;
+}
+
+function describeError(error: unknown): ConnectionErrorInfo {
+  const { code } = (typeof error === 'object' && error !== null ? error : {}) as { code?: unknown };
+  return {
+    name: error instanceof Error ? error.name : typeof error,
+    code: typeof code === 'string' ? code : undefined,
+  };
+}
+
 /**
  * Crea una instancia de Kysely con un pool de conexiones.
  *
+ * Si PostgreSQL corta una conexión, `pg` emite un evento `error`; un `EventEmitter` sin escuchante para
+ * `error` lanza la excepción y tumba el proceso. El pool solo escucha a las conexiones libres (y las
+ * retira); las que están en uso no tienen escuchante, así que se añade uno a cada cliente al crearlo. Este
+ * cubre los dos casos y es el que avisa; el del pool existe solo para que su evento no lance (si también
+ * avisara, una conexión libre rota se contaría dos veces). La consulta en curso falla con su propio error,
+ * que llega al llamante. No se reintenta nada aquí: reintentar una consulta (puede no ser idempotente) es
+ * decisión de quien la lanzó; el pool se recupera solo porque descarta la conexión rota.
+ *
  * @param connectionString Cadena `postgres://…` (viene de la configuración, nunca de un literal).
  */
-export function createDatabase(connectionString: string): Kysely<Database> {
-  return new Kysely<Database>({
-    dialect: new PostgresDialect({
-      pool: new pg.Pool({ connectionString, max: 10, types: pgTypes }),
-    }),
+export function createDatabase(
+  connectionString: string,
+  options: DatabaseOptions = {},
+): Kysely<Database> {
+  const pool = new pg.Pool({ connectionString, max: 10, types: pgTypes });
+  pool.on('error', () => {
+    // Sin acción: el aviso lo da el escuchante de cada cliente (ver arriba).
   });
+  pool.on('connect', (client) => {
+    client.on('error', (error) => {
+      options.onConnectionError?.(describeError(error));
+    });
+  });
+  return new Kysely<Database>({ dialect: new PostgresDialect({ pool }) });
 }

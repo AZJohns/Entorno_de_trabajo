@@ -64,4 +64,3 @@ Es una bandeja de avisos, no un historial. El contador cuenta todas las no leíd
 
 - Retención: las notificaciones leídas crecen sin límite. Tiene sentido una limpieza periódica en el planificador (como las sesiones caducadas, `plan.md` pregunta 35); no hace falta con el volumen de un solo usuario.
 - Push (fase 2): `WebPushChannel`, suscripciones y el hueco de privacidad de la pantalla de bloqueo (`plan.md` §5.7).
-- Los fallos del servidor de base de datos que cortan una conexión en uso emiten un `error` en el cliente de `pg` que `createDatabase` no escucha (afecta a todo el proceso, no solo a este módulo).

@@ -206,6 +206,28 @@ export interface NotificationsTable {
   read_at: Date | null;
 }
 
+export interface NotesTable {
+  id: Generated<string>;
+  title: string;
+  body_md: Defaulted<string>;
+  created_at: Defaulted<Date>;
+  updated_at: Defaulted<Date>;
+  /** Columna generada por PostgreSQL (título y cuerpo, `es_unaccent`): no se inserta ni se actualiza. */
+  search_vector: ColumnType<string, never, never>;
+}
+
+export interface TagsTable {
+  id: Generated<string>;
+  /** Con la grafía con la que se creó; la unicidad no distingue mayúsculas (índice sobre `lower(name)`). */
+  name: string;
+  created_at: Defaulted<Date>;
+}
+
+export interface NoteTagsTable {
+  note_id: string;
+  tag_id: string;
+}
+
 /** Esquema completo de la base de datos. */
 export interface Database {
   users: UsersTable;
@@ -223,4 +245,7 @@ export interface Database {
   task_time_entries: TaskTimeEntriesTable;
   task_reminders: TaskRemindersTable;
   notifications: NotificationsTable;
+  notes: NotesTable;
+  tags: TagsTable;
+  note_tags: NoteTagsTable;
 }

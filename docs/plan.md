@@ -540,21 +540,33 @@ El importador traduce `=0` (lista vacía), la referencia directa y `SUM` sobre u
 
 ### 2.8 Módulo `notes`
 
-**`notes`**
+**`notes`** (migración `0008_notes`, fase 5a)
 | Columna | Tipo | Restricciones y notas |
 |---|---|---|
 | id | uuid | PK |
-| title | text | `CHECK (char_length(title) BETWEEN 1 AND 200)` |
-| body_md | text | NOT NULL DEFAULT `''`; `CHECK (octet_length(body_md) <= 1048576)` |
-| archived_at | timestamptz | NULL |
+| title | text | `CHECK (char_length(title) BETWEEN 1 AND 200)` y `CHECK (btrim(title) <> '')` |
+| body_md | text | NOT NULL DEFAULT `''`; `CHECK (char_length(body_md) <= 100000)` |
+| created_at, updated_at | timestamptz | `updated_at` lo escribe siempre el servicio con el reloj de la aplicación (milisegundos), no el `now()` de PostgreSQL: el cursor de paginación lo lleva y solo cabe esa precisión |
 | search_vector | tsvector | `GENERATED ALWAYS AS (setweight(to_tsvector('es_unaccent', title), 'A') \|\| setweight(to_tsvector('es_unaccent', body_md), 'B')) STORED` |
 
-- Índice GIN sobre `search_vector` e índice `(updated_at DESC)`.
-- `es_unaccent` es una configuración de búsqueda copiada de `spanish` con el filtro `unaccent`, de modo que «balance» encuentra «balancé» y «presupuestos» encuentra «presupuesto». Necesita la extensión `unaccent` [VERIFICAR que el host la permita].
-- Las consultas usan `websearch_to_tsquery` (sintaxis tolerante a lo que escribe el usuario), `ts_rank_cd` y `ts_headline` con marcadores propios, que el frontend renderiza como texto, nunca como HTML.
+- Índice GIN sobre `search_vector` e índice `(updated_at DESC, id DESC)`.
+- `es_unaccent` es una configuración de búsqueda copiada de `spanish` con el filtro `unaccent` (migración `0001`), de modo que «acción» y «accion» dan el mismo lexema y «presupuestos» encuentra «presupuesto».
+- **Tope del cuerpo: 100 000 caracteres, no 1 MiB** [RESUELTO en 5a]: un `tsvector` no puede pasar de 1 MiB y la API rechaza cuerpos JSON de más de 100 kB, así que el tope de 1 MiB nunca se habría alcanzado y, con texto muy denso, habría hecho fallar la inserción con un error del índice en vez de un 400. El tope está en el CHECK y en `MAX_NOTE_BODY` (`packages/shared`).
+- **`archived_at` queda fuera de 5a** [PENDIENTE]: no estaba en el alcance del PR (crear, editar, borrar, listar y buscar). Si se quiere archivar, va en una migración nueva con el filtro `?archived=` del listado.
 
-**`tags`**: `id`, `name` (`char_length` entre 1 y 40) y un índice único sobre `lower(name)`.
-**`note_tags`**: `note_id` (FK CASCADE) y `tag_id` (FK CASCADE), con `PRIMARY KEY (note_id, tag_id)` e índice `(tag_id, note_id)` para filtrar por etiqueta.
+**`tags`**: `id`, `name` (`char_length` entre 1 y 40, no solo espacios), `created_at` e **índice único sobre `lower(name)`**.
+**`note_tags`**: `note_id` (FK CASCADE) y `tag_id` (FK CASCADE), con `PRIMARY KEY (note_id, tag_id)` e índice `(tag_id, note_id)` para filtrar por etiqueta y contar.
+
+**Decisiones de la fase 5a** [RESUELTO]
+- **Etiquetas únicas sin distinguir mayúsculas: índice sobre `lower(name)`, no `citext`.** No añade una extensión ni un tipo, la columna conserva la grafía con que se creó («Presupuesto») y las consultas comparan con `lower(name) = lower($1)`. Límite conocido: `lower()` depende de la configuración regional de la base de datos; con la regional `C` no plegaría «Ñ» y «ñ». Una etiqueta existente conserva su grafía: poner «cuentas» a una nota reutiliza «Cuentas».
+- **Sustituir el conjunto de etiquetas es atómico**: una transacción con la nota bloqueada (`SELECT … FOR UPDATE`) que (1) crea las etiquetas nuevas con `ON CONFLICT (lower(name)) DO NOTHING` (seguro con peticiones simultáneas), (2) lee los identificadores del conjunto, (3) borra los enlaces que sobran y añade los que faltan. Si algo falla, no cambia nada (tampoco el título ni el cuerpo); dos sustituciones simultáneas se ejecutan una tras otra, nunca se mezclan. Las etiquetas que se quedan sin notas **no se borran**: borrarlas dentro de esa transacción podría llevarse por delante el enlace que otra petición acaba de crear. Borrarlas es una operación explícita (`DELETE /tags/:id`, pendiente).
+- **Palabras a medias: prefijo `:*`, no `pg_trgm`.** Cada término de la búsqueda se convierte en `término:*` y se unen con `&` (`buildPrefixQuery`): «presup fam» encuentra una nota con una palabra que empieza por «presup» y otra por «fam», en cualquier orden. Razones: usa el mismo índice GIN, la misma configuración `es_unaccent` y la misma lematización que la búsqueda normal (con trigramas no habría lematización y harían falta otra extensión y otro índice, grande, sobre el cuerpo entero); y el caso que importa es escribir el comienzo de una palabra. Límites conocidos: no encuentra un trozo del medio de una palabra («upuest»), no tolera erratas y las palabras vacías («de», «la») se descartan. Si algún día hace falta, `pg_trgm` se añade aparte y no cambia este diseño.
+- **La consulta no usa `websearch_to_tsquery`** (a diferencia de lo que decía este plan): no admite prefijos. A cambio se pierden las frases entre comillas, el «-» y el «or», que no se han pedido. Para no dejar pasar operadores, `buildPrefixQuery` solo conserva letras y cifras de cada término (máximo 8 términos de 50 caracteres) y el resultado viaja como parámetro a `to_tsquery`.
+- **Relevancia**: `ts_rank_cd(search_vector, query, 1)` (el título pesa más que el cuerpo; la normalización 1 evita que una nota larga gane solo por tener más texto), luego última edición y `id`.
+- **Resaltado sin HTML**: `ts_headline` se pide con marcas privadas (caracteres U+E000 y U+E001) en lugar de `<b>`, hasta 2 fragmentos, y la API las convierte en tramos de TEXTO `{ text, match }` (`snippet`). Nunca se devuelve ni se inserta HTML: la web pinta cada tramo como nodo de texto (un `<mark>` si `match`). Antes de llamar a `ts_headline` el SQL quita esas marcas del cuerpo, por si una nota las contuviera. PostgreSQL puede además recortar el fragmento o quitar alguna etiqueta HTML que reconoce; lo que deja pasa tal cual y por eso es texto. `ts_headline` solo se calcula para las filas de la página.
+- **Paginación por clave, no por desplazamiento**: cursor opaco `(updated_at, id)` sin búsqueda y `(relevancia, updated_at, id)` con ella; añadir o borrar notas entre páginas no repite ni salta filas. Un cursor de un orden no vale en el otro (400).
+- **Las listas no llevan el cuerpo entero**: `preview` (primeros 200 caracteres) y, con `q`, `snippet`. El cuerpo completo solo sale en `GET /notes/:id`.
+- **Códigos de error**: 400 validación y cursor; 404 la nota o la etiqueta no existe; **409** solo al renombrar una etiqueta a un nombre ya usado por otra; **422 no se produce hoy**: una nota no referencia filas de otras tablas (las etiquetas se crean si no existen), así que no hay «cuerpo válido pero incoherente con los datos». Aparecería con una relación nueva (p. ej. enlaces entre notas).
 
 ### 2.9 Relaciones (resumen)
 
@@ -702,11 +714,12 @@ El archivo se recibe con `express.raw({ type: [...], limit: '5mb' })`, **sin mul
 **notes**
 | Método | Ruta | Auth | Descripción |
 |---|---|---|---|
-| GET | `/notes?q=&tag=&archived=&cursor=` | S | Búsqueda de texto completo, ordenada por relevancia si hay `q` |
-| POST | `/notes` | S | `{ title, bodyMd, tags: string[] }`. Las etiquetas se crean si no existen |
-| GET, PATCH, DELETE | `/notes/:id` | S | `tags` en el PATCH sustituye el conjunto completo |
-| GET | `/tags` | S | Con el número de notas |
-| PATCH, DELETE | `/tags/:id` | S | Renombrar o eliminar |
+| GET | `/notes?q=&tag=&limit=&cursor=` | S | Fase 5a. `{ items, nextCursor }`. Con `q`: búsqueda de texto completo (palabras a medias incluidas), por relevancia y con `snippet`; sin `q`, por última edición. `tag` filtra por nombre de etiqueta (sin distinguir mayúsculas; una inexistente da lista vacía). 400 si el cursor no es válido o es del otro orden |
+| POST | `/notes` | S | Fase 5a. `{ title, bodyMd?, tags?: string[] }` → 201. Las etiquetas se crean si no existen y se deduplican sin distinguir mayúsculas |
+| GET, PATCH, DELETE | `/notes/:id` | S | Fase 5a. `tags` en el PATCH sustituye el conjunto completo (`[]` quita todas; sin `tags`, no se tocan). 404 si no existe |
+| GET | `/tags` | S | Fase 5a. `{ items: [{ id, name, noteCount }] }`, por nombre |
+| PATCH | `/tags/:id` | S | Fase 5a. `{ name }` → renombra. 409 si el nombre ya es de otra etiqueta; cambiar solo las mayúsculas de la propia es válido |
+| DELETE | `/tags/:id` | S | **Pendiente** (no está en 5a) |
 
 ---
 
@@ -1463,6 +1476,8 @@ Tamaños relativos (S, M, L, XL). No pongo días porque no conozco tu ritmo y un
   - Accesibilidad de arrastrar y soltar.
 
 ### Fase 5 — Notas con etiquetas · tamaño S–M
+
+> **Estado: en curso.** **5a** (migración `0008_notes`, módulo `apps/api/src/modules/notes/`, esquemas en `packages/shared/src/notes/`): modelo, API y búsqueda, con las decisiones de §2.8. **5b**: pantallas (lista, editor con vista previa, etiquetas, búsqueda y resaltado como texto) y los tests de XSS del Markdown.
 
 - **Alcance**
   - CRUD de notas en Markdown (un `textarea` con vista previa, sin editor WYSIWYG).

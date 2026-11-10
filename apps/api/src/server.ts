@@ -23,7 +23,11 @@ function start(): void {
   }
 
   const logger = createLogger(config.LOG_LEVEL);
-  const db = createDatabase(config.DATABASE_URL);
+  const db = createDatabase(config.DATABASE_URL, {
+    onConnectionError: (info) => {
+      logger.error(info, 'PostgreSQL cortó una conexión');
+    },
+  });
   const app = createApp({
     logger,
     db,
