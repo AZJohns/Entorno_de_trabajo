@@ -458,7 +458,10 @@ describe('invariante tras muchos movimientos', () => {
       await expectConsecutivePositions(db);
       expect(await titlesByColumn(client), `paso ${String(step)}`).toEqual(model);
     }
-  });
+    // Cada paso hace varias consultas (mover, comprobar posiciones, listar): con la suite completa
+    // en paralelo el total llegó a 5,5 s, por encima del límite por defecto de 5 s. El margen es
+    // solo de tiempo: no se relaja ninguna comprobación.
+  }, 30_000);
 });
 
 describe('peticiones a la vez', () => {
