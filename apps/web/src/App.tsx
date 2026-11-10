@@ -12,6 +12,8 @@ import { MovementsPage } from './finance/pages/MovementsPage.tsx';
 import { ReportsPage } from './finance/pages/ReportsPage.tsx';
 import { ReconciliationPage } from './finance/pages/ReconciliationPage.tsx';
 import { TransfersPage } from './finance/pages/TransfersPage.tsx';
+import { NoteEditorPage } from './notes/NoteEditorPage.tsx';
+import { NotesPage } from './notes/NotesPage.tsx';
 import { NotificationsPage } from './notifications/NotificationsPage.tsx';
 import { TasksPage } from './tasks/TasksPage.tsx';
 import { forgetSession, SESSION_QUERY_KEY } from './auth/session.ts';
@@ -71,6 +73,9 @@ const router = createBrowserRouter([
       { path: 'transferencias', element: <TransfersPage /> },
       { path: 'presupuesto', element: <BudgetPage /> },
       { path: 'tareas', element: <TasksPage /> },
+      { path: 'notas', element: <NotesPage /> },
+      { path: 'notas/nueva', element: <NoteEditorPage /> },
+      { path: 'notas/:id', element: <NoteEditorPage /> },
       { path: 'notificaciones', element: <NotificationsPage /> },
       { path: 'informes', element: <ReportsPage /> },
       { path: 'ajustes/seguridad', element: <SecuritySettingsPage /> },
