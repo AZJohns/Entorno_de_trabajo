@@ -20,6 +20,7 @@ import { noStore, requireJsonBody, requireSameOrigin, securityHeaders } from './
 import type { Clock } from './lib/clock.ts';
 import { createAuthModule, getSession, type PasswordBreachChecker } from './modules/auth/index.ts';
 import { createFinanceModule } from './modules/finance/index.ts';
+import { createNotesModule } from './modules/notes/index.ts';
 import { createNotificationsModule } from './modules/notifications/index.ts';
 import { createTasksModule } from './modules/tasks/index.ts';
 
@@ -107,6 +108,7 @@ export function createApp(deps: AppDependencies): Express {
       notifications: notifications.service,
     }).router,
   );
+  api.use(createNotesModule({ db: deps.db, clock: deps.clock }).router);
   app.use('/api/v1', api);
 
   app.use(notFoundHandler);

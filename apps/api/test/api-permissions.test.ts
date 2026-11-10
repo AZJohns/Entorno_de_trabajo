@@ -1,11 +1,12 @@
 /**
  * Permisos de las rutas de negocio (docs/plan.md §6.2): denegar por defecto. Se recorren TODAS las rutas
- * registradas (libro, informes, exportación, presupuesto, tareas, recordatorios y notificaciones) y la lista se compara con las rutas
+ * registradas (libro, informes, exportación, presupuesto, tareas, recordatorios, notificaciones, notas y etiquetas) y la lista se compara con las rutas
  * reales de los routers, así que una ruta nueva sin probar hace fallar este test.
  */
 import { describe, expect, it } from 'vitest';
 import { createDatabase } from '../src/db/database.ts';
 import { createFinanceModule } from '../src/modules/finance/index.ts';
+import { createNotesModule } from '../src/modules/notes/index.ts';
 import { createNotificationsModule } from '../src/modules/notifications/index.ts';
 import { createTasksModule } from '../src/modules/tasks/index.ts';
 import { systemClock } from '../src/lib/clock.ts';
@@ -73,6 +74,13 @@ const ROUTES: readonly (readonly [method: 'get' | 'post' | 'patch' | 'delete', p
   ['get', '/notifications/unread-count'],
   ['post', '/notifications/read-all'],
   ['post', `/notifications/${ID}/read`],
+  ['get', '/notes'],
+  ['post', '/notes'],
+  ['get', `/notes/${ID}`],
+  ['patch', `/notes/${ID}`],
+  ['delete', `/notes/${ID}`],
+  ['get', '/tags'],
+  ['patch', `/tags/${ID}`],
 ];
 
 /** Rutas S+: además de la sesión, exigen reautenticación completa en los últimos 10 minutos. */
@@ -101,7 +109,8 @@ describe('rutas de negocio', () => {
       clock: systemClock,
       notifications: notificationsModule.service,
     });
-    const registered = [finance, tasks, notificationsModule.router].flatMap((router) => {
+    const { router: notes } = createNotesModule({ db, clock: systemClock });
+    const registered = [finance, tasks, notificationsModule.router, notes].flatMap((router) => {
       const stack = (
         router as unknown as { stack: { route?: { path: string; methods: object } }[] }
       ).stack;
