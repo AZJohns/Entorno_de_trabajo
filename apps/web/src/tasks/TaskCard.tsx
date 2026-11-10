@@ -22,6 +22,7 @@ interface Props {
   onMoveTo: (status: TaskStatus) => void;
   onToggleTimer: () => void;
   onOpenTime: () => void;
+  onOpenReminders: () => void;
   onEdit: () => void;
   onDelete: () => void;
   onDragStart: (event: DragEvent<HTMLLIElement>) => void;
@@ -101,6 +102,9 @@ export function TaskCard(props: Props) {
         </button>
         <button type="button" onClick={props.onOpenTime} className={SMALL_BUTTON}>
           Tiempo <span className="sr-only">de «{task.title}»</span>
+        </button>
+        <button type="button" onClick={props.onOpenReminders} className={SMALL_BUTTON}>
+          Recordatorios <span className="sr-only">de «{task.title}»</span>
         </button>
         <button type="button" onClick={props.onEdit} className={SMALL_BUTTON}>
           Editar <span className="sr-only">«{task.title}»</span>

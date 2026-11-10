@@ -5,6 +5,8 @@ import { createApp } from './app.ts';
 import { ConfigError, loadConfig } from './config/env.ts';
 import { createDatabase } from './db/database.ts';
 import { createLogger } from './http/logger.ts';
+import { createJobs, JOBS_INTERVAL_MS } from './jobs/index.ts';
+import { startScheduler } from './jobs/scheduler.ts';
 import { systemClock } from './lib/clock.ts';
 import { createHibpChecker } from './modules/auth/index.ts';
 
@@ -37,12 +39,22 @@ function start(): void {
     logger.info({ host: config.HOST, port: config.PORT }, 'API escuchando');
   });
 
-  // Parada ordenada: se deja de aceptar conexiones, se terminan las peticiones en curso y se cierra
-  // el pool de la base de datos.
+  // Recordatorios: un ciclo cada minuto dentro de este proceso (el primero, al arrancar).
+  const scheduler = startScheduler({
+    jobs: createJobs({ db, clock: systemClock, logger }),
+    intervalMs: JOBS_INTERVAL_MS,
+    logger,
+  });
+
+  // Parada ordenada: se deja de aceptar conexiones, se terminan las peticiones en curso y el ciclo del
+  // planificador y, al final, se cierra el pool de la base de datos.
   const shutdown = (signal: string): void => {
     logger.info({ signal }, 'Parando la API');
     server.close(() => {
-      void db.destroy().finally(() => process.exit(0));
+      void scheduler
+        .stop()
+        .then(() => db.destroy())
+        .finally(() => process.exit(0));
     });
   };
   process.on('SIGTERM', shutdown);

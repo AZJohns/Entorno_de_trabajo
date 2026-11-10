@@ -154,6 +154,62 @@ export const timeEntryResponseSchema = z.object({
 
 export const timeEntryListResponseSchema = z.object({ items: z.array(timeEntryResponseSchema) });
 
+// --- recordatorios -------------------------------------------------------------------------------
+
+/** Zona horaria en la que se escriben y se muestran los recordatorios (docs/plan.md §1.3: Europe/Madrid). */
+export const REMINDER_TIME_ZONE = 'Europe/Madrid';
+
+const LOCAL_DATE_TIME = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/;
+
+/**
+ * Indica si el texto es una fecha y hora locales `YYYY-MM-DDTHH:mm` que existe en el calendario (sin
+ * 30 de febrero ni 24:00), a partir de 1970. NO mira la zona: que esa hora exista o no en Madrid (cambio
+ * de horario) lo decide la API al convertirla.
+ */
+export function isLocalDateTime(value: string): boolean {
+  const match = LOCAL_DATE_TIME.exec(value);
+  if (match === null) return false;
+  const [year, month, day, hour, minute] = match.slice(1).map(Number) as [
+    number,
+    number,
+    number,
+    number,
+    number,
+  ];
+  if (year < 1970) return false;
+  const date = new Date(Date.UTC(year, month - 1, day, hour, minute));
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day &&
+    date.getUTCHours() === hour &&
+    date.getUTCMinutes() === minute
+  );
+}
+
+/**
+ * Alta de un recordatorio: fecha y hora **locales de Madrid**, sin zona ni desplazamiento. La API la
+ * convierte en un instante; así hay un único sitio con la regla de los cambios de horario.
+ */
+export const createReminderRequestSchema = z.strictObject({
+  remindAtLocal: z.string().refine(isLocalDateTime, { message: 'Fecha y hora no válidas' }),
+});
+
+export const reminderResponseSchema = z.object({
+  id: z.uuid(),
+  taskId: z.uuid(),
+  /** El instante del aviso en ISO 8601 (UTC). La web lo muestra en la hora de Madrid. */
+  remindAt: taskTimestamp,
+  /** Cuándo se entregó, o `null` si sigue pendiente. */
+  sentAt: taskTimestamp.nullable(),
+});
+
+export const reminderListResponseSchema = z.object({ items: z.array(reminderResponseSchema) });
+
+export type CreateReminderRequest = z.infer<typeof createReminderRequestSchema>;
+export type ReminderResponse = z.infer<typeof reminderResponseSchema>;
+export type ReminderListResponse = z.infer<typeof reminderListResponseSchema>;
+
 export type CreateTaskRequest = z.infer<typeof createTaskRequestSchema>;
 export type UpdateTaskRequest = z.infer<typeof updateTaskRequestSchema>;
 export type ListTasksQuery = z.infer<typeof listTasksQuerySchema>;

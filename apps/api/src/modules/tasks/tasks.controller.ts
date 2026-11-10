@@ -6,17 +6,21 @@ import type { RequestHandler } from 'express';
 import { z } from 'zod';
 import {
   createTaskRequestSchema,
+  createReminderRequestSchema,
   createTimeEntryRequestSchema,
   listTasksQuerySchema,
   moveTaskRequestSchema,
   updateTaskRequestSchema,
   type MoveTaskResponse,
+  type ReminderResponse,
   type TaskBoardResponse,
   type TaskColumnResponse,
   type TaskResponse,
   type TimeEntryResponse,
 } from '@backoffice/shared';
 import type { ColumnView, MoveResult, TaskView, TasksService } from './tasks.service.ts';
+import type { ReminderRecord } from './reminders.repository.ts';
+import type { RemindersService } from './reminders.service.ts';
 import type { TimeEntriesService, TimeEntryView } from './time-entries.service.ts';
 
 const idSchema = z.uuid();
@@ -56,6 +60,15 @@ export function timeEntryDto(entry: TimeEntryView): TimeEntryResponse {
     startedAt: entry.startedAt.toISOString(),
     endedAt: entry.endedAt?.toISOString() ?? null,
     durationSeconds: entry.durationSeconds,
+  };
+}
+
+export function reminderDto(reminder: ReminderRecord): ReminderResponse {
+  return {
+    id: reminder.id,
+    taskId: reminder.taskId,
+    remindAt: reminder.remindAt.toISOString(),
+    sentAt: reminder.sentAt?.toISOString() ?? null,
   };
 }
 
@@ -109,4 +122,20 @@ export function createTimeEntriesController(service: TimeEntriesService) {
     res.status(204).end();
   };
   return { list, addManual, start, stop, remove };
+}
+
+export function createRemindersController(service: RemindersService) {
+  const list: RequestHandler = async (req, res) => {
+    const items = await service.list(idParam(req.params['id']));
+    res.json({ items: items.map(reminderDto) });
+  };
+  const create: RequestHandler = async (req, res) => {
+    const input = createReminderRequestSchema.parse(req.body);
+    res.status(201).json(reminderDto(await service.create(idParam(req.params['id']), input)));
+  };
+  const remove: RequestHandler = async (req, res) => {
+    await service.delete(idParam(req.params['id']), idParam(req.params['reminderId']));
+    res.status(204).end();
+  };
+  return { list, create, remove };
 }

@@ -18,6 +18,7 @@ import {
   recentDone,
   runningTask,
 } from './boardLogic.ts';
+import { RemindersPanel } from './RemindersPanel.tsx';
 import { TaskCard } from './TaskCard.tsx';
 import { TaskForm } from './TaskForm.tsx';
 import {
@@ -38,7 +39,8 @@ type Mode =
   | { kind: 'none' }
   | { kind: 'create' }
   | { kind: 'edit'; task: TaskResponse }
-  | { kind: 'time'; taskId: string };
+  | { kind: 'time'; taskId: string }
+  | { kind: 'reminders'; taskId: string };
 
 /** Tarjeta «cogida» con el teclado: dónde está ahora (el índice no cuenta la propia tarjeta). */
 interface Lift {
@@ -297,6 +299,7 @@ export function TasksPage() {
 
   const view = lift === null ? columns : moveInColumns(columns, lift.id, lift.status, lift.index);
   const timePanelTask = mode.kind === 'time' ? findTask(columns, mode.taskId) : undefined;
+  const remindersTask = mode.kind === 'reminders' ? findTask(columns, mode.taskId) : undefined;
   const deleteTarget = deleting === null ? undefined : findTask(columns, deleting);
 
   return (
@@ -344,6 +347,7 @@ export function TasksPage() {
       {timePanelTask !== undefined && (
         <TimePanel task={timePanelTask} now={now} onClose={closeForm} />
       )}
+      {remindersTask !== undefined && <RemindersPanel task={remindersTask} onClose={closeForm} />}
 
       {board.isPending && <Loading />}
       <ErrorMessage error={board.error} />
@@ -395,6 +399,7 @@ export function TasksPage() {
                           onMoveTo={(target) => commitMove(task.id, target, END)}
                           onToggleTimer={() => toggleTimer(task)}
                           onOpenTime={() => openForm({ kind: 'time', taskId: task.id })}
+                          onOpenReminders={() => openForm({ kind: 'reminders', taskId: task.id })}
                           onEdit={() => openForm({ kind: 'edit', task })}
                           onDelete={() => {
                             remove.reset();
