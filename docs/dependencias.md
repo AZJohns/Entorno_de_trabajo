@@ -116,6 +116,24 @@ La vista previa de una nota tiene que dibujar Markdown sin `dangerouslySetInnerH
 
 **Decisión**: `marked.lexer` + renderizador propio (~250 líneas, con tests). La razón principal es la superficie de cadena de suministro de un repositorio público: 75 paquetes más frente a ninguno, para una vista previa de un solo usuario. Además, ninguna cadena pasa por HTML: no hay una etapa de «generar HTML y sanearlo» que pueda fallar. **Qué se pierde**: `react-markdown` es el camino más trillado y tiene más pruebas ajenas; aquí el renderizado es código propio y se cubre con `apps/web/test/notes-markdown.test.tsx`. No se admiten extensiones (notas al pie, matemáticas, resaltado de código). **Cuándo reconsiderarlo**: si hacen falta esas extensiones, `react-markdown` con sus plugins.
 
+## Lectura del Excel (fase 3b.1): lector propio, sin dependencias
+
+El plan (§4.2) preseleccionaba SheetJS CE desde su CDN y dejaba la decisión a un *spike*. Se comparó, consultado el **2026-11-10** en el registro de npm (`pnpm view`) y en la base de avisos de GitHub (`api.github.com/advisories`, por paquete):
+
+| | `xlsx` (SheetJS) del registro de npm | SheetJS CE desde `cdn.sheetjs.com` | `exceljs` | `read-excel-file` | Lector propio (elegido) |
+|---|---|---|---|---|---|
+| Versión | 0.18.5 (la última del registro) | No está en el registro: no se consultó en esta fase | 4.4.0 (2023-10-19; hay una 4.4.1-prerelease de 2024-12-20) | 9.3.14 (2026-10-29) | — |
+| Licencia | Apache-2.0 | Apache-2.0 | MIT | MIT | — |
+| Dependencias directas | 7 (`cfb`, `ssf`, `wmf`, `word`, `crc-32`, `adler-32`, `codepage`) | — | 9 (`archiver`, `unzipper`, `jszip`, `saxes`, `fast-csv`, `tmp`, `uuid`, `dayjs`, `readable-stream`) | 4 (`saxen`, `fflate`, `worker-f`, `unzipper-esm`) | **0** |
+| Avisos conocidos | 2 de gravedad alta (GHSA-5pgg-2g8v-p4x9, ReDoS; GHSA-4r6h-8v6p-xvw6, contaminación de prototipos) y 3 medios («SheetJS Pro») | — | 1 medio (GHSA-2j2j-8rrv-264g, XSS) | Ninguno en la consulta | — |
+| ¿Lee el TEXTO de la fórmula? | Sí | Sí | Sí | **No**: devuelve el valor en caché y, si no puede, la celda vacía (su README) | Sí |
+| Respeta `minimumReleaseAge` (`pnpm-workspace.yaml`) | Sí, pero queda en la versión con avisos | **No**: un tarball de una URL no pasa por el filtro; habría que guardarlo en el repositorio y Dependabot no lo vigila | Sí | Sí | — |
+| ¿Se puede limitar lo que realmente descomprime? | No: descomprime por dentro | No | No (`jszip`, `unzipper`) | Parcial (`fflate`) | **Sí** (`zlib` con `maxOutputLength`) |
+
+**Por qué lector propio.** (1) El requisito de ASVS 5.2.3 es limitar lo que se descomprime **antes y durante**: los tamaños que declara un ZIP los controla quien lo sube, y ninguna de las librerías comparadas deja fijar un presupuesto de bytes reales. Con `node:zlib` (`inflateRawSync` con `maxOutputLength`) sí. (2) `read-excel-file` no expone las fórmulas, que el contrato exige leer (§5). (3) Las dos opciones con las fórmulas tienen avisos abiertos o dependencias que no pasan el filtro. (4) El analizador XML es el punto delicado: `fast-xml-parser` (5.12.0, MIT, 6 dependencias directas, publicada el 2026-11-03) acumula una docena de avisos de entidades y DOCTYPE, algunos críticos y altos (p. ej. GHSA-m7jm-9gc2-mpf2, GHSA-8gc5-j5rx-235r); un analizador que **rechaza todo DTD** no puede tener esa clase de fallos. (5) CLAUDE.md pide comprobar primero si Node ya lo resuelve: `zlib` y un recorrido XML de unas 200 líneas lo resuelven.
+
+**Qué es** (`apps/api/src/modules/imports/domain/`): `zip.ts` (~215 líneas: directorio central, límites, CRC-32), `xml.ts` (~205: SAX estricto sin DTD ni entidades), `workbook.ts` (~435: cadenas compartidas, estilos de fecha, fórmulas compartidas), `formula.ts` (~180: formas cerradas). **Qué se pierde**: formatos que no son OOXML (`.xls`, `.xlsb`, `.ods`), ZIP64, cifrado, imágenes y gráficos (no se leen) y la experiencia acumulada de una librería usada por miles de proyectos. **Mitigación**: más de 180 tests con archivos sintéticos hostiles (zip bomb, entrada que miente sobre su tamaño, XXE, «billion laughs», XML mal formado, ZIP truncado o cifrado) y una fixture ficticia; la fixture guardada por Excel (`docs/guia-fixture-excel.md`) es la comprobación que falta frente a un archivo real. **Cuándo reconsiderarlo**: si hubiera que leer `.xls` o `.xlsb`, o si el lector crece más allá de lo que se puede revisar entero.
+
 ## Dependencias descartadas en la fase 1
 
 - **`argon2`, `bcrypt`** (npm): Node ≥ 24.12 trae `crypto.argon2` y no hacen falta binarios nativos (ADR 0006).
