@@ -1,11 +1,12 @@
 /**
  * Permisos de las rutas de negocio (docs/plan.md §6.2): denegar por defecto. Se recorren TODAS las rutas
- * registradas (libro, informes, exportación, presupuesto, tareas, recordatorios, notificaciones, notas y etiquetas) y la lista se compara con las rutas
+ * registradas (libro, informes, exportación, presupuesto, tareas, recordatorios, notificaciones, notas, etiquetas e importaciones) y la lista se compara con las rutas
  * reales de los routers, así que una ruta nueva sin probar hace fallar este test.
  */
 import { describe, expect, it } from 'vitest';
 import { createDatabase } from '../src/db/database.ts';
 import { createFinanceModule } from '../src/modules/finance/index.ts';
+import { createImportsModule } from '../src/modules/imports/index.ts';
 import { createNotesModule } from '../src/modules/notes/index.ts';
 import { createNotificationsModule } from '../src/modules/notifications/index.ts';
 import { createTasksModule } from '../src/modules/tasks/index.ts';
@@ -81,10 +82,16 @@ const ROUTES: readonly (readonly [method: 'get' | 'post' | 'patch' | 'delete', p
   ['delete', `/notes/${ID}`],
   ['get', '/tags'],
   ['patch', `/tags/${ID}`],
+  ['post', '/imports/plan-excel'],
+  ['get', '/imports'],
+  ['get', `/imports/${ID}`],
+  ['delete', `/imports/${ID}`],
 ];
 
 /** Rutas S+: además de la sesión, exigen reautenticación completa en los últimos 10 minutos. */
-const REAUTH_ROUTES = ROUTES.filter(([, path]) => path === '/export');
+const REAUTH_ROUTES = ROUTES.filter(
+  ([, path]) => path === '/export' || path === '/imports/plan-excel',
+);
 
 const MUTATING = ROUTES.filter(([method]) => method !== 'get');
 
@@ -95,7 +102,7 @@ const asPattern = (method: string, path: string): string =>
 describe('rutas de negocio', () => {
   it('la lista de este test coincide con las rutas registradas en los routers', () => {
     const db = createDatabase('postgres://nadie:nada@127.0.0.1:1/ninguna');
-    const { router: finance } = createFinanceModule({
+    const financeModule = createFinanceModule({
       db,
       clock: systemClock,
       requireReauth: (_req, _res, next) => {
@@ -103,6 +110,7 @@ describe('rutas de negocio', () => {
       },
       recordExport: () => Promise.resolve(),
     });
+    const finance = financeModule.router;
     const notificationsModule = createNotificationsModule({ db, clock: systemClock });
     const { router: tasks } = createTasksModule({
       db,
@@ -110,18 +118,28 @@ describe('rutas de negocio', () => {
       notifications: notificationsModule.service,
     });
     const { router: notes } = createNotesModule({ db, clock: systemClock });
-    const registered = [finance, tasks, notificationsModule.router, notes].flatMap((router) => {
-      const stack = (
-        router as unknown as { stack: { route?: { path: string; methods: object } }[] }
-      ).stack;
-      return stack.flatMap((layer) =>
-        layer.route === undefined
-          ? []
-          : Object.keys(layer.route.methods).map(
-              (method) => `${method.toUpperCase()} ${layer.route?.path ?? ''}`,
-            ),
-      );
+    const { router: imports } = createImportsModule({
+      db,
+      clock: systemClock,
+      categories: financeModule.ledger,
+      requireReauth: (_req, _res, next) => {
+        next();
+      },
     });
+    const registered = [finance, tasks, notificationsModule.router, notes, imports].flatMap(
+      (router) => {
+        const stack = (
+          router as unknown as { stack: { route?: { path: string; methods: object } }[] }
+        ).stack;
+        return stack.flatMap((layer) =>
+          layer.route === undefined
+            ? []
+            : Object.keys(layer.route.methods).map(
+                (method) => `${method.toUpperCase()} ${layer.route?.path ?? ''}`,
+              ),
+        );
+      },
+    );
     expect(registered.sort()).toEqual(ROUTES.map(([m, p]) => asPattern(m, p)).sort());
   });
 
@@ -165,7 +183,8 @@ describe('rutas de negocio', () => {
     },
   );
 
-  it.each(REAUTH_ROUTES)(
+  // La subida del Excel necesita un cuerpo: su camino feliz se prueba en `imports/api-imports.test.ts`.
+  it.each(REAUTH_ROUTES.filter(([, path]) => path === '/export'))(
     'S+ tras reautenticarse (contraseña + TOTP): %s %s → 200',
     async (method, path) => {
       const ctx = getCtx();
