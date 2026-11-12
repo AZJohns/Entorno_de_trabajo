@@ -64,6 +64,7 @@ En el nivel 1, `errors[].path` lleva el código del catálogo de problemas. Un l
 ## Decisiones
 
 - **Lector propio, sin dependencias** (`docs/dependencias.md`): el límite de descompresión tiene que ser sobre lo que realmente se descomprime, y el XML no puede tener DTD.
+- **Rutas fijas de `sharedStrings` y `styles`**: el lector abre `xl/sharedStrings.xml` y `xl/styles.xml` por su ruta, sin seguir las relaciones del libro (como sí hace Excel, y por eso LibreOffice no mostraba los textos de una fixture sin esas relaciones). Solo las hojas se localizan por relación. Es aceptable porque Excel escribe siempre estas partes en esas rutas, así que no se pierde ningún archivo válido; el motivo de fondo es de seguridad: leer solo nombres que fija el código evita que un `Target` del archivo (rutas con `..`, absolutas o a otra entrada del ZIP) decida qué parte se abre. El coste es que un libro con esas partes en otra ruta se leería sin textos ni formatos de fecha; no hay ningún productor conocido que lo haga. Por eso `fixture.test.ts` comprueba aparte, sin usar este lector, que el paquete es válido: tipos de contenido y partes alcanzables por relaciones.
 - **Fórmulas**: se leen como texto; solo se reconocen las formas cerradas de §5. El valor en caché de una celda calculada no se usa para nada (la 3b.2 lo comparará con el recálculo: `CACHED_VALUE_DIFF`). Las fórmulas compartidas de Excel se expanden en cada celda desplazando las referencias relativas del texto de la maestra.
 - **Se recogen todos los problemas** antes de responder; nunca se importa parcialmente. Los problemas llevan hoja y celda en A1 y mensaje en español.
 - **Categorías (provisional hasta el PR 2)**: el nombre normalizado de la categoría de Presupuesto se busca entre las categorías de gasto **activas**; sin correspondencia es `CATEGORY_UNMAPPED` (bloquea la confirmación). Nombres ambiguos no se resuelven.
@@ -80,6 +81,6 @@ En el nivel 1, `errors[].path` lleva el código del catálogo de problemas. Un l
 | `parse-plan.test.ts` | La fixture válida (lo extraído y los avisos esperados), fin de tabla, normalización, tipos, fórmulas, seguridad del archivo, hash de contenido |
 | `zip.test.ts`, `xml.test.ts`, `formula.test.ts`, `workbook.test.ts` | Las piezas por separado, con archivos sintéticos hostiles (zip bomb, XXE, «billion laughs»…) |
 | `api-imports.test.ts`, `imports-schema.test.ts` | La API y la base de datos reales |
-| `fixture.test.ts` | `plan-ficticio-v2.xlsx` coincide con lo que genera `test/fixtures/plan-workbook.ts` |
+| `fixture.test.ts` | `plan-ficticio-v2.xlsx` coincide con lo que genera `test/fixtures/plan-workbook.ts` y es un paquete OOXML válido (tipos de contenido y partes alcanzables por relaciones), sin depender de nuestro lector |
 
 Fixtures: `apps/api/test/fixtures/` (todo FICTICIO; nunca se parte de un archivo real). `pnpm --filter @backoffice/api fixtures:build` regenera el `.xlsx`. Resultados esperados: `plan-ficticio-v2.expected.md`.

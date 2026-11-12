@@ -31,6 +31,40 @@ function readFileTypes(xml: string): {
   return { defaults, overrides };
 }
 
+interface Relationship {
+  readonly type: string;
+  readonly target: string;
+  readonly external: boolean;
+}
+
+/** Relaciones de una parte (`''` es el paquete, `_rels/.rels`), leídas con una expresión simple, sin el lector. */
+function relationshipsOf(archive: ReturnType<typeof openZip>, source: string): Relationship[] {
+  const slash = source.lastIndexOf('/');
+  const dir = source.slice(0, slash + 1);
+  const file = source.slice(slash + 1);
+  const xml = archive.read(`${dir}_rels/${file}.rels`)?.toString('utf8') ?? '';
+  const attribute = (tag: string, name: string): string =>
+    new RegExp(`\\b${name}="([^"]*)"`, 'u').exec(tag)?.[1] ?? '';
+  return (xml.match(/<Relationship\b[^>]*>/gu) ?? []).map((tag) => ({
+    type: attribute(tag, 'Type'),
+    target: attribute(tag, 'Target'),
+    external: attribute(tag, 'TargetMode') === 'External',
+  }));
+}
+
+/** Nombre en el ZIP de la parte a la que apunta `target`, relativo a la carpeta de `source` (o absoluto con `/`). */
+function resolveTarget(source: string, target: string): string {
+  const segments = target.startsWith('/')
+    ? target.slice(1).split('/')
+    : [...source.split('/').slice(0, -1), ...target.split('/')];
+  const out: string[] = [];
+  for (const segment of segments) {
+    if (segment === '..') out.pop();
+    else if (segment !== '.' && segment !== '') out.push(segment);
+  }
+  return out.join('/');
+}
+
 describe('plan-ficticio-v2.xlsx', () => {
   it('coincide con el libro que genera plan-workbook.ts (ejecuta `pnpm fixtures:build` si cambió)', () => {
     const expected = openZip(buildValidWorkbook().toBuffer(), LIMITS);
@@ -113,6 +147,43 @@ describe('plan-ficticio-v2.xlsx', () => {
       expect(sheets.length).toBeGreaterThan(1);
       for (const sheet of sheets)
         expect(types.get(`/${sheet}`), sheet).toBe(`${base}.worksheet+xml`);
+    });
+
+    // Excel y LibreOffice no buscan los textos por su ruta, sino siguiendo las relaciones desde `_rels/.rels`
+    // (el estándar, ECMA-376 Parte 2 §9): una parte a la que no llega ninguna relación es huérfana y se ignora.
+    // Nuestro lector no las sigue para esto (lee `xl/sharedStrings.xml` y `xl/styles.xml` por su ruta fija, ver
+    // el README del módulo), así que solo este test protege la fixture.
+    it('cada parte (salvo [Content_Types].xml y los .rels) es alcanzable siguiendo las relaciones desde _rels/.rels', () => {
+      const names = new Set(archive.names());
+      const reached = new Set<string>();
+      const dangling: string[] = [];
+      const pending: string[] = [''];
+      while (pending.length > 0) {
+        const source = pending.pop() ?? '';
+        for (const { target, external } of relationshipsOf(archive, source)) {
+          if (external) continue;
+          const part = resolveTarget(source, target);
+          if (!names.has(part)) dangling.push(`${source || '/'} → ${part}`);
+          else if (!reached.has(part)) {
+            reached.add(part);
+            pending.push(part);
+          }
+        }
+      }
+      const huerfanas = [...names].filter(
+        (name) => name !== '[Content_Types].xml' && !name.endsWith('.rels') && !reached.has(name),
+      );
+      expect(huerfanas).toEqual([]);
+      expect(dangling).toEqual([]);
+    });
+
+    it('el libro enlaza sus estilos y sus cadenas compartidas con el tipo de relación del estándar', () => {
+      const base = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+      const byType = new Map(
+        relationshipsOf(archive, 'xl/workbook.xml').map((rel) => [rel.type, rel.target]),
+      );
+      expect(byType.get(`${base}/styles`)).toBe('styles.xml');
+      expect(byType.get(`${base}/sharedStrings`)).toBe('sharedStrings.xml');
     });
   });
 

@@ -270,6 +270,7 @@ function sheetXml(
   sheet: SheetBuilder,
   strings: { index(text: string): number },
   date1904: boolean,
+  legacyDrawingRid?: string,
 ): Built {
   const rows = new Map<number, { col: number; ref: string; spec: CellSpec }[]>();
   for (const [ref, spec] of sheet.cells) {
@@ -291,8 +292,27 @@ function sheetXml(
     })
     .join('');
   return {
-    xml: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${body}</sheetData></worksheet>`,
+    xml: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheetData>${body}</sheetData>${legacyDrawingRid === undefined ? '' : `<legacyDrawing r:id="${legacyDrawingRid}"/>`}</worksheet>`,
   };
+}
+
+/** Fila y columna (base 0) de la primera nota de un `comments1.xml`; A1 si no se puede leer. */
+function commentCell(xml: string): { row: number; col: number } {
+  const match = /<comment\b[^>]*\bref="([A-Z]+)([0-9]+)"/u.exec(xml);
+  if (match === null) return { row: 0, col: 0 };
+  return { row: Number(match[2]) - 1, col: columnNumber(match[1] ?? 'A') - 1 };
+}
+
+/** Relaciones de la primera hoja y el dibujo VML mínimo que Excel exige para mostrar una nota. */
+function commentParts(commentsXml: string): ZipFileSpec[] {
+  const { row, col } = commentCell(commentsXml);
+  const relationships = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+  const rels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${relationships}/comments" Target="../comments1.xml"/><Relationship Id="rId2" Type="${relationships}/vmlDrawing" Target="../drawings/vmlDrawing1.vml"/></Relationships>`;
+  const vml = `<xml xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><o:shapelayout v:ext="edit"><o:idmap v:ext="edit" data="1"/></o:shapelayout><v:shapetype id="_x0000_t202" coordsize="21600,21600" o:spt="202" path="m,l,21600r21600,l21600,xe"><v:stroke joinstyle="miter"/><v:path gradientshapeok="t" o:connecttype="rect"/></v:shapetype><v:shape id="_x0000_s1025" type="#_x0000_t202" style="position:absolute;margin-left:59.25pt;margin-top:1.5pt;width:108pt;height:59.25pt;z-index:1;visibility:hidden" fillcolor="#ffffe1" o:insetmode="auto"><v:fill color2="#ffffe1"/><v:shadow on="t" color="black" obscured="t"/><v:path o:connecttype="none"/><v:textbox style="mso-direction-alt:auto"><div style="text-align:left"></div></v:textbox><x:ClientData ObjectType="Note"><x:MoveWithCells/><x:SizeWithCells/><x:Anchor>1, 15, 0, 2, 3, 15, 3, 16</x:Anchor><x:AutoFill>False</x:AutoFill><x:Row>${String(row)}</x:Row><x:Column>${String(col)}</x:Column></x:ClientData></v:shape></xml>`;
+  return [
+    { name: 'xl/worksheets/_rels/sheet1.xml.rels', data: Buffer.from(rels, 'utf8') },
+    { name: 'xl/drawings/vmlDrawing1.vml', data: Buffer.from(vml, 'utf8') },
+  ];
 }
 
 function buildFiles(book: WorkbookBuilder): ZipFileSpec[] {
@@ -309,14 +329,27 @@ function buildFiles(book: WorkbookBuilder): ZipFileSpec[] {
       return at;
     },
   };
+  // Un comentario solo es alcanzable si una hoja lo enlaza (y Excel solo lo muestra con su dibujo VML):
+  // se cuelga de la primera hoja.
+  const comments = book.extraFiles.find((file) => file.name === 'xl/comments1.xml');
   const sheetFiles = book.sheets.map((sheet, index) => ({
     name: `xl/worksheets/sheet${String(index + 1)}.xml`,
-    data: Buffer.from(sheetXml(sheet, strings, book.date1904).xml, 'utf8'),
+    data: Buffer.from(
+      sheetXml(
+        sheet,
+        strings,
+        book.date1904,
+        index === 0 && comments !== undefined ? 'rId2' : undefined,
+      ).xml,
+      'utf8',
+    ),
   }));
   const text = (value: string): Buffer => Buffer.from(value, 'utf8');
   const sharedStrings = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="${String(table.length)}" uniqueCount="${String(table.length)}">${table.map((entry) => `<si><t xml:space="preserve">${escapeXml(entry)}</t></si>`).join('')}</sst>`;
   const workbook = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><workbookPr${book.date1904 ? ' date1904="1"' : ''}/><sheets>${book.sheets.map((sheet, index) => `<sheet name="${escapeXml(sheet.name)}" sheetId="${String(index + 1)}" r:id="rId${String(index + 1)}"/>`).join('')}</sheets></workbook>`;
-  const rels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${book.sheets.map((_sheet, index) => `<Relationship Id="rId${String(index + 1)}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${String(index + 1)}.xml"/>`).join('')}</Relationships>`;
+  // Excel y LibreOffice localizan estilos y textos por su RELACIÓN desde el libro, no por la ruta: sin ellas,
+  // LibreOffice abre el archivo sin textos aunque las partes y sus tipos estén.
+  const rels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${book.sheets.map((_sheet, index) => `<Relationship Id="rId${String(index + 1)}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${String(index + 1)}.xml"/>`).join('')}<Relationship Id="rId${String(book.sheets.length + 1)}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rId${String(book.sheets.length + 2)}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/></Relationships>`;
   // Un paquete OOXML válido declara el tipo de CADA parte (ECMA-376 Parte 2, §10.1.2.2): sin ello,
   // openpyxl no lo abre y LibreOffice lo abre sin textos. Los tipos de las partes extra de los tests
   // hostiles (macros, vínculos, relleno) no se declaran a propósito: no son partes de un libro válido.
@@ -342,7 +375,7 @@ function buildFiles(book: WorkbookBuilder): ZipFileSpec[] {
         'application/vnd.openxmlformats-officedocument.spreadsheetml.comments+xml',
       ]),
   ];
-  const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="application/xml"/><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>${overrides.map(([part, type]) => `<Override PartName="${part}" ContentType="${type}"/>`).join('')}</Types>`;
+  const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="application/xml"/><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>${comments === undefined ? '' : '<Default Extension="vml" ContentType="application/vnd.openxmlformats-officedocument.vmlDrawing"/>'}${overrides.map(([part, type]) => `<Override PartName="${part}" ContentType="${type}"/>`).join('')}</Types>`;
   return [
     { name: '[Content_Types].xml', data: text(contentTypes) },
     {
@@ -356,6 +389,7 @@ function buildFiles(book: WorkbookBuilder): ZipFileSpec[] {
     { name: 'xl/styles.xml', data: text(STYLES_XML) },
     { name: 'xl/sharedStrings.xml', data: text(sharedStrings) },
     ...sheetFiles,
+    ...(comments === undefined ? [] : commentParts(comments.data.toString('utf8'))),
     // Metadatos vacíos (§12: el autor y la empresa se vacían antes de hacer commit).
     {
       name: 'docProps/core.xml',
