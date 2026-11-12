@@ -30,7 +30,7 @@
 
 | Propiedad | Regla | Severidad |
 |---|---|---|
-| Extensión | `.xlsx`, la recomendada [DECISIÓN: se guarda como `.xlsx`]. También se acepta `.xlsm` mientras dure la transición | error si es otra |
+| Extensión | `.xlsx`, la recomendada [DECISIÓN: se guarda como `.xlsx`]. `.xlsm` se admite **solo si no lleva macros** (ver la fila «Macros»): para el importador es un libro como otro cualquiera. No se emite ningún aviso por la extensión: el riesgo real son las macros, y esas ya se rechazan por su contenido (`FILE_HAS_MACROS`), no por el nombre; un aviso nuevo exigiría un código más en el catálogo sin proteger de nada más. Nunca se ejecuta, interpreta ni abre nada del libro. Se recomienda guardarlo como `.xlsx` | error si es otra |
 | Tamaño | ≤ 5 MB. Valor inicial; se ajusta midiendo la plantilla real | error |
 | Contenedor | ZIP válido: empieza por `PK\x03\x04` y contiene `[Content_Types].xml` y `xl/workbook.xml`. Se ignora el tipo MIME que declara el navegador | error |
 | Límites del ZIP (protección contra *zip bombs*) | Descomprimido ≤ 50 MB y ≤ 200 entradas | error |
@@ -271,8 +271,10 @@ Lista cerrada (validación de datos en Excel):
 |---|---|
 | La referencia Presupuesto · Mensual | `expense` |
 | La referencia Eventos · Importe | `one_off_payment`, `expense` o `scenario` |
+| El multiplicador en meses de un PRODUCT2 de Eventos (el plazo) | `assumption` |
 | La referencia Metas | `goal`, `savings_balance` o `assumption` |
-| La referencia Escenarios | `scenario`, `expense` o `income` |
+| La referencia Escenarios · Extra mensual (C) | `scenario`, `expense` o `income` |
+| La referencia Escenarios · Pago puntual (D) | `scenario`, `expense`, `income` o `one_off_payment` |
 | La unidad no coincide con la esperada para su tipo | — |
 | Fila `expense` incluida que ninguna línea de Presupuesto referencia | aviso `EXPENSE_NOT_BUDGETED` |
 

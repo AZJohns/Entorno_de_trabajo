@@ -612,6 +612,8 @@ function readEventAmount(
       return NO_AMOUNT;
     }
     typeSignal(reader, at, monthly, allowed, 'cuota de un evento');
+    // El plazo es un parámetro sin uso fijo en los cálculos: `assumption` (§7).
+    typeSignal(reader, at, months, ['assumption'], 'plazo de un evento');
     return { ...NO_AMOUNT, amountItemRow: monthly.sourceRow, multiplierItemRow: months.sourceRow };
   }
   reader.issues.add(
@@ -769,6 +771,11 @@ function readGoalAmount(
 
 // --- Escenarios -----------------------------------------------------------------------------------
 
+/** Tipos de registro esperados en «Extra mensual» (§7). */
+const SCENARIO_EXTRA_TYPES: readonly RecordType[] = ['scenario', 'expense', 'income'];
+/** «Pago puntual» admite además `one_off_payment`: es el tipo natural de un pago único en € (§7). */
+const SCENARIO_ONE_OFF_TYPES: readonly RecordType[] = [...SCENARIO_EXTRA_TYPES, 'one_off_payment'];
+
 function extractScenarios(
   input: ExtractInput,
   sheet: Sheet,
@@ -791,8 +798,24 @@ function extractScenarios(
 
   for (const row of scan.rows) {
     const name = reader.text(row, c.name, 'Escenario', { required: true });
-    const extra = readScenarioList(reader, data, row, c.extra, 'Extra mensual', 'eur_per_month');
-    const oneOff = readScenarioList(reader, data, row, c.oneOff, 'Pago puntual', 'eur');
+    const extra = readScenarioList(
+      reader,
+      data,
+      row,
+      c.extra,
+      'Extra mensual',
+      'eur_per_month',
+      SCENARIO_EXTRA_TYPES,
+    );
+    const oneOff = readScenarioList(
+      reader,
+      data,
+      row,
+      c.oneOff,
+      'Pago puntual',
+      'eur',
+      SCENARIO_ONE_OFF_TYPES,
+    );
     warnCalculated(reader, row, calculated, calcLabel);
 
     for (const itemRow of extra) {
@@ -830,6 +853,7 @@ function readScenarioList(
   col: number,
   label: string,
   unit: Unit,
+  allowed: readonly RecordType[],
 ): number[] {
   if (reader.blank(row, col)) {
     reader.issues.add(
@@ -858,7 +882,6 @@ function readScenarioList(
   }
   const at = { row, col };
   const parsed = parseFormula(cell.formula, data.sheetName);
-  const allowed: readonly RecordType[] = ['scenario', 'expense', 'income'];
 
   if (parsed.form === 'zero') return [];
   if (parsed.form === 'ref') {

@@ -317,13 +317,38 @@ function buildFiles(book: WorkbookBuilder): ZipFileSpec[] {
   const sharedStrings = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="${String(table.length)}" uniqueCount="${String(table.length)}">${table.map((entry) => `<si><t xml:space="preserve">${escapeXml(entry)}</t></si>`).join('')}</sst>`;
   const workbook = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><workbookPr${book.date1904 ? ' date1904="1"' : ''}/><sheets>${book.sheets.map((sheet, index) => `<sheet name="${escapeXml(sheet.name)}" sheetId="${String(index + 1)}" r:id="rId${String(index + 1)}"/>`).join('')}</sheets></workbook>`;
   const rels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${book.sheets.map((_sheet, index) => `<Relationship Id="rId${String(index + 1)}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${String(index + 1)}.xml"/>`).join('')}</Relationships>`;
-  const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="application/xml"/><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/></Types>`;
+  // Un paquete OOXML válido declara el tipo de CADA parte (ECMA-376 Parte 2, §10.1.2.2): sin ello,
+  // openpyxl no lo abre y LibreOffice lo abre sin textos. Los tipos de las partes extra de los tests
+  // hostiles (macros, vínculos, relleno) no se declaran a propósito: no son partes de un libro válido.
+  const overrides = [
+    [
+      '/xl/workbook.xml',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml',
+    ],
+    ...book.sheets.map((_sheet, index): [string, string] => [
+      `/xl/worksheets/sheet${String(index + 1)}.xml`,
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml',
+    ]),
+    [
+      '/xl/sharedStrings.xml',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml',
+    ],
+    ['/xl/styles.xml', 'application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml'],
+    ['/docProps/core.xml', 'application/vnd.openxmlformats-package.core-properties+xml'],
+    ...book.extraFiles
+      .filter((file) => /^xl\/comments\d+\.xml$/u.test(file.name))
+      .map((file): [string, string] => [
+        `/${file.name}`,
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.comments+xml',
+      ]),
+  ];
+  const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="xml" ContentType="application/xml"/><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>${overrides.map(([part, type]) => `<Override PartName="${part}" ContentType="${type}"/>`).join('')}</Types>`;
   return [
     { name: '[Content_Types].xml', data: text(contentTypes) },
     {
       name: '_rels/.rels',
       data: text(
-        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>',
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/></Relationships>',
       ),
     },
     { name: 'xl/workbook.xml', data: text(workbook) },

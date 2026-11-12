@@ -425,6 +425,59 @@ describe('fórmulas (§5): se leen como texto y nunca se ejecutan', () => {
     });
   });
 
+  it('§7: Escenarios · Pago puntual (D) admite one_off_payment; el Extra mensual (C) y otros tipos, no', () => {
+    const book = buildValidWorkbook();
+    // Fila 25: «Seguro del coche (pago único)», 450 €, tipo `one_off_payment`.
+    book.sheet(ESCENARIOS).set('D7', { f: dataRef('C', DATA_ROW.carInsurance), v: 450 });
+    const accepted = previewOf(parseBook(book));
+    expect(issuesWith(accepted, 'TYPE_SIGNAL_MISMATCH')).toEqual([]);
+    expect(issuesWith(accepted, 'REF_UNIT_MISMATCH')).toEqual([]);
+    expect(accepted.extracted.scenarios[1]?.oneOffRows).toEqual([DATA_ROW.carInsurance]);
+
+    // Dentro de un SUM también (misma lista de tipos admitidos).
+    book.sheet(ESCENARIOS).set('D7', { f: `SUM('${DATOS}'!C24:C25)`, v: 1050 });
+    expect(issuesWith(previewOf(parseBook(book)), 'TYPE_SIGNAL_MISMATCH')).toEqual([]);
+
+    // Una meta (`goal`, fila 19, en €) en Pago puntual sigue avisando.
+    book.sheet(ESCENARIOS).set('D7', { f: dataRef('C', DATA_ROW.goalTarget), v: 3000 });
+    expectIssue(parseBook(book), 'TYPE_SIGNAL_MISMATCH', {
+      sheet: ESCENARIOS,
+      cell: 'D7',
+      severity: 'warning',
+    });
+    // `one_off_payment` no se admite en Extra mensual (C): ahí se espera scenario, expense o income.
+    const extra = buildValidWorkbook();
+    extra.sheet(ESCENARIOS).set('C7', { f: dataRef('C', DATA_ROW.carInsurance), v: 450 });
+    expectIssue(parseBook(extra), 'TYPE_SIGNAL_MISMATCH', { sheet: ESCENARIOS, cell: 'C7' });
+  });
+
+  it('§7: el multiplicador en meses de un PRODUCT2 de Eventos admite assumption; otro tipo avisa', () => {
+    const book = buildValidWorkbook();
+    // Fila 27: «Plazo del préstamo», en meses, tipo `assumption`.
+    const accepted = previewOf(parseBook(book));
+    expect(accepted.extracted.items.find((item) => item.sourceRow === 27)).toMatchObject({
+      unit: 'months',
+      recordType: 'assumption',
+    });
+    expect(accepted.extracted.events[4]).toMatchObject({
+      amountItemRow: 26,
+      multiplierItemRow: 27,
+    });
+    expect(
+      issuesWith(accepted, 'TYPE_SIGNAL_MISMATCH').filter((issue) => issue.cell === 'C10'),
+    ).toEqual([]);
+
+    // El mismo plazo marcado como «Histórico»: aviso (no reclasifica ni bloquea).
+    book.sheet(DATOS).set('I27', 'Histórico');
+    const warned = previewOf(parseBook(book));
+    expectIssue(warned, 'TYPE_SIGNAL_MISMATCH', {
+      sheet: EVENTOS,
+      cell: 'C10',
+      severity: 'warning',
+    });
+    expect(warned.extracted.events[4]?.multiplierItemRow).toBe(27);
+  });
+
   it('los escenarios no filtran por estado: incluyen filas Potencial (lo que hoy no está en la base)', () => {
     const { scenarios } = extractedOf();
     expect(scenarios[1]?.extraMonthlyRows).toEqual([22]);
