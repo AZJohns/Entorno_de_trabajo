@@ -121,6 +121,78 @@ export class BudgetService {
     }
   }
 
+  /**
+   * Una copia de este servicio que opera sobre `db` (normalmente una transacción abierta por otro módulo,
+   * como la confirmación de la importación del Excel): lo que escriba se confirma o se deshace junto con
+   * el resto de esa transacción. No abre transacciones propias, así que no admite `copyFromPreviousMonth`.
+   */
+  withDb(db: Kysely<Database>): BudgetService {
+    return new BudgetService({ ...this.#deps, db });
+  }
+
+  /**
+   * Crea de una vez los presupuestos de varias categorías en un mes. **Todo o nada** y **nunca
+   * sobrescribe**: si alguna categoría ya tiene presupuesto ese mes, no se crea ninguno y se responde 409
+   * con la lista completa de conflictos. Lo usa la importación del Excel (docs/plan.md §2.3b).
+   *
+   * Pensado para ejecutarse dentro de una transacción del llamante (`withDb`): el 409 o el 422 abortan la
+   * operación y el llamante deshace todo lo demás.
+   *
+   * Errores: 422 si una categoría no existe, no es de gasto, está repetida o el importe no es positivo;
+   * 409 si está archivada o el mes ya tiene presupuesto de esa categoría (también si otra petición lo crea
+   * a la vez: lo decide `UNIQUE (month, category_id)`).
+   */
+  async createMany(
+    month: YearMonth,
+    items: readonly { readonly categoryId: string; readonly amountCents: number }[],
+  ): Promise<void> {
+    if (items.length === 0) return;
+    const ids = items.map((item) => item.categoryId);
+    if (new Set(ids).size !== ids.length) {
+      throw unprocessable('categoryId', 'Hay una categoría repetida');
+    }
+    if (items.some((item) => !Number.isSafeInteger(item.amountCents) || item.amountCents <= 0)) {
+      throw unprocessable('amountCents', 'El importe de un presupuesto tiene que ser positivo');
+    }
+    const categories = new Map(
+      (await new LedgerRepository(this.#deps.db).listCategories(true)).map((category) => [
+        category.id,
+        category,
+      ]),
+    );
+    for (const item of items) {
+      const category = categories.get(item.categoryId);
+      if (category === undefined) throw unprocessable('categoryId', 'La categoría no existe');
+      if (category.kind !== 'expense') {
+        throw unprocessable('categoryId', 'Solo se presupuestan las categorías de gasto');
+      }
+      assertNotArchived(category);
+    }
+    const repo = new BudgetRepository(this.#deps.db);
+    const first = `${month}-01`;
+    const existing = new Set((await repo.listByMonth(first)).map((budget) => budget.categoryId));
+    const conflicts = items.filter((item) => existing.has(item.categoryId));
+    if (conflicts.length > 0) {
+      throw new AppError(
+        'CONFLICT',
+        409,
+        'Hay categorías que ya tienen presupuesto ese mes; no se sobrescribe ninguno',
+        conflicts.map((item) => ({
+          path: 'BUDGET_EXISTS',
+          message: `Ya hay un presupuesto de «${categories.get(item.categoryId)?.name ?? ''}» en ${month}`,
+        })),
+      );
+    }
+    try {
+      await repo.insertMany(items.map((item) => ({ month: first, ...item })));
+    } catch (error) {
+      if (isUniqueViolation(error, BUDGET_EXISTS)) {
+        throw conflict(`Una de las categorías ya tiene presupuesto en ${month}`);
+      }
+      throw error;
+    }
+  }
+
   /** Cambia el importe. El mes y la categoría no se cambian: sería otro presupuesto. */
   async update(id: string, amountCents: number): Promise<BudgetRecord> {
     const repo = new BudgetRepository(this.#deps.db);

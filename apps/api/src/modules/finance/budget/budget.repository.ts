@@ -87,6 +87,21 @@ export class BudgetRepository {
     return toBudget(row);
   }
 
+  /** Inserta varios presupuestos en una sentencia; falla si alguno ya existe (`UNIQUE (month, category_id)`). */
+  async insertMany(values: readonly NewBudget[]): Promise<void> {
+    if (values.length === 0) return;
+    await this.#db
+      .insertInto('category_budgets')
+      .values(
+        values.map((value) => ({
+          month: value.month,
+          category_id: value.categoryId,
+          amount_cents: value.amountCents,
+        })),
+      )
+      .execute();
+  }
+
   /**
    * Inserta los presupuestos que aún no existen y **ignora** los que ya tienen fila para ese mes y
    * categoría (`ON CONFLICT DO NOTHING`): nunca sobrescribe, ni siquiera con dos copias a la vez.

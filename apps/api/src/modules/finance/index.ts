@@ -16,10 +16,12 @@ import { addBudgetRoutes } from './budget/budget.routes.ts';
 import { BudgetService } from './budget/budget.service.ts';
 import { createLedgerRouter } from './ledger/ledger.routes.ts';
 import { LedgerService } from './ledger/ledger.service.ts';
+import { PlanService } from './plan/plan.service.ts';
 import { ReportsService } from './ledger/reports.service.ts';
 
 export type { BudgetService } from './budget/budget.service.ts';
 export type { LedgerService } from './ledger/ledger.service.ts';
+export type { NewPlanSnapshot, PlanService, PlanSnapshotSummary } from './plan/plan.service.ts';
 
 /** Dependencias del módulo. */
 export interface FinanceModuleDeps {
@@ -32,12 +34,14 @@ export interface FinanceModuleDeps {
 }
 
 /**
- * Crea el módulo: los servicios del libro y del presupuesto, y su router (se monta bajo `/api/v1`).
- * `budgets` es la puerta de entrada de otros módulos al presupuesto (la importación de la fase 3b).
+ * Crea el módulo: los servicios del libro, del presupuesto y de la capa del plan, y su router (se monta
+ * bajo `/api/v1`). `budgets` y `plan` son la puerta de entrada de otros módulos (la importación de la fase
+ * 3b): ambos se pueden usar dentro de una transacción ajena con `withDb`.
  */
 export function createFinanceModule(deps: FinanceModuleDeps) {
   const ledger = new LedgerService(deps);
   const budgets = new BudgetService(deps);
+  const plan = new PlanService(deps);
   const router = createLedgerRouter(
     createLedgerController(ledger),
     createReportsController(new ReportsService(deps.db)),
@@ -45,5 +49,5 @@ export function createFinanceModule(deps: FinanceModuleDeps) {
     deps.requireReauth,
   );
   addBudgetRoutes(router, createBudgetController(budgets));
-  return { ledger, budgets, router };
+  return { ledger, budgets, plan, router };
 }
