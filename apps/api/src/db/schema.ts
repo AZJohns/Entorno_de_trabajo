@@ -229,6 +229,30 @@ export interface NoteTagsTable {
 }
 
 /** Esquema completo de la base de datos. */
+/**
+ * Lote de importación del Excel del plan (migración 0009). `extracted`, `issues` y `decisions` son
+ * `jsonb`: se insertan como texto JSON (`pg` convertiría un array en un array de PostgreSQL) y se leen
+ * ya como objetos; el repositorio los valida con los esquemas compartidos.
+ */
+export interface ImportBatchesTable {
+  id: Generated<string>;
+  kind: 'plan_excel';
+  /** Primer día del mes 1 del plan (`YYYY-MM-01`). */
+  month: DateColumn;
+  file_name: string;
+  file_size_bytes: number;
+  file_sha256: Buffer;
+  content_hash: Buffer | null;
+  template_version: number | null;
+  status: 'preview' | 'confirmed' | 'discarded' | 'failed' | 'expired';
+  extracted: ColumnType<unknown, string | null, string | null>;
+  issues: ColumnType<unknown, string | undefined, string>;
+  decisions: ColumnType<unknown, string | undefined, string>;
+  created_at: Defaulted<Date>;
+  expires_at: Date;
+  confirmed_at: Date | null;
+}
+
 export interface Database {
   users: UsersTable;
   sessions: SessionsTable;
@@ -248,4 +272,5 @@ export interface Database {
   notes: NotesTable;
   tags: TagsTable;
   note_tags: NoteTagsTable;
+  import_batches: ImportBatchesTable;
 }

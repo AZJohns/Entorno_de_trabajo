@@ -32,6 +32,16 @@ export class TestClient {
     return this.#capture(body === undefined ? req : req.send(body));
   }
 
+  /** Envía un cuerpo binario (la subida del Excel). Sin `contentType`, `application/octet-stream`. */
+  postBinary(
+    path: string,
+    body: Buffer,
+    contentType = 'application/octet-stream',
+  ): Promise<Response> {
+    const req = this.#prepare(request(this.#app).post(path)).set('Content-Type', contentType);
+    return this.#capture(req.send(body));
+  }
+
   patch(path: string, body?: object): Promise<Response> {
     const req = this.#prepare(request(this.#app).patch(path));
     return this.#capture(body === undefined ? req : req.send(body));

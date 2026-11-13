@@ -14,6 +14,7 @@
     "user:reset-password": "node --env-file-if-exists=../../.env scripts/reset-password.ts",
     "user:revoke-sessions": "node --env-file-if-exists=../../.env scripts/revoke-sessions.ts",
     "user:disable": "node --env-file-if-exists=../../.env scripts/disable-user.ts",
+    "fixtures:build": "node test/fixtures/generate-fixtures.ts",
     "build:common-passwords": "node scripts/build-common-passwords.ts"
   },
   "dependencies": {

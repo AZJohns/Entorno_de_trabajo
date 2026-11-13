@@ -26,8 +26,9 @@
 |---|---|
 | Verificado (fase 0) | 9 |
 | Verificado (fase 1) | 92 |
+| Verificado (fase 3) | 8 |
 | Verificado (fase 5) | 3 |
-| Planificado | 72 |
+| Planificado | 64 |
 | Desviación documentada | 7 |
 | No aplica | 70 |
 | **Total L1 + L2** | **253** |
@@ -41,6 +42,8 @@
 - **13.2.1**: Componentes autenticados sin credenciales fijas.
 - **13.3.1**: Gestor de secretos (*vault*).
 - **16.4.3**: Logs enviados a un sistema separado.
+
+**Fase 3 (3b.1, PR 1 de 3, importación del Excel: lector, validación y vista previa):** se cierran 1.5.1, 5.1.1, 5.2.1, 5.2.2, 5.2.3, 5.3.1, 5.3.2 y 5.4.1. El lector de OOXML es propio (ZIP con `zlib` y XML sin DTD; ver `docs/dependencias.md`): los límites de descompresión se aplican a lo que realmente se descomprime y no existen entidades que resolver. La subida es S+ y es la única ruta exenta de «cuerpo JSON» (3.5.2, con su justificación). 2.3.3 (una sola transacción al confirmar) y 15.1.3/15.2.2 siguen abiertos hasta el PR 2.
 
 **Fase 5 (PR 5a, notas: modelo, API y búsqueda):** se cierra 1.2.9 (la búsqueda no construye expresiones regulares y la consulta de texto completo solo lleva letras y cifras). 1.3.1 y 1.3.5 se cierran en el PR 5b (ver abajo). Las rutas de notas y etiquetas entran en la matriz de permisos (8.1.1, 8.2.1) y en las filas de validación (2.2.2, 2.2.3).
 
@@ -70,7 +73,7 @@
 | 1.3.7 | L2 | Sin inyección de plantillas | **Verificado (F1)** | No se construyen plantillas con entrada del usuario | F0 · — | Revisión (2026-11-03): sin motor de plantillas entre las dependencias ni `res.render`; lint: `no-eval`, `no-new-func` |
 | 1.3.10 | L2 | Sanitizar las cadenas de formato | **Verificado (F1)** | Logs estructurados (pino con objetos); sin `printf` con entrada del usuario | F0 · http | Revisión (2026-11-03): los mensajes de log son literales y los datos van en el objeto (`apps/api/src/http/errors.ts`, `apps/api/src/server.ts`); test de la redacción: `apps/api/test/logger.test.ts` |
 | 1.4.2 | L2 | Evitar desbordamientos de enteros | **Verificado (F1)** | Importes `bigint`; `Number.isSafeInteger` en la conversión; `z.int()` (solo enteros seguros) en los esquemas de la API | F0–F1 · shared/money | Test: `packages/shared/test/money.test.ts` («acepta el máximo entero seguro y rechaza el siguiente»), `packages/shared/test/finance-schemas.test.ts` (movimientos y transferencias) y `apps/api/test/db-cents.test.ts` (`centsFromDb` rechaza lo que excede el entero seguro) |
-| 1.5.1 | L1 | Analizadores XML sin entidades externas (XXE) | Planificado | El lector OOXML no debe resolver entidades externas [VERIFICAR en el spike] | F3 · imports | Test con un XLSX que declara una entidad externa |
+| 1.5.1 | L1 | Analizadores XML sin entidades externas (XXE) | **Verificado (F3, PR 1)** | El lector OOXML usa un analizador XML PROPIO (`imports/domain/xml.ts`) que rechaza cualquier `<!DOCTYPE`/`<!ENTITY` y solo resuelve las cinco entidades predefinidas y las referencias numéricas: no hay entidades externas ni expansión por construcción, no por configuración. Sin librería XML (`docs/dependencias.md`) | F3 · imports | Test: `apps/api/test/imports/xml.test.ts` (XXE con `SYSTEM "file:///…"` y «billion laughs») y `apps/api/test/imports/parse-plan.test.ts` («un XML con DTD y entidades… en una hoja se rechaza», de punta a punta en un .xlsx) |
 | 1.5.2 | L2 | Deserialización segura | **Verificado (F1)** | Solo JSON validado con Zod; no se reconstruyen tipos de objeto | F0 · http | Revisión (2026-11-03): sin `JSON.parse` de entrada ni deserializadores de objetos en `apps/api/src`; el test con `__proto__` llega con 15.3.6. El importador del Excel (F3) tiene sus propias filas |
 
 **No aplica** (9): 1.2.6, 1.2.7, 1.2.8, 1.3.4, 1.3.8, 1.3.9, 1.3.11, 1.4.1, 1.4.3. Motivo: No hay LDAP, XPath, LaTeX, SVG subidos, JNDI, memcache ni envío de correo; el runtime gestiona la memoria y no hay código nativo propio.
@@ -108,7 +111,7 @@
 | 3.4.5 | L2 | Referrer-Policy | **Verificado (F1)** | `no-referrer` | F1 · http | Test: `apps/api/test/security.test.ts` |
 | 3.4.6 | L2 | CSP `frame-ancestors` | **Verificado (F1)** | `'none'` | F1 · http | Test: `apps/api/test/security.test.ts` (`frame-ancestors 'none'`) |
 | 3.5.1 | L1 | Protección CSRF sin depender del preflight | **Verificado (F1)** | Token en `X-CSRF-Token` derivado del de sesión (HMAC, ADR 0006) + `Origin` igual a `PUBLIC_ORIGIN` o `Sec-Fetch-Site: same-origin`, también en el login | F1 · http | Test: `apps/api/test/auth/login.test.ts` («CSRF y origen»: sin token o con otro → 403; `Origin` de otra web o ausente → 403) |
-| 3.5.2 | L1 | Si se depende del preflight, no poder evitarlo | **Verificado (F1)** | No se depende solo de él (3.5.1); además, las mutaciones exigen `Content-Type: application/json` | F1 · http | Test: `apps/api/test/auth/login.test.ts` («las peticiones con cuerpo deben ser JSON (415)») |
+| 3.5.2 | L1 | Si se depende del preflight, no poder evitarlo | **Verificado (F1)** | No se depende solo de él (3.5.1); además, las mutaciones exigen `Content-Type: application/json`. **Única excepción (F3):** `POST /imports/plan-excel`, que recibe el archivo en binario: solo esa ruta exacta (`requireJsonBody([UPLOAD_PATH])`), y sigue protegida por el mismo origen, el token CSRF en cabecera propia y un tipo de contenido que un formulario HTML no puede enviar (solo `application/octet-stream` y los tipos de Excel; `text/plain` y los formularios dan 415) | F1 · http | Test: `apps/api/test/auth/login.test.ts` («las peticiones con cuerpo deben ser JSON (415)») |
 | 3.5.3 | L1 | Métodos HTTP adecuados para las funciones sensibles | Planificado | Ningún GET con efectos · Auth: ningún GET modifica datos (solo `GET /auth/session` y `GET /auth/sessions`, sin efectos salvo `last_seen_at`) | F1+ · todos | Revisión + test |
 | 3.5.4 | L2 | Aplicaciones distintas en hosts distintos | Planificado | El backoffice tiene su propio host; el portfolio está en otro dominio (GitHub Pages) | F2 · deploy | Revisión |
 | 3.5.5 | L2 | Descartar `postMessage` de origen no fiable o mal formados | Planificado | El mensaje SW → ventana (navegación desde una notificación) se valida con un esquema y por su origen | F2 · web/sw | Test unitario |
@@ -130,13 +133,13 @@
 
 | ID | Nivel | Requisito (resumen) | Estado | Cómo se cumple | Fase · módulo | Verificación |
 |---|---|---|---|---|---|---|
-| 5.1.1 | L2 | Tipos, extensiones y tamaños (descomprimido incluido) documentados | Planificado | `plantilla-excel.md` §2 | F3 · imports | Revisión |
-| 5.2.1 | L1 | Tamaño de archivo procesable | Planificado | 5 MB en el parser | F3 · imports | Test |
-| 5.2.2 | L1 | La extensión coincide con el contenido | Planificado | Extensión + bytes iniciales + estructura OOXML | F3 · imports | Test |
-| 5.2.3 | L2 | Comprimidos: tamaño descomprimido y número de entradas antes de descomprimir | Planificado | Límites del ZIP | F3 · imports | Test con un *zip bomb* sintético |
-| 5.3.1 | L1 | Los archivos subidos no se ejecutan desde una carpeta pública | Planificado | Nunca se escriben en disco | F3 · imports | Revisión |
-| 5.3.2 | L1 | Rutas de archivo con datos internos | Planificado | No se usan nombres del usuario en rutas | F3 · imports | Revisión |
-| 5.4.1 | L2 | Ignorar el nombre de archivo del usuario y fijarlo en `Content-Disposition` | Planificado | El nombre del Excel solo se muestra, saneado; la exportación usa un nombre generado · **Exportación hecha (F1)**: `apps/api/test/finance/api-export.test.ts`; falta la subida del Excel (F3) | F1, F3 | Test |
+| 5.1.1 | L2 | Tipos, extensiones y tamaños (descomprimido incluido) documentados | **Verificado (F3, PR 1)** | `plantilla-excel.md` §2: `.xlsx` (y `.xlsm` sin macros), ≤ 5 MB, ≤ 50 MB descomprimidos y ≤ 200 entradas; límites en `docs/seguridad/limites.md` §7.1 y en el módulo de configuración `imports/domain/template.ts` | F3 · imports | Revisión (2026-11-10) |
+| 5.2.1 | L1 | Tamaño de archivo procesable | **Verificado (F3, PR 1)** | 5 MB: `express.raw({ limit })` corta la lectura del cuerpo (413 con el código `FILE_TOO_LARGE`) y el lector lo vuelve a comprobar | F3 · imports | Test: `apps/api/test/imports/api-imports.test.ts` («más de 5 MB → 413 FILE_TOO_LARGE») y `apps/api/test/imports/issue-catalog.test.ts` |
+| 5.2.2 | L1 | La extensión coincide con el contenido | **Verificado (F3, PR 1)** | Se decide por el CONTENIDO: firma `PK\x03\x04`, directorio central válido y presencia de `[Content_Types].xml` y `xl/workbook.xml`; además, extensión `.xlsx`/`.xlsm`. El tipo MIME que declara el navegador se ignora (solo decide si el cuerpo se lee en binario) | F3 · imports | Test: `apps/api/test/imports/parse-plan.test.ts` («el archivo cuyo tipo real no es OOXML se rechaza aunque se llame .xlsx», «la extensión incorrecta se rechaza…») |
+| 5.2.3 | L2 | Comprimidos: tamaño descomprimido y número de entradas antes de descomprimir | **Verificado (F3, PR 1)** | Lector de ZIP propio (`imports/domain/zip.ts`): el número de entradas se comprueba antes de leer el directorio central; la suma de tamaños DECLARADOS, antes de descomprimir nada; y cada entrada se descomprime con `maxOutputLength` sobre el presupuesto restante, así que una entrada que miente sobre su tamaño se corta al llegar al límite. Solo se descomprimen las partes que se leen (nunca `docProps/`, comentarios ni imágenes). Sin ZIP64, cifrado ni más métodos que 0 y 8 | F3 · imports | Test: `apps/api/test/imports/zip.test.ts` (60 MB de ceros en pocos KB; entrada que declara 10 bytes y descomprime 5000; 201 entradas) y `apps/api/test/imports/parse-plan.test.ts` («una hoja que descomprime más de lo permitido se corta…») |
+| 5.3.1 | L1 | Los archivos subidos no se ejecutan desde una carpeta pública | **Verificado (F3, PR 1)** | El archivo se recibe con `express.raw` (en memoria, sin `multer` ni archivos temporales) y no se guarda: `import_batches` solo conserva el tamaño y el SHA-256. Nada del contenido se evalúa ni se ejecuta: las fórmulas se leen como texto | F3 · imports | Revisión (2026-11-10) + test `apps/api/test/imports/api-imports.test.ts` («el archivo no se guarda…») |
+| 5.3.2 | L1 | Rutas de archivo con datos internos | **Verificado (F3, PR 1)** | No se construye ninguna ruta de archivo: el ZIP se lee en memoria y sus nombres de entrada solo se comparan con una lista fija. El nombre del Excel que da el usuario se sanea (sin ruta ni caracteres de control, ≤ 255) y solo se muestra | F3 · imports | Revisión (2026-11-10) + test `apps/api/test/imports/api-imports.test.ts` |
+| 5.4.1 | L2 | Ignorar el nombre de archivo del usuario y fijarlo en `Content-Disposition` | **Verificado (F1, F3)** | El nombre del Excel solo se muestra, saneado (`sanitizeFileName`); nunca se sirve ni se usa en una cabecera. La exportación usa un nombre generado | F1, F3 | Test: `apps/api/test/finance/api-export.test.ts` y `apps/api/test/imports/api-imports.test.ts` («el archivo no se guarda… el nombre saneado») |
 | 5.4.2 | L2 | Nombres de archivo servidos y codificados (RFC 6266) | **Verificado (F1)** | Nombre ASCII generado por el servidor (`backoffice-export-AAAA-MM-DD.json`), entre comillas | F1 · export | Test: `apps/api/test/finance/api-export.test.ts` («exporta todo el libro…», expresión regular sobre `Content-Disposition`) |
 
 **No aplica** (1): 5.4.3. Motivo: Los archivos subidos nunca se sirven ni se guardan; solo los sube el usuario autenticado y se leen en memoria sin ejecutar nada. Un antivirus no reduciría ningún riesgo real.
@@ -292,7 +295,7 @@
 |---|---|---|---|---|---|---|
 | 15.1.1 | L1 | Plazos de corrección de dependencias documentados | **Verificado (F0)** | 7, 30 y 90 días (`plan.md` §6.2) | F0 | Documento: `docs/dependencias.md` (plazos 7/30/90 días) |
 | 15.1.2 | L2 | Inventario de dependencias (SBOM) | **Verificado (F1)** | Exportación del *dependency graph* de GitHub (SPDX) con `gh api repos/{owner}/{repo}/dependency-graph/sbom` ([`docs/runbooks/github.md`](../runbooks/github.md) §3) | F0 | Comprobado el 2026-11-03: devuelve SPDX-2.3 con 458 paquetes |
-| 15.1.3 | L2 | Funciones costosas documentadas | Planificado | Importación del Excel, búsqueda e informes, en `docs/seguridad/limites.md` · Auth hecho: `docs/seguridad/limites.md` §6 | F1–F3 | Revisión |
+| 15.1.3 | L2 | Funciones costosas documentadas | Planificado | Importación del Excel, búsqueda e informes, en `docs/seguridad/limites.md` · Auth hecho: `docs/seguridad/limites.md` §6 · **Importación del Excel hecha (F3, PR 1):** `docs/seguridad/limites.md` §6 y §7.1 | F1–F3 | Revisión |
 | 15.2.1 | L1 | Componentes dentro de los plazos | Planificado | Dependabot + revisión mensual | F0+ | Revisión |
 | 15.2.2 | L2 | Defensas contra la pérdida de disponibilidad en funciones costosas | Planificado | Límites de tamaño, de peticiones y `statement_timeout` en PostgreSQL. **Expresiones regulares sin retroceso polinómico (ReDoS)**: el análisis de importes (`parseEuroAmount`, que procesa datos del atajo y del Excel) limita la entrada a 64 caracteres antes de procesarla y quita el prefijo y el sufijo de moneda con operaciones lineales. La regex anterior era cuadrática: 40.000 espacios costaban unos 2,8 s de CPU (alerta #1 de CodeQL, `js/polynomial-redos`). CodeQL vigila nuevas regex en cada PR | F1–F3 | Test: `packages/shared/test/money.test.ts` («una cadena enorme de espacios falla rápido y por el motivo correcto»: 1.000.000 de espacios → `too_long` en < 50 ms); resto, en F1–F3 |
 | 15.2.3 | L2 | En producción, solo lo necesario | Planificado | Imagen sin `devDependencies` ni herramientas de test | F2 · deploy | Revisión |

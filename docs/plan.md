@@ -463,6 +463,8 @@ El importador traduce `=0` (lista vacía), la referencia directa y `SUM` sobre u
 `UNIQUE (kind, month, content_hash) WHERE status = 'confirmed'` e índice `(status, expires_at)` para la limpieza.
 **No se guarda el archivo binario** [RESUELTO]: las entradas ya quedan en las tablas del plan y así no se acumulan copias del Excel.
 
+**Hecho en la 3b.1, PR 1** (migración `0009_import_batches`): la tabla, con `CHECK`s que impiden una vista previa sin entradas ni hash, un lote `confirmed` sin `confirmed_at` (y al revés) y una caducidad anterior a la creación. `file_sha256` y `content_hash` miden 32 bytes. Los `jsonb` se insertan como texto JSON y se leen validados con los esquemas de `@backoffice/shared`. En un lote `failed`, `extracted` y `content_hash` son NULL.
+
 ### 2.6 Módulo `tasks`
 
 **`tasks`** (migración `0006_tasks`, fase 4a)
@@ -676,12 +678,14 @@ notes *─* tags (note_tags)
 **imports**
 | Método | Ruta | Auth | Descripción |
 |---|---|---|---|
-| POST | `/imports/plan-excel?month=YYYY-MM` | S+ | Cuerpo binario (`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, `application/vnd.ms-excel.sheet.macroEnabled.12` u `octet-stream`). Responde 201 `{ id, status, issues, summary }`, o 200 con la importación existente si ya se confirmó ese mismo contenido |
+| POST | `/imports/plan-excel?month=YYYY-MM&fileName=` | S+ | Cuerpo binario (`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, `application/vnd.ms-excel.sheet.macroEnabled.12` u `octet-stream`). Responde 201 `{ id, status, issues, summary }`, o 200 con la importación existente si ya se confirmó ese mismo contenido |
 | GET | `/imports?month=` | S | |
 | GET | `/imports/:id` | S | Vista previa: filas extraídas, problemas y diferencias con la foto vigente |
 | PATCH | `/imports/:id/decisions` | S | `{ categoryMappings }` → vuelve a validar |
 | POST | `/imports/:id/confirm` | S | 201 `{ snapshotId }`; 200 si ya estaba confirmada; 409 si caducó o tiene errores |
 | DELETE | `/imports/:id` | S | Descarta la vista previa |
+
+**Estado (3b.1, PR 1 de 3):** hechos `POST /imports/plan-excel`, `GET /imports`, `GET /imports/:id` y `DELETE /imports/:id`. Quedan para el PR 2 `PATCH /imports/:id/decisions` y `POST /imports/:id/confirm`. `fileName` es obligatorio (solo se usa para comprobar la extensión y mostrarlo, saneado). Los rechazos del archivo (nivel 1) son 413 (`FILE_TOO_LARGE`), 415 (`FILE_NOT_OOXML`: no es OOXML o la extensión no es `.xlsx`/`.xlsm`) y 422 (`FILE_ZIP_LIMITS`, `FILE_HAS_MACROS`, `FILE_EXTERNAL_LINKS`), con el código del catálogo en `errors[].path`, y no crean lote. `DELETE` es idempotente: descarta una vista previa o un lote fallido; 409 si el lote ya está confirmado.
 
 El archivo se recibe con `express.raw({ type: [...], limit: '5mb' })`, **sin multipart**. Así no hace falta `multer` y el archivo nunca se escribe en disco.
 
@@ -828,6 +832,26 @@ subida ──▶ failed (estructura inválida)
 - Las categorías con gasto real y sin plan aparecen como «sin presupuesto».
 - Columnas: plan, real, diferencia (real − plan) y % ejecutado. También hay una fila de ingresos plan frente a real.
 
+### 3.9 Decisiones de la fase 3b.1, PR 1 (lector, validación y vista previa)
+
+- **Lector propio, sin dependencias** [RESUELTO por el *spike*]: ZIP con `node:zlib` (`maxOutputLength`) y un XML estricto que rechaza todo DTD. Comparación con SheetJS, ExcelJS, `read-excel-file` y `fast-xml-parser` en [`dependencias.md`](dependencias.md#lectura-del-excel-fase-3b1-lector-propio-sin-dependencias). Motivo principal: ASVS 5.2.3 exige limitar lo que realmente se descomprime, y los tamaños que declara un ZIP los controla quien lo sube.
+- **El archivo nunca se guarda**: `express.raw` en memoria, sin `multer`. `POST /imports/plan-excel` es S+ y la reautenticación se comprueba **antes** de leer el cuerpo. Es la única ruta exenta de «cuerpo JSON» (`requireJsonBody([UPLOAD_PATH])`); ver ASVS 3.5.2.
+- **Función pura** `parsePlanExcel(bytes, { fileName, month, resolveCategory })` → `rejected` (nivel 1, sin lote), `failed` (nivel 2) o `preview` (niveles 3 y 4). Sin base de datos ni disco: se prueba con archivos construidos en memoria.
+- **Correspondencia de categorías (provisional hasta el PR 2)**: el nombre de la categoría de Presupuesto, normalizado (§3 del contrato), se busca entre las categorías de **gasto activas** de la app. Un nombre ambiguo (dos categorías que normalizan igual) no se resuelve. Sin correspondencia → `CATEGORY_UNMAPPED` (error que bloquea). La tabla persistente `plan_category_mappings` y `PATCH decisions` llegan en el PR 2.
+- **`content_hash`**: SHA-256 de la serialización canónica de las entradas con la versión de la plantilla. **No** incluye `categoryId` (es una decisión) ni valores en caché ni metadatos: el mismo contenido guardado otra vez da el mismo hash. La comprobación de idempotencia contra la foto vigente es del PR 2 (todavía no hay fotos).
+- **Entradas por referencia de fila**: lo extraído guarda las relaciones como `source_row` de Datos (`itemRow`, `amountItemRow`, listas de filas de los escenarios), exactamente lo que enlazarán las claves ajenas compuestas de las tablas `plan_*`.
+- **Decisiones donde el contrato no fija el código o la severidad** (anotadas también en `plantilla-excel.md`):
+  - Extensión distinta de `.xlsx`/`.xlsm` → `FILE_NOT_OOXML` (415).
+  - Meses con más de 2 decimales → `AMOUNT_PRECISION`; negativos → `AMOUNT_NEGATIVE`.
+  - Meta de fondo de emergencia repetida → `VALUE_NOT_IN_LIST` en la segunda (hay un índice único parcial). Más de una fila «Meses de fondo de emergencia» → `EMERGENCY_FUND_MONTHS_DUPLICATED` aunque no haya meta, por el mismo índice.
+  - Unidad incorrecta en una referencia de **Metas** → `REF_UNIT_MISMATCH` como **error** (decide el cálculo, como en Presupuesto). Unidad no esperada para el tipo de registro → `TYPE_SIGNAL_MISMATCH` (aviso).
+  - `SUMMARY_UNEXPECTED`: tras la etiqueta de inicio, las filas **consecutivas** deben llevar las demás etiquetas en orden.
+  - Tres avisos de §6.3 que no tenían código se añadieron al catálogo (§11): `EVENT_INCLUDED_BUT_CLOSED`, `EVENT_OVERDUE` y `EVENT_AFTER_HORIZON` (información).
+  - **No implementado**: la información «solo coincide tras quitar los acentos» de §3 (el catálogo no tiene código para ella) y `CACHED_VALUE_DIFF` (necesita los cálculos de la 3b.2).
+- **Límites propios** (no del contrato): 100.000 celdas por hoja, 5.000 filas por tabla, 2.000 problemas por archivo, rangos de `SUM` de hasta 1.000 filas y XML de hasta 64 niveles. Superarlos es `FILE_ZIP_LIMITS` (o `REF_UNSUPPORTED` para el rango). Ver `docs/seguridad/limites.md`.
+- **Fixtures generadas por código** (`apps/api/test/fixtures/`): el libro válido ficticio se construye en `plan-workbook.ts` con un escritor OOXML de pruebas (`xlsx-builder.ts`) y se guarda como `plan-ficticio-v2.xlsx`; las variantes con errores se generan en los tests a partir de una copia. **No es lo que pide `plantilla-excel.md` §12** (un archivo creado a mano y guardado por Excel). Guía para crearlo: [`guia-fixture-excel.md`](guia-fixture-excel.md).
+- **Comprobación pendiente cuando exista la fixture guardada por Excel**: (1) las fórmulas compartidas — Excel guarda `<f t="shared" ref="…" si="n">` en la celda maestra y `<f t="shared" si="n"/>` en las demás, y la fixture por código solo reproduce **mi lectura** de esa forma; hay que comprobar que el lector expande **cada** celda de Presupuesto·Mensual, Presupuesto·Estado, Metas y Escenarios a la fila correcta de Datos (en particular, referencias con `$` mixtos, y que Excel no convierta un rango rellenado hacia abajo en una forma distinta); (2) los formatos de fecha guardados por Excel (integrado 14, personalizados, 1904); (3) las cadenas compartidas con texto enriquecido; (4) que `docProps/` y los comentarios reales se ignoran; (5) que un `.xlsm` sin macros se acepta. Hasta entonces, la cobertura de §12 está **incompleta** y los tests que dependen de ella lo indican (`fixture.test.ts`).
+
 ---
 
 ## 4. (d) Evaluación crítica del stack y de las librerías
@@ -859,7 +883,7 @@ Licencias y estado de mantenimiento según lo consultado en noviembre de 2026; h
 | **Acceso a datos y migraciones** | Prisma · Drizzle · **Kysely** · TypeORM · Knex · node-pg-migrate + SQL | **Kysely** + `pg` + migraciones con el `Migrator` de Kysely (SQL escrito a mano) + `kysely-codegen` para generar los tipos a partir de la base de datos | El SQL es de primera clase: `CHECK`, FK compuestas, índices parciales, `tsvector` y restricciones diferibles se escriben tal cual. Las consultas se parecen al SQL (aprendes SQL, que vale más en una entrevista). No es un ORM con magia. MIT. Publica versiones con regularidad (0.28.x) | Versión estable actual. Que `kysely-codegen` genere bien las columnas `GENERATED` y los arrays. Que el tipado de `CamelCasePlugin` funcione |
 | | Drizzle (alternativa) | Reconsiderarlo cuando publique la 1.0 estable | El esquema en TypeScript infiere los tipos sin generación de código | **La 1.0 seguía en release candidate** [VERIFICAR]: habría cambios incompatibles al migrar desde la 0.x |
 | | Prisma (descartado) | — | Buena experiencia de desarrollo, pero `tsvector` es `Unsupported`, los `CHECK` se escriben a mano en la migración y el DSL esconde el SQL | — |
-| **Lectura del Excel** | **SheetJS CE** · ExcelJS · OOXML a mano (zip + XML) | **Spike de 1 día al empezar la fase 3** con la fixture ficticia. Preselección: **SheetJS CE ≥ 0.20.x** instalado desde su CDN oficial, con la versión fijada y el *tarball* guardado en el repositorio | Lee el texto de las fórmulas (`cellFormula`), las fechas y el sistema 1904. Apache-2.0 | **El paquete `xlsx` del registro npm está anclado en 0.18.5, con CVE conocidos** (p. ej., CVE-2023-30533); las versiones corregidas solo se publican en `cdn.sheetjs.com`. Dependabot no lo vigila → revisión manual trimestral. Comprobar que expande las **fórmulas compartidas** a cada celda y que acepta `.xlsm` |
+| **Lectura del Excel** | **SheetJS CE** · ExcelJS · `read-excel-file` · OOXML a mano (zip + XML) | **[DECIDIDO en la 3b.1] Lector propio sobre `node:zlib`, sin dependencias** (§3.9; comparación en `docs/dependencias.md`). Antes: spike con preselección de **SheetJS CE ≥ 0.20.x** desde su CDN, con el *tarball* en el repositorio | Lee el texto de las fórmulas (`cellFormula`), las fechas y el sistema 1904. Apache-2.0 | **El paquete `xlsx` del registro npm está anclado en 0.18.5, con CVE conocidos** (p. ej., CVE-2023-30533); las versiones corregidas solo se publican en `cdn.sheetjs.com`. Dependabot no lo vigila → revisión manual trimestral. Comprobar que expande las **fórmulas compartidas** a cada celda y que acepta `.xlsm` |
 | | ExcelJS | Plan B | MIT y en npm | **Sin versiones desde la 4.4.0 (2023) y con muchas incidencias abiertas** (Snyk lo marca como inactivo) [VERIFICAR] |
 | | OOXML a mano | Plan C | Control total y cero dependencias de Excel | Unos cientos de líneas propias; lo más delicado es detectar las fechas (estilos y `numFmt`) |
 | **Gráficos** | Recharts · Chart.js + react-chartjs-2 · ECharts · visx · **SVG propio** | **[DECIDIDO en la 1c] SVG propio**, sin librería | Son tres gráficos estáticos (barras agrupadas, barras horizontales y líneas). Recharts 3.10.1 trae 11 dependencias directas y 7,4 MB desempaquetado; el repositorio es público y cada dependencia amplía la superficie. Cada gráfico lleva `role="img"` y una tabla con los mismos datos. Comparación completa y cuándo reconsiderarlo: [`docs/dependencias.md`](dependencias.md#librería-de-gráficos-fase-1c-svg-propio-en-lugar-de-recharts) | Si la fase 3b.3 (dashboard) necesita tooltips, zoom o animaciones, se reevalúa Recharts con esa necesidad delante |
@@ -1414,10 +1438,11 @@ Tamaños relativos (S, M, L, XL). No pongo días porque no conozco tu ritmo y un
     - **PR 2 de 2 (hecho): pantalla «Presupuesto»** (`/presupuesto`: selector de mes, una fila por categoría con presupuestado, gastado, restante y barra con aviso por texto e icono al llegar al 80 % y al pasarse, gastos sin presupuesto, totales, alta, edición y borrado, y «Copiar del mes anterior»). `GET /export` incluye ya los presupuestos (`EXPORT_FORMAT_VERSION` = 2). `POST /budgets/copy-previous` responde siempre 200 con los recuentos.
     - Fuera de 3a, a la espera de decidir: avisos al pasarse (pregunta 37) y gastos recurrentes (pregunta 38).
   - **3b. Importación del Excel** · tamaño XL. Rellena ese mismo presupuesto y trae el resto del plan; sus tres partes (antes 3a, 3b y 3c) son:
-  - **3b.1. Importación**
-    - Spike de la librería de Excel (§4.2).
-    - Fixture ficticia hecha a mano en Excel, con los resultados esperados calculados a mano.
-    - Lectura, validación de los 4 niveles, vista previa, correspondencia de categorías, confirmación, fotos e idempotencia.
+  - **3b.1. Importación**, en 3 PR:
+    - **PR 1 de 3 (hecho): lector, validación y vista previa.** Spike de la librería (resultado: lector propio, §3.9), fixtures ficticias por código, lectura y validación de los 4 niveles con un test por cada código del catálogo (salvo `CACHED_VALUE_DIFF`, de la 3b.2), `import_batches` (migración `0009`) y `POST /imports/plan-excel`, `GET /imports[/:id]` y `DELETE /imports/:id`.
+    - **PR 2 de 3: confirmación.** Tablas `plan_*` y `plan_category_mappings`, `PATCH decisions`, `POST confirm` en una sola transacción (foto vigente, idempotencia por `content_hash`, bloqueo por mes), relleno de `category_budgets` a través del servicio de presupuestos y trabajo de caducidad a las 24 h.
+    - **PR 3 de 3: pantalla web** (subir, elegir el mes, vista previa con problemas, resolver categorías y confirmar).
+    - **Pendiente de tu parte:** la fixture guardada por Excel (`plantilla-excel.md` §12; guía en `docs/guia-fixture-excel.md`) y la comprobación de fórmulas compartidas reales descrita en §3.9. Los resultados esperados calculados a mano (`plan-ficticio-v2.expected.md`) cubren por ahora la extracción; los de los cálculos llegan con la 3b.2.
   - **3b.2. Cálculos** (funciones puras): presupuesto, proyección, metas, escenarios y checks, con sus endpoints.
   - **3b.3. Interfaz**: dashboard del plan (indicadores y 3 gráficos) y comparativa entre plan y realidad.
 - **Terminado cuando**

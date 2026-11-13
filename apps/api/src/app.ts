@@ -20,6 +20,7 @@ import { noStore, requireJsonBody, requireSameOrigin, securityHeaders } from './
 import type { Clock } from './lib/clock.ts';
 import { createAuthModule, getSession, type PasswordBreachChecker } from './modules/auth/index.ts';
 import { createFinanceModule } from './modules/finance/index.ts';
+import { createImportsModule, UPLOAD_PATH } from './modules/imports/index.ts';
 import { createNotesModule } from './modules/notes/index.ts';
 import { createNotificationsModule } from './modules/notifications/index.ts';
 import { createTasksModule } from './modules/tasks/index.ts';
@@ -63,7 +64,7 @@ export function createApp(deps: AppDependencies): Express {
   const api = express.Router();
   api.use(noStore);
   api.use(requireSameOrigin(deps.publicOrigin));
-  api.use(requireJsonBody);
+  api.use(requireJsonBody([UPLOAD_PATH]));
   api.use(express.json({ limit: JSON_BODY_LIMIT }));
   api.use(auth.loadSession);
   api.use(auth.verifyCsrf);
@@ -77,20 +78,27 @@ export function createApp(deps: AppDependencies): Express {
   // Denegar por defecto: cualquier otra ruta exige una sesión activa. Una ruta inexistente responde
   // 401 sin sesión y 404 con ella, así que no se puede descubrir qué rutas existen sin autenticarse.
   api.use(auth.guard('active'));
+  const finance = createFinanceModule({
+    db: deps.db,
+    clock: deps.clock,
+    requireReauth: auth.guard('active_reauth'),
+    recordExport: async (req, res, counts) => {
+      const session = getSession(res);
+      if (session === null) throw new AppError('UNAUTHENTICATED', 401, 'Sesión no iniciada');
+      await auth.service.recordDataExport(
+        session,
+        { ip: req.ip ?? null, userAgent: req.get('user-agent') ?? null },
+        counts,
+      );
+    },
+  });
+  api.use(finance.router);
   api.use(
-    createFinanceModule({
+    createImportsModule({
       db: deps.db,
       clock: deps.clock,
+      categories: finance.ledger,
       requireReauth: auth.guard('active_reauth'),
-      recordExport: async (req, res, counts) => {
-        const session = getSession(res);
-        if (session === null) throw new AppError('UNAUTHENTICATED', 401, 'Sesión no iniciada');
-        await auth.service.recordDataExport(
-          session,
-          { ip: req.ip ?? null, userAgent: req.get('user-agent') ?? null },
-          counts,
-        );
-      },
     }).router,
   );
   const notifications = createNotificationsModule({

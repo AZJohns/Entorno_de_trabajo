@@ -84,6 +84,7 @@ Además se comprueba la lista local de 3.000 contraseñas comunes de 15 o más c
 | Argon2id de contraseñas | 64 MiB de memoria y unos 130 ms de CPU por hash (desarrollo) | Login, desbloqueo, reautenticación, cambio de contraseña (verificar la actual + calcular la nueva), scripts | Límites de peticiones de §1; el resto exige una sesión completa. Tope de 1.024 caracteres antes del hash |
 | Argon2id de códigos de recuperación | 19 MiB por hash; hasta 10 hashes por intento | Segundo factor con código de recuperación | Límite por IP y 5 fallos por sesión |
 | Consulta a Pwned Passwords | Una petición HTTPS saliente, 5 s como mucho | Cambio y restablecimiento de contraseña, alta del usuario | Exige reautenticación reciente; fallo cerrado si no responde |
+| Lectura del Excel del plan | Descomprimir y analizar hasta 50 MB de XML en el hilo de la API (CPU y memoria) | `POST /imports/plan-excel` | Exige reautenticación reciente (S+) antes de leer ni un byte del cuerpo; 5 MB de subida; 50 MB descomprimidos y 200 entradas comprobados antes de descomprimir y cortados durante la descompresión; 100.000 celdas por hoja, 5.000 filas por tabla y 2.000 problemas; analizador XML sin DTD ni entidades y de profundidad acotada; expresiones regulares sin cuantificadores anidados sobre texto ya acotado. No se ejecuta nada del archivo |
 
 ## 7. Índice de todos los límites (ASVS 2.1.3)
 
@@ -100,7 +101,9 @@ Un solo sitio para encontrarlos. «Dónde» es la fuente de verdad; si un valor 
 | Fallos por sesión (segundo factor, desbloqueo, reautenticación) | 5 → se revoca la sesión | §1 | Hecho |
 | Resto de la API (lectura y escritura del libro) | **Sin límite hoy.** Diseño: 300 por minuto (`plan.md` §6) | — | **Fase 2** (ASVS 2.4.1) |
 | Ingesta (`/ingest/*`) | Diseño: 30 por minuto por token | — | **Fase 2** |
-| Subida del Excel | Diseño: 5 MB | `plan.md` (importación) | **Fase 3** |
+| Subida del Excel | 5 MB → 413 `FILE_TOO_LARGE`; solo `octet-stream` y los tipos de Excel; reautenticación reciente (S+) | `MAX_FILE_BYTES` en `apps/api/src/modules/imports/domain/template.ts`; `imports.routes.ts` | Hecho (`apps/api/test/imports/api-imports.test.ts`) |
+| ZIP del Excel | ≤ 200 entradas y ≤ 50 MB descomprimidos → 422 `FILE_ZIP_LIMITS` (antes de descomprimir y durante la descompresión) | `MAX_ZIP_ENTRIES`, `MAX_UNCOMPRESSED_BYTES` en `template.ts`; `domain/zip.ts` | Hecho (`apps/api/test/imports/zip.test.ts`) |
+| Hoja del Excel | ≤ 100.000 celdas con contenido, ≤ 5.000 filas por tabla, ≤ 2.000 problemas por archivo, rangos de `SUM` de ≤ 1.000 filas, XML de ≤ 64 niveles → `FILE_ZIP_LIMITS` o `REF_UNSUPPORTED`. Límites propios, no del contrato | `MAX_CELLS_PER_SHEET` (`workbook.ts`), `MAX_TABLE_ROWS`, `MAX_ISSUES` (`template.ts`), `MAX_DEPTH` (`xml.ts`) | Hecho (`apps/api/test/imports/parse-plan.test.ts`, `xml.test.ts`) |
 
 La API del libro está tras una sesión completa y un solo usuario, y la opción de despliegue D es privada: por eso el límite general puede esperar a la fase 2. Con la opción A (pública) habría que adelantarlo.
 
@@ -163,3 +166,4 @@ El último punto es un riesgo aceptado: con miles de movimientos la respuesta pe
 | Ventana de reautenticación | 10 min | §4 |
 | Token de dispositivo | ≤ 366 días | `CHECK` de `device_tokens` (fase 2) |
 | Consulta a Pwned Passwords | 5 s | §6 |
+| Vista previa de una importación | 24 h; después cuenta como caducada (la limpieza que vacía `extracted` llega en el PR 2) | `PREVIEW_TTL_MS` en `imports.service.ts` |

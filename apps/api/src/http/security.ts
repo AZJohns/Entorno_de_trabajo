@@ -82,13 +82,26 @@ export function requireSameOrigin(publicOrigin: string): RequestHandler {
 /**
  * Las peticiones con cuerpo deben ser JSON (ASVS 3.5.2: un formulario de otra web no puede enviar
  * `application/json` sin una petición previa de CORS, que este servidor no autoriza).
+ *
+ * @param rawUploadPaths Rutas (sin `/api/v1`) de las subidas de archivos en binario, que no pueden ser
+ *   JSON. Solo POST y solo esas rutas exactas. La defensa contra CSRF sigue en pie: el mismo origen, el
+ *   token CSRF en una cabecera propia y un tipo de contenido que un formulario HTML no puede enviar (la
+ *   ruta solo lee `application/octet-stream` y los tipos de Excel, nunca `text/plain` ni formularios).
  */
-export const requireJsonBody: RequestHandler = (req, _res, next) => {
-  const hasBody =
-    req.get('transfer-encoding') !== undefined || Number(req.get('content-length') ?? '0') > 0;
-  if (isUnsafeMethod(req.method) && hasBody && req.is('application/json') === false) {
-    next(new AppError('UNSUPPORTED_MEDIA_TYPE', 415, 'El cuerpo debe ser application/json'));
-    return;
-  }
-  next();
-};
+export function requireJsonBody(rawUploadPaths: readonly string[] = []): RequestHandler {
+  return (req, _res, next) => {
+    const hasBody =
+      req.get('transfer-encoding') !== undefined || Number(req.get('content-length') ?? '0') > 0;
+    const isUpload = req.method === 'POST' && rawUploadPaths.includes(req.path);
+    if (
+      isUnsafeMethod(req.method) &&
+      hasBody &&
+      !isUpload &&
+      req.is('application/json') === false
+    ) {
+      next(new AppError('UNSUPPORTED_MEDIA_TYPE', 415, 'El cuerpo debe ser application/json'));
+      return;
+    }
+    next();
+  };
+}

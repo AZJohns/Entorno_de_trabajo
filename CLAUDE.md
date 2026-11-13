@@ -68,6 +68,7 @@ Si no puedes ejecutarlos, dilo explícitamente. Nunca desactives, saltes ni borr
 - No registres en los logs cookies, tokens, contraseñas ni cuerpos de petición con datos financieros.
 - Nunca guardes números de tarjeta ni credenciales bancarias: de cada tarjeta solo se guarda su nombre en Wallet.
 - No evalúes ni ejecutes nada del contenido de los archivos subidos.
+- Nunca leas, muestres ni copies `.env`. Para conocer las variables usa `.env.example` y `apps/api/src/config/env.ts`. Si necesitas un valor, pídemelo.
 
 ## Git
 - Commits pequeños y con un mensaje descriptivo en español. No hagas push directo a `main`: siempre mediante PR con la CI en verde.

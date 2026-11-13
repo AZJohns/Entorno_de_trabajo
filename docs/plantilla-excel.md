@@ -30,7 +30,7 @@
 
 | Propiedad | Regla | Severidad |
 |---|---|---|
-| Extensión | `.xlsx`, la recomendada [DECISIÓN: se guarda como `.xlsx`]. También se acepta `.xlsm` mientras dure la transición | error si es otra |
+| Extensión | `.xlsx`, la recomendada [DECISIÓN: se guarda como `.xlsx`]. `.xlsm` se admite **solo si no lleva macros** (ver la fila «Macros»): para el importador es un libro como otro cualquiera. No se emite ningún aviso por la extensión: el riesgo real son las macros, y esas ya se rechazan por su contenido (`FILE_HAS_MACROS`), no por el nombre; un aviso nuevo exigiría un código más en el catálogo sin proteger de nada más. Nunca se ejecuta, interpreta ni abre nada del libro. Se recomienda guardarlo como `.xlsx` | error si es otra |
 | Tamaño | ≤ 5 MB. Valor inicial; se ajusta midiendo la plantilla real | error |
 | Contenedor | ZIP válido: empieza por `PK\x03\x04` y contiene `[Content_Types].xml` y `xl/workbook.xml`. Se ignora el tipo MIME que declara el navegador | error |
 | Límites del ZIP (protección contra *zip bombs*) | Descomprimido ≤ 50 MB y ≤ 200 entradas | error |
@@ -271,8 +271,10 @@ Lista cerrada (validación de datos en Excel):
 |---|---|
 | La referencia Presupuesto · Mensual | `expense` |
 | La referencia Eventos · Importe | `one_off_payment`, `expense` o `scenario` |
+| El multiplicador en meses de un PRODUCT2 de Eventos (el plazo) | `assumption` |
 | La referencia Metas | `goal`, `savings_balance` o `assumption` |
-| La referencia Escenarios | `scenario`, `expense` o `income` |
+| La referencia Escenarios · Extra mensual (C) | `scenario`, `expense` o `income` |
+| La referencia Escenarios · Pago puntual (D) | `scenario`, `expense`, `income` o `one_off_payment` |
 | La unidad no coincide con la esperada para su tipo | — |
 | Fila `expense` incluida que ninguna línea de Presupuesto referencia | aviso `EXPENSE_NOT_BUDGETED` |
 
@@ -420,6 +422,13 @@ Formato de cada problema: `{ code, severity: "error" | "warning" | "info", sheet
 | `TYPE_SIGNAL_MISMATCH` | warning | El tipo de registro no encaja con el uso de la fila |
 | `EXPENSE_NOT_BUDGETED` | warning | Hay un gasto de Datos sin línea de Presupuesto |
 | `CACHED_VALUE_DIFF` | info | El valor que guarda Excel difiere del recálculo |
+| `EVENT_INCLUDED_BUT_CLOSED` | warning | Un evento incluido en la proyección tiene el estado `Pagado`, `Finalizado` o `No activo` (§6.3) |
+| `EVENT_OVERDUE` | warning | Un evento incluido y no pagado tiene una fecha anterior al mes 1 (§6.3) |
+| `EVENT_AFTER_HORIZON` | info | Un evento incluido tiene una fecha posterior al mes 12 (§6.3) |
+
+Los tres últimos códigos se añadieron en la fase 3b.1: §6.3 pedía esos avisos pero la revisión 3 del catálogo no les daba código.
+
+**Decisiones de la 3b.1 donde este documento no fijaba el código o la severidad:** una extensión distinta de `.xlsx`/`.xlsm` es `FILE_NOT_OOXML`; los meses con más de 2 decimales, `AMOUNT_PRECISION`, y negativos, `AMOUNT_NEGATIVE`; una segunda meta de fondo de emergencia, `VALUE_NOT_IN_LIST`; en Metas, una referencia a una fila con otra unidad es `REF_UNIT_MISMATCH` **error**; el aviso «solo coinciden tras quitar los acentos» (§3) no se emite por no tener código. Detalle en `docs/plan.md` §3.9.
 
 Eliminados respecto a la revisión 1: `MONTH_MISMATCH` (no existe esa celda) y `EVENT_CONTRADICTION` (se elimina «Impacto base»).
 
@@ -439,7 +448,8 @@ Eliminados respecto a la revisión 1: `MONTH_MISMATCH` (no existe esa celda) y `
   - Escenarios con ZERO, REF y SUMRANGE, que crucen los umbrales del 0 %, el 20 % y el 40 %, y uno que provoque `SCENARIO_ITEM_ALREADY_IN_BASE`.
   - Una línea esencial pendiente y una categoría sin correspondencia.
   - Una validación limitada a un rango corto y una columna de lista sin validación (como Unidad en la v1), con un valor fuera del catálogo después del rango, para comprobar que el importador lo detecta igualmente.
-- Los **resultados esperados se calculan a mano** (`plan-ficticio-v2.expected.md`).
+- Los **resultados esperados** se calculan a mano (`plan-ficticio-v2.expected.md`).
+- **Estado (3b.1):** mientras no exista la fixture guardada por Excel, `apps/api/test/fixtures/plan-ficticio-v2.xlsx` la genera **código** (`plan-workbook.ts`), con la misma disposición y cobertura. No sustituye a la de Excel: ver `docs/guia-fixture-excel.md` y la comprobación pendiente de fórmulas compartidas en `docs/plan.md` §3.9.
 - Las validaciones de datos de Excel **no sustituyen** a las del importador: Excel no revisa los valores que ya existían al crear la validación, ni los pegados. Por eso el importador valida siempre todas las filas contra los catálogos.
 - Las variantes con errores se generan en los tests a partir de una copia de la fixture válida.
 - Antes de hacer commit, se revisan los metadatos que añada Excel (`docProps/core.xml`: autor, empresa) y se vacían.
