@@ -155,6 +155,11 @@ export interface CategoryBudgetsTable {
   /** Constante `'expense'`: solo existe para la clave ajena compuesta con `categories`. */
   kind: Defaulted<'expense'>;
   amount_cents: CentsColumn;
+  /**
+   * Foto del plan (importación del Excel) que creó este presupuesto; NULL si es manual (migración 0010).
+   * Opcional al insertar y al cambiar: un presupuesto creado a mano no lo indica.
+   */
+  source_snapshot_id: ColumnType<string | null, string | null | undefined, string | null>;
   created_at: Defaulted<Date>;
   updated_at: Defaulted<Date>;
 }

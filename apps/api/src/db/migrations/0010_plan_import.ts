@@ -31,6 +31,14 @@
  *   · `category_id → categories`: RESTRICT, como en `category_budgets`: las categorías se archivan, no se
  *     borran. La FK es compuesta `(category_id, kind)` con `kind = 'expense'`: **la base de datos impide
  *     que una línea del presupuesto o una correspondencia apunten a una categoría de ingreso**.
+ * - **Origen de los presupuestos importados** (`category_budgets.source_snapshot_id`): la confirmación de un
+ *   mes que ya tiene foto sustituye los presupuestos que creó la foto anterior y no toca los creados a mano
+ *   (docs/plan.md §2.3 y pregunta 39), así que hay que saber de qué foto viene cada uno. NULL = creado a
+ *   mano (alta manual, `copy-previous`, o un presupuesto importado que se editó a mano). La FK es compuesta
+ *   `(source_snapshot_id, month)` → `plan_snapshots(id, month)`: la base de datos impide citar una foto de
+ *   otro mes. `ON DELETE SET NULL (source_snapshot_id)` (PostgreSQL ≥ 15; la columna de la lista deja
+ *   intacto `month`, que es NOT NULL): si una foto desapareciera, sus presupuestos pasan a «manuales» y
+ *   nunca se borran solos. Ninguna tabla referencia `category_budgets`, así que borrar uno no arrastra nada.
  * - `plan_category_mappings` guarda solo decisiones del usuario (nombre normalizado → categoría); las
  *   correspondencias automáticas por nombre no se guardan porque se vuelven a calcular al subir.
  */
@@ -105,7 +113,9 @@ export async function up(db: Kysely<unknown>): Promise<void> {
         superseded_at IS NULL OR superseded_at >= created_at
       ),
       -- El mismo contenido no vuelve a ser una foto del mismo mes (ni siquiera una antigua).
-      CONSTRAINT plan_snapshots_month_content_key UNIQUE (month, content_hash)
+      CONSTRAINT plan_snapshots_month_content_key UNIQUE (month, content_hash),
+      -- Para la FK compuesta de category_budgets: el origen de un presupuesto es una foto de SU mes.
+      CONSTRAINT plan_snapshots_id_month_key UNIQUE (id, month)
     )
   `.execute(db);
   // Una única foto vigente por mes: es lo que impide que dos confirmaciones simultáneas la dupliquen.
@@ -290,9 +300,24 @@ export async function up(db: Kysely<unknown>): Promise<void> {
         REFERENCES categories (id, kind) ON DELETE RESTRICT
     )
   `.execute(db);
+
+  await sql`
+    ALTER TABLE category_budgets
+      ADD COLUMN source_snapshot_id uuid,
+      ADD CONSTRAINT category_budgets_source_snapshot_fkey FOREIGN KEY (source_snapshot_id, month)
+        REFERENCES plan_snapshots (id, month) ON DELETE SET NULL (source_snapshot_id)
+  `.execute(db);
+  // Localiza los presupuestos importados de un mes (los que sustituye una confirmación). Parcial: los
+  // manuales, que son casi todos, no ocupan sitio.
+  await sql`
+    CREATE INDEX category_budgets_source_snapshot_idx ON category_budgets (source_snapshot_id)
+      WHERE source_snapshot_id IS NOT NULL
+  `.execute(db);
 }
 
 export async function down(db: Kysely<unknown>): Promise<void> {
+  // Primero la columna de origen (arrastra su FK y su índice): después ya se pueden borrar las fotos.
+  await sql`ALTER TABLE category_budgets DROP COLUMN IF EXISTS source_snapshot_id`.execute(db);
   await sql`DROP TABLE IF EXISTS plan_category_mappings`.execute(db);
   await sql`DROP TABLE IF EXISTS plan_scenario_items`.execute(db);
   await sql`DROP TABLE IF EXISTS plan_scenarios`.execute(db);

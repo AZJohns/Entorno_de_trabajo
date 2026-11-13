@@ -26,6 +26,7 @@ const NOW = new Date('2026-11-03T09:00:00Z');
 const LATER = new Date('2026-11-04T09:00:00Z');
 
 beforeEach(async () => {
+  await db.deleteFrom('category_budgets').execute();
   await db.deleteFrom('plan_category_mappings').execute();
   await db.deleteFrom('plan_snapshots').execute();
   await db.deleteFrom('import_batches').execute();
@@ -746,5 +747,65 @@ describe('import_batches (ampliado en la 0010)', () => {
       .set({ status: 'confirmed', confirmed_at: NOW, extracted: null })
       .where('id', '=', batchId)
       .execute();
+  });
+});
+
+// --- category_budgets.source_snapshot_id -------------------------------------------------------------
+
+describe('category_budgets.source_snapshot_id (origen de los presupuestos importados)', () => {
+  const insertBudget = (categoryId: string, month: string, sourceSnapshotId: string | undefined) =>
+    db
+      .insertInto('category_budgets')
+      .values({
+        month,
+        category_id: categoryId,
+        amount_cents: 1000,
+        ...(sourceSnapshotId === undefined ? {} : { source_snapshot_id: sourceSnapshotId }),
+      })
+      .execute();
+  const sourceOf = async (categoryId: string) =>
+    (
+      await db
+        .selectFrom('category_budgets')
+        .select('source_snapshot_id')
+        .where('category_id', '=', categoryId)
+        .executeTakeFirstOrThrow()
+    ).source_snapshot_id;
+
+  it('un presupuesto manual no lleva origen (por defecto NULL)', async () => {
+    const categoryId = await newCategory('expense');
+    await insertBudget(categoryId, '2026-11-01', undefined);
+    expect(await sourceOf(categoryId)).toBeNull();
+  });
+
+  it('admite como origen una foto del mismo mes', async () => {
+    const snapshotId = await newSnapshot('2026-11-01');
+    const categoryId = await newCategory('expense');
+    await insertBudget(categoryId, '2026-11-01', snapshotId);
+    expect(await sourceOf(categoryId)).toBe(snapshotId);
+  });
+
+  it('rechaza como origen una foto de otro mes o que no existe', async () => {
+    const december = await newSnapshot('2026-12-01');
+    const categoryId = await newCategory('expense');
+    await expect(insertBudget(categoryId, '2026-11-01', december)).rejects.toThrow(
+      /category_budgets_source_snapshot_fkey/u,
+    );
+    await expectRejected(() =>
+      insertBudget(categoryId, '2026-11-01', '00000000-0000-4000-8000-000000000000'),
+    );
+  });
+
+  it('si la foto desaparece, el presupuesto se conserva y pasa a manual (SET NULL, sin tocar el mes)', async () => {
+    const snapshotId = await newSnapshot('2026-11-01');
+    const categoryId = await newCategory('expense');
+    await insertBudget(categoryId, '2026-11-01', snapshotId);
+    await db.deleteFrom('plan_snapshots').where('id', '=', snapshotId).execute();
+    const row = await db
+      .selectFrom('category_budgets')
+      .select(['month', 'source_snapshot_id', 'amount_cents'])
+      .where('category_id', '=', categoryId)
+      .executeTakeFirstOrThrow();
+    expect(row).toEqual({ month: '2026-11-01', source_snapshot_id: null, amount_cents: '1000' });
   });
 });

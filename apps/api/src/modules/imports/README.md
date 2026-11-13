@@ -63,7 +63,7 @@ En el nivel 1, `errors[].path` lleva el código del catálogo de problemas. Un l
 
 ### Decisiones y confirmación (PR 2)
 
-Razones de los 409 (`errors[].path`): `IMPORT_NOT_PREVIEW` (confirmado, descartado o fallido), `IMPORT_EXPIRED`, `IMPORT_HAS_ERRORS` (errores sin resolver; detalla hasta 20), `CONTENT_ALREADY_IMPORTED` (ese contenido ya fue una foto del mes y se sustituyó), `BUDGET_EXISTS` (una por categoría que ya tiene presupuesto ese mes) y, sin código propio, una categoría archivada. 422 en `PATCH decisions`: la clave no está en el lote o se repite, o la categoría no existe, es de ingreso o está archivada. Orden: 400 → 404 → 409 → 422.
+Razones de los 409 (`errors[].path`): `IMPORT_NOT_PREVIEW` (confirmado, descartado o fallido), `IMPORT_EXPIRED`, `IMPORT_HAS_ERRORS` (errores sin resolver; detalla hasta 20), `CONTENT_ALREADY_IMPORTED` (ese contenido ya fue una foto del mes y se sustituyó), `BUDGET_MANUAL_EXISTS` (una por categoría que ya tiene un presupuesto creado a mano ese mes) y, sin código propio, una categoría archivada. 422 en `PATCH decisions`: la clave no está en el lote o se repite, o la categoría no existe, es de ingreso o está archivada. Orden: 400 → 404 → 409 → 422.
 
 ```
 POST /imports/plan-excel ─▶ failed
@@ -88,7 +88,7 @@ POST /imports/plan-excel ─▶ failed
 - **Una vista previa caduca a las 24 h**: ya cuenta como caducada al leerla (no enseña las entradas, ni se puede confirmar o decidir sobre ella); el trabajo periódico la marca `expired` y vacía las entradas.
 - **Idempotencia**: el `content_hash` (sin metadatos, sin valores en caché, sin la elección de categorías) se compara con la foto del mes. Mismo contenido que la vigente: subida y confirmación devuelven 200 y no crean nada. Confirmar dos veces el mismo lote da 200 con el mismo `snapshotId` (`docs/plan.md` §3.6). Un contenido que ya fue una foto sustituida no se reactiva (409).
 - **Una sola transacción** (ASVS 2.3.3): bloqueo del mes (`pg_advisory_xact_lock`) → bloqueo de la fila del lote (`FOR UPDATE`) → foto nueva (la anterior pasa a `superseded`) y filas → `category_budgets` → correspondencias → lote `confirmed`. Si falla un paso no queda nada.
-- **Presupuesto por categoría** (`docs/plan.md` §3.10, preguntas 39 y 40 **por decidir**): suma, en céntimos enteros, de las líneas cuyo estado cuenta en el plan base; una categoría que suma 0 no crea presupuesto (`budgets.omitted`); si ya existe el presupuesto de esa categoría ese mes, 409 y no se escribe nada (no se sobrescribe).
+- **Presupuesto por categoría** (`docs/plan.md` §3.10): suma, en céntimos enteros, de las líneas cuyo estado cuenta en el plan base; una categoría que suma 0 no crea presupuesto (`budgets.omitted`; pregunta 40, **por decidir**). Al confirmar un mes que ya tiene foto, los presupuestos que creó la importación anterior **se sustituyen** (se actualizan, se borran los de categorías que ya no están o suman 0 y se crean los nuevos) y los creados a mano **no se tocan**: si chocan, 409 `BUDGET_MANUAL_EXISTS` y no se escribe nada (pregunta 39, resuelta). Un presupuesto importado y editado a mano con `PATCH /budgets/:id` pasa a manual, así que reimportar ese mes da 409 hasta resolverlo. La respuesta lleva `budgets: { created, updated, deleted, omitted }`.
 - **Límites** (`docs/seguridad/limites.md`): 5 MB; 50 MB descomprimidos y 200 entradas; 100.000 celdas por hoja; 5.000 filas por tabla; 2.000 problemas por archivo. Los tres últimos son propios y se notifican como `FILE_ZIP_LIMITS`.
 - Lo que el contrato no fija (código de la extensión incorrecta, severidad de la unidad en Metas, los tres avisos de eventos) está en `docs/plan.md` §3.9 y en `docs/plantilla-excel.md` §11.
 
@@ -101,6 +101,7 @@ POST /imports/plan-excel ─▶ failed
 | `zip.test.ts`, `xml.test.ts`, `formula.test.ts`, `workbook.test.ts` | Las piezas por separado, con archivos sintéticos hostiles (zip bomb, XXE, «billion laughs»…) |
 | `api-imports.test.ts`, `imports-schema.test.ts` | La API y la base de datos reales |
 | `api-confirm.test.ts` | Confirmar y `PATCH decisions` de punta a punta: filas del plan y presupuestos, importes exactos, rollback con un fallo forzado en PostgreSQL, doble confirmación secuencial y concurrente, sustitución de la foto, idempotencia, caducidad y los 400/404/409/422 |
+| `expiry.test.ts` | La caducidad a las 24 h con un reloj controlado: el límite exacto (1 ms antes vigente, a las 24 h `expired`), el trabajo `caducidad-de-importaciones` registrado en `createJobs` y que no toca lotes descartados ni fallidos |
 | `plan-schema.test.ts` | Las restricciones `CHECK`, `UNIQUE` y las claves ajenas de la migración `0010`, directamente en la base de datos |
 | `decisions.test.ts` | `budgetsByCategory` (agrupar, estados fuera del plan base, total 0, precisión) y las decisiones aplicadas al leer |
 | `fixture.test.ts` | `plan-ficticio-v2.xlsx` coincide con lo que genera `test/fixtures/plan-workbook.ts` y es un paquete OOXML válido (tipos de contenido y partes alcanzables por relaciones), sin depender de nuestro lector |

@@ -23,6 +23,7 @@ import type { Clock } from '../../../lib/clock.ts';
 import { lastDayOfMonth, previousMonth, type YearMonth } from '../ledger/domain/dates.ts';
 import { LedgerRepository, type CategoryRecord } from '../ledger/ledger.repository.ts';
 import { budgetProgress } from './domain/budget.ts';
+import { planBudgetChanges } from './domain/import-changes.ts';
 import { BudgetRepository, type BudgetRecord } from './budget.repository.ts';
 
 export interface BudgetServiceDeps {
@@ -131,22 +132,29 @@ export class BudgetService {
   }
 
   /**
-   * Crea de una vez los presupuestos de varias categorías en un mes. **Todo o nada** y **nunca
-   * sobrescribe**: si alguna categoría ya tiene presupuesto ese mes, no se crea ninguno y se responde 409
-   * con la lista completa de conflictos. Lo usa la importación del Excel (docs/plan.md §2.3b).
+   * Aplica al mes los presupuestos de una foto del plan recién creada (importación del Excel, docs/plan.md
+   * §2.3 y pregunta 39). **Sustituye** lo que creó una importación anterior y **no toca** lo creado a mano:
+   * - categoría que ya tenía un presupuesto importado: se actualiza (mismo registro) y pasa a la foto nueva;
+   * - categoría que ya no está en la foto (o suma 0): se borra su presupuesto importado, también si la
+   *   categoría está archivada;
+   * - categoría sin presupuesto: se crea;
+   * - categoría con un presupuesto **manual**: 409 `BUDGET_MANUAL_EXISTS` (con la lista completa) y no se
+   *   escribe nada. Un presupuesto importado y luego editado a mano cuenta como manual.
    *
-   * Pensado para ejecutarse dentro de una transacción del llamante (`withDb`): el 409 o el 422 abortan la
-   * operación y el llamante deshace todo lo demás.
+   * Pensado para ejecutarse dentro de una transacción del llamante (`withDb`): cualquier error aborta la
+   * operación y el llamante deshace todo lo demás. `items` solo lleva importes positivos (una categoría que
+   * suma 0 no se incluye: así se borra su presupuesto anterior).
    *
-   * Errores: 422 si una categoría no existe, no es de gasto, está repetida o el importe no es positivo;
-   * 409 si está archivada o el mes ya tiene presupuesto de esa categoría (también si otra petición lo crea
-   * a la vez: lo decide `UNIQUE (month, category_id)`).
+   * Errores: 422 si una categoría no existe, no es de gasto, está repetida o el importe no es positivo; 409 si
+   * está archivada (y se le asigna un importe) o choca con un presupuesto manual (también si otra petición lo
+   * crea a la vez: lo decide `UNIQUE (month, category_id)`).
    */
-  async createMany(
-    month: YearMonth,
-    items: readonly { readonly categoryId: string; readonly amountCents: number }[],
-  ): Promise<void> {
-    if (items.length === 0) return;
+  async applyImport(input: {
+    readonly month: YearMonth;
+    readonly snapshotId: string;
+    readonly items: readonly { readonly categoryId: string; readonly amountCents: number }[];
+  }): Promise<{ created: number; updated: number; deleted: number }> {
+    const { month, snapshotId, items } = input;
     const ids = items.map((item) => item.categoryId);
     if (new Set(ids).size !== ids.length) {
       throw unprocessable('categoryId', 'Hay una categoría repetida');
@@ -170,30 +178,51 @@ export class BudgetService {
     }
     const repo = new BudgetRepository(this.#deps.db);
     const first = `${month}-01`;
-    const existing = new Set((await repo.listByMonth(first)).map((budget) => budget.categoryId));
-    const conflicts = items.filter((item) => existing.has(item.categoryId));
-    if (conflicts.length > 0) {
+    const changes = planBudgetChanges(await repo.listOriginByMonth(first), items);
+    if (changes.conflicts.length > 0) {
       throw new AppError(
         'CONFLICT',
         409,
-        'Hay categorías que ya tienen presupuesto ese mes; no se sobrescribe ninguno',
-        conflicts.map((item) => ({
-          path: 'BUDGET_EXISTS',
-          message: `Ya hay un presupuesto de «${categories.get(item.categoryId)?.name ?? ''}» en ${month}`,
+        'Hay categorías con un presupuesto creado a mano ese mes; no se sobrescribe ninguno',
+        changes.conflicts.map((categoryId) => ({
+          path: 'BUDGET_MANUAL_EXISTS',
+          message: `Ya hay un presupuesto creado a mano de «${categories.get(categoryId)?.name ?? ''}» en ${month}`,
         })),
       );
     }
     try {
-      await repo.insertMany(items.map((item) => ({ month: first, ...item })));
+      const now = this.#deps.clock.now();
+      await repo.deleteMany(changes.deletes.map((entry) => entry.id));
+      for (const update of changes.updates) {
+        await repo.updateImported(update.id, update.amountCents, snapshotId, now);
+      }
+      await repo.insertImported(
+        changes.inserts.map((insert) => ({ month: first, ...insert })),
+        snapshotId,
+      );
     } catch (error) {
       if (isUniqueViolation(error, BUDGET_EXISTS)) {
-        throw conflict(`Una de las categorías ya tiene presupuesto en ${month}`);
+        throw new AppError(
+          'CONFLICT',
+          409,
+          `Una categoría ya tiene presupuesto en ${month} (creado por otra petición)`,
+          [{ path: 'BUDGET_MANUAL_EXISTS', message: 'Un presupuesto nuevo coincide con otro' }],
+        );
       }
       throw error;
     }
+    return {
+      created: changes.inserts.length,
+      updated: changes.updates.filter((update) => update.amountChanged).length,
+      deleted: changes.deletes.length,
+    };
   }
 
-  /** Cambia el importe. El mes y la categoría no se cambian: sería otro presupuesto. */
+  /**
+   * Cambia el importe. El mes y la categoría no se cambian: sería otro presupuesto. Si el presupuesto venía de
+   * una importación del Excel, pasa a ser manual (se borra su origen): la siguiente importación del mes ya no
+   * lo sustituye y, si lo necesita, da 409 hasta que se resuelva a mano.
+   */
   async update(id: string, amountCents: number): Promise<BudgetRecord> {
     const repo = new BudgetRepository(this.#deps.db);
     const budget = await repo.find(id);

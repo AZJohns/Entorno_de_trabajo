@@ -298,6 +298,10 @@ export const confirmImportResponseSchema = z.object({
     .object({
       /** Presupuestos de categoría nuevos en `category_budgets`. */
       created: z.number().int().nonnegative(),
+      /** Presupuestos que creó la foto anterior y cuyo importe cambia en la nueva. */
+      updated: z.number().int().nonnegative(),
+      /** Presupuestos de la foto anterior que se borran (la categoría ya no está o suma 0). */
+      deleted: z.number().int().nonnegative(),
       /** Categorías cuyas líneas suman 0 (o ninguna cuenta en el plan base): no se crea presupuesto. */
       omitted: z.number().int().nonnegative(),
     })

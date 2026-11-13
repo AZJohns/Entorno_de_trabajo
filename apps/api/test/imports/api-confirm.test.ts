@@ -122,7 +122,7 @@ describe('confirmar', () => {
     const res = await client.post(confirmUrl(id));
     expect(res.status, JSON.stringify(res.body)).toBe(201);
     const body = parseConfirm(res);
-    expect(body.budgets).toEqual({ created: 7, omitted: 0 });
+    expect(body.budgets).toEqual({ created: 7, updated: 0, deleted: 0, omitted: 0 });
 
     const db = ctx.database.db;
     expect(await counts(db)).toEqual({
@@ -224,7 +224,7 @@ describe('confirmar', () => {
     const { client, categories, id } = await readyBatch(book);
     const res = await client.post(confirmUrl(id));
     expect(res.status, JSON.stringify(res.body)).toBe(201);
-    expect(parseConfirm(res).budgets).toEqual({ created: 5, omitted: 1 });
+    expect(parseConfirm(res).budgets).toEqual({ created: 5, updated: 0, deleted: 0, omitted: 1 });
     const budgets = await ctx.database.db.selectFrom('category_budgets').selectAll().execute();
     const byCategory = new Map(budgets.map((row) => [row.category_id, row.amount_cents]));
     expect(byCategory.get(categories['Vivienda'] ?? '')).toBe('86000');
@@ -308,7 +308,7 @@ describe('doble confirmación', () => {
     await expectStillPreview(ctx.database.db, second.id);
   });
 
-  it('dos contenidos distintos a la vez para el mismo mes: solo uno gana y el otro no deja nada', async () => {
+  it('dos contenidos distintos a la vez para el mismo mes: se serializan y la segunda sustituye a la primera', async () => {
     const ctx = getCtx();
     const client = await ctx.loggedIn();
     await createFixtureCategories(client);
@@ -320,22 +320,19 @@ describe('doble confirmación', () => {
       client.post(confirmUrl(a.id)),
       client.post(confirmUrl(b.id)),
     ]);
-    // Se serializan por mes: la primera crea la foto; la segunda la sustituiría, pero el presupuesto de
-    // la primera ya existe y no se sobrescribe, así que da 409 y no escribe nada.
+    // Se serializan por mes: la primera crea la foto y la segunda la sustituye (y sus presupuestos).
     expect(
       results.map((res) => res.status).sort(),
       JSON.stringify(results.map((res) => res.body as unknown)),
-    ).toEqual([201, 409]);
+    ).toEqual([201, 201]);
     const db = ctx.database.db;
-    expect(await counts(db)).toMatchObject({ snapshots: 1, items: 24, budgets: 7 });
-    const active = await db
-      .selectFrom('plan_snapshots')
-      .select(['status', 'import_batch_id'])
-      .execute();
-    expect(active).toHaveLength(1);
-    expect(active[0]?.status).toBe('active');
-    const loser = [a.id, b.id].find((candidate) => candidate !== active[0]?.import_batch_id);
-    await expectStillPreview(db, loser ?? '');
+    expect(await counts(db)).toMatchObject({ snapshots: 2, items: 48, budgets: 7 });
+    const snapshots = await db.selectFrom('plan_snapshots').select(['id', 'status']).execute();
+    expect(snapshots.map((row) => row.status).sort()).toEqual(['active', 'superseded']);
+    const active = snapshots.find((row) => row.status === 'active');
+    // Los siete presupuestos son de la foto vigente; ninguno se quedó con la sustituida.
+    const sources = await db.selectFrom('category_budgets').select('source_snapshot_id').execute();
+    expect(sources.every((row) => row.source_snapshot_id === active?.id)).toBe(true);
   });
 });
 
@@ -432,7 +429,7 @@ describe('confirmar: estado del lote', () => {
 // --- rollback -----------------------------------------------------------------------------------------
 
 describe('confirmar: todo en una sola transacción (ASVS 2.3.3)', () => {
-  it('un presupuesto que ya existe da 409 DESPUÉS de escribir la foto, y no queda nada de la foto', async () => {
+  it('un presupuesto creado a mano que choca da 409 DESPUÉS de escribir la foto, y no queda nada de la foto', async () => {
     const ctx = getCtx();
     const { client, categories, id } = await readyBatch();
     const existing = await client.post('/api/v1/budgets', {
@@ -444,7 +441,7 @@ describe('confirmar: todo en una sola transacción (ASVS 2.3.3)', () => {
     const res = await client.post(confirmUrl(id));
     expectProblem(res, 409, 'CONFLICT');
     const problem = problemDetailsSchema.parse(res.body);
-    expect(problem.errors?.map((error) => error.path)).toEqual(['BUDGET_EXISTS']);
+    expect(problem.errors?.map((error) => error.path)).toEqual(['BUDGET_MANUAL_EXISTS']);
     // Ninguna fila del plan, ni presupuestos nuevos, ni correspondencias; el lote, intacto.
     expect(await counts(ctx.database.db)).toEqual({ ...EMPTY_COUNTS, budgets: 1 });
     await expectStillPreview(ctx.database.db, id);
@@ -529,9 +526,6 @@ describe('idempotencia por contenido y sustitución', () => {
     const { client, id } = await readyBatch();
     const first = parseConfirm(await client.post(confirmUrl(id)));
 
-    // Un mes que ya tiene presupuesto no se sobrescribe (decisión conservadora): se vacía para poder
-    // probar solo la sustitución de la foto.
-    await db.deleteFrom('category_budgets').execute();
     const changed = buildValidWorkbook();
     changed.sheet(DATOS).set(`C${String(DATA_ROW.electricity)}`, 65);
     const second = await uploadOk(client, changed.toBuffer());
@@ -564,12 +558,10 @@ describe('idempotencia por contenido y sustitución', () => {
     const db = ctx.database.db;
     const { client, id } = await readyBatch();
     expect((await client.post(confirmUrl(id))).status).toBe(201);
-    await db.deleteFrom('category_budgets').execute();
     const changed = buildValidWorkbook();
     changed.sheet(DATOS).set(`C${String(DATA_ROW.electricity)}`, 65);
     const second = await uploadOk(client, changed.toBuffer());
     expect((await client.post(confirmUrl(second.id))).status).toBe(201);
-    await db.deleteFrom('category_budgets').execute();
 
     // El contenido original ya no es la foto vigente: se sube como una vista previa nueva...
     const back = await uploadOk(client, buildValidWorkbook().toBuffer());
@@ -898,5 +890,199 @@ describe('PATCH /imports/:id/decisions', () => {
     const byCategory = new Map(budgets.map((row) => [row.category_id, row.amount_cents]));
     expect(byCategory.get(other.id)).toBe('3000');
     expect(byCategory.has(categories['Ocio'] ?? '')).toBe(false);
+  });
+});
+
+// --- presupuestos: sustitución al confirmar otra vez el mismo mes (pregunta 39, opción B) ----------------
+
+/** Presupuestos del mes con su origen, por categoría. */
+async function budgetsByCategoryId(db: Kysely<Database>, month = FIRST_OF_MONTH) {
+  const rows = await db
+    .selectFrom('category_budgets')
+    .select(['id', 'category_id', 'amount_cents', 'source_snapshot_id'])
+    .where('month', '=', month)
+    .execute();
+  return new Map(rows.map((row) => [row.category_id, row]));
+}
+
+/** Primer contenido: «Seguros» fuera del plan base (no genera presupuesto). */
+function firstContent(): WorkbookBuilder {
+  const book = buildValidWorkbook();
+  book.sheet(DATOS).set(`F${String(DATA_ROW.insurance)}`, 'Pausado');
+  return book;
+}
+
+/**
+ * Segundo contenido, que cambia el mes: Electricidad 65 € (Suministros cambia), Transporte pasa a «Ocio»
+ * (Transporte desaparece y Ocio sube) y Seguros vuelve a contar (categoría nueva).
+ */
+function secondContent(): WorkbookBuilder {
+  const book = buildValidWorkbook();
+  book.sheet(DATOS).set(`C${String(DATA_ROW.electricity)}`, 65);
+  book.sheet('Presupuesto').set('A9', 'Ocio');
+  return book;
+}
+
+describe('confirmar otra vez el mismo mes: los presupuestos importados se sustituyen', () => {
+  it('actualiza los que cambian, borra los que desaparecen, crea los nuevos y conserva los identificadores', async () => {
+    const ctx = getCtx();
+    const db = ctx.database.db;
+    const { client, categories, id } = await readyBatch(firstContent());
+    const first = parseConfirm(await client.post(confirmUrl(id)));
+    expect(first.budgets).toEqual({ created: 6, updated: 0, deleted: 0, omitted: 1 });
+    const before = await budgetsByCategoryId(db);
+    expect(before.size).toBe(6);
+    expect([...before.values()].every((row) => row.source_snapshot_id === first.snapshotId)).toBe(
+      true,
+    );
+
+    const second = await uploadOk(client, secondContent().toBuffer());
+    const res = await client.post(confirmUrl(second.id));
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    const confirmed = parseConfirm(res);
+    // Suministros y Ocio cambian de importe; Transporte desaparece; Seguros es nueva.
+    expect(confirmed.budgets).toEqual({ created: 1, updated: 2, deleted: 1, omitted: 0 });
+
+    const after = await budgetsByCategoryId(db);
+    const cat = (name: string): string => categories[name] ?? '';
+    expect(after.size).toBe(6);
+    expect(after.get(cat('Suministros'))?.amount_cents).toBe('6500');
+    expect(after.get(cat('Ocio'))?.amount_cents).toBe('7000'); // 30 € + 40 € de Transporte
+    expect(after.get(cat('Seguros'))?.amount_cents).toBe('2500');
+    expect(after.has(cat('Transporte'))).toBe(false);
+    // Lo que no cambia conserva su identificador y su importe.
+    for (const name of ['Vivienda', 'Alimentación', 'Préstamos']) {
+      expect(after.get(cat(name))?.id).toBe(before.get(cat(name))?.id);
+    }
+    expect(after.get(cat('Vivienda'))?.amount_cents).toBe('80000');
+    // Y todos son ahora de la foto nueva.
+    expect(
+      [...after.values()].every((row) => row.source_snapshot_id === confirmed.snapshotId),
+    ).toBe(true);
+  });
+
+  it('una categoría que ahora suma 0 pierde su presupuesto', async () => {
+    const ctx = getCtx();
+    const { client, categories, id } = await readyBatch();
+    expect((await client.post(confirmUrl(id))).status).toBe(201);
+    const next = buildValidWorkbook();
+    next.sheet(DATOS).set(`F${String(DATA_ROW.insurance)}`, 'Pausado');
+    const second = await uploadOk(client, next.toBuffer());
+    const res = await client.post(confirmUrl(second.id));
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(parseConfirm(res).budgets).toEqual({ created: 0, updated: 0, deleted: 1, omitted: 1 });
+    const after = await budgetsByCategoryId(ctx.database.db);
+    expect(after.has(categories['Seguros'] ?? '')).toBe(false);
+    expect(after.size).toBe(6);
+  });
+
+  it('los presupuestos creados a mano que no chocan no se tocan', async () => {
+    const ctx = getCtx();
+    const { client, id } = await readyBatch(firstContent());
+    const extra = await createCategory(client, 'expense', { name: 'Extra' });
+    const manual = await client.post('/api/v1/budgets', {
+      month: MONTH,
+      categoryId: extra.id,
+      amountCents: 777,
+    });
+    expect(manual.status, JSON.stringify(manual.body)).toBe(201);
+    expect((await client.post(confirmUrl(id))).status).toBe(201);
+    const second = await uploadOk(client, secondContent().toBuffer());
+    expect((await client.post(confirmUrl(second.id))).status).toBe(201);
+    const after = await budgetsByCategoryId(ctx.database.db);
+    expect(after.get(extra.id)).toMatchObject({ amount_cents: '777', source_snapshot_id: null });
+    expect(after.size).toBe(7); // los 6 importados + el manual
+  });
+
+  it('editar a mano un presupuesto importado lo convierte en manual: reimportar da 409 BUDGET_MANUAL_EXISTS', async () => {
+    const ctx = getCtx();
+    const db = ctx.database.db;
+    const { client, categories, id } = await readyBatch(firstContent());
+    const first = parseConfirm(await client.post(confirmUrl(id)));
+    const ocio = (await budgetsByCategoryId(db)).get(categories['Ocio'] ?? '');
+    expect(ocio?.source_snapshot_id).toBe(first.snapshotId);
+
+    const edit = await client.patch(`/api/v1/budgets/${ocio?.id ?? ''}`, { amountCents: 3500 });
+    expect(edit.status, JSON.stringify(edit.body)).toBe(200);
+    expect((await budgetsByCategoryId(db)).get(categories['Ocio'] ?? '')).toMatchObject({
+      amount_cents: '3500',
+      source_snapshot_id: null,
+    });
+
+    const snapshot = await budgetsByCategoryId(db);
+    const next = await uploadOk(client, secondContent().toBuffer());
+    const res = await client.post(confirmUrl(next.id));
+    expectProblem(res, 409, 'CONFLICT');
+    const problem = problemDetailsSchema.parse(res.body);
+    expect(problem.errors?.map((error) => error.path)).toEqual(['BUDGET_MANUAL_EXISTS']);
+    expect(problem.errors?.[0]?.message).toContain('Ocio');
+    // No se escribió nada: la foto vigente, los presupuestos y el lote nuevo siguen como estaban.
+    expect(await counts(db)).toMatchObject({ snapshots: 1, items: 24, budgets: 6 });
+    expect(await budgetsByCategoryId(db)).toEqual(snapshot);
+    await expectStillPreview(db, next.id);
+  });
+
+  it('los presupuestos de «copiar del mes anterior» son manuales: una importación que choca da 409', async () => {
+    const ctx = getCtx();
+    const db = ctx.database.db;
+    const { client, id } = await readyBatch();
+    expect((await client.post(confirmUrl(id))).status).toBe(201);
+    const copy = await client.post('/api/v1/budgets/copy-previous', { month: '2026-12' });
+    expect(copy.status, JSON.stringify(copy.body)).toBe(200);
+    const december = await budgetsByCategoryId(db, '2026-12-01');
+    expect(december.size).toBe(7);
+    expect([...december.values()].every((row) => row.source_snapshot_id === null)).toBe(true);
+
+    const upload = await uploadOk(client, buildValidWorkbook().toBuffer(), { month: '2026-12' });
+    const res = await client.post(confirmUrl(upload.id));
+    expectProblem(res, 409, 'CONFLICT');
+    expect(problemDetailsSchema.parse(res.body).errors).toHaveLength(7);
+    await expectStillPreview(db, upload.id);
+  });
+
+  it('un fallo en mitad de la sustitución lo deja todo como estaba: foto vigente y presupuestos anteriores', async () => {
+    const ctx = getCtx();
+    const db = ctx.database.db;
+    const { client, id } = await readyBatch(firstContent());
+    const first = parseConfirm(await client.post(confirmUrl(id)));
+    const before = await budgetsByCategoryId(db);
+    const second = await uploadOk(client, secondContent().toBuffer());
+
+    // Falla al actualizar un presupuesto, DESPUÉS de haber borrado el de Transporte y de crear la foto nueva.
+    await sql
+      .raw(
+        `CREATE FUNCTION fallo_forzado() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'fallo forzado del test'; END $$`,
+      )
+      .execute(db);
+    await sql
+      .raw(
+        'CREATE TRIGGER fallo_forzado BEFORE UPDATE ON category_budgets FOR EACH ROW EXECUTE FUNCTION fallo_forzado()',
+      )
+      .execute(db);
+    try {
+      expectProblem(await client.post(confirmUrl(second.id)), 500, 'INTERNAL_ERROR');
+    } finally {
+      await sql.raw('DROP FUNCTION fallo_forzado() CASCADE').execute(db);
+    }
+    expect(await budgetsByCategoryId(db)).toEqual(before);
+    const snapshots = await db.selectFrom('plan_snapshots').select(['id', 'status']).execute();
+    expect(snapshots).toEqual([{ id: first.snapshotId, status: 'active' }]);
+    await expectStillPreview(db, second.id);
+  });
+
+  it('una categoría archivada que recibe importe en la foto nueva da 409 y no cambia nada', async () => {
+    const ctx = getCtx();
+    const db = ctx.database.db;
+    const { client, categories, id } = await readyBatch(firstContent());
+    expect((await client.post(confirmUrl(id))).status).toBe(201);
+    const before = await budgetsByCategoryId(db);
+    const second = await uploadOk(client, secondContent().toBuffer());
+    expect(
+      (await client.post(`/api/v1/categories/${categories['Ocio'] ?? ''}/archive`)).status,
+    ).toBe(200);
+    expectProblem(await client.post(confirmUrl(second.id)), 409, 'CONFLICT');
+    expect(await budgetsByCategoryId(db)).toEqual(before);
+    expect(await counts(db)).toMatchObject({ snapshots: 1, budgets: 6 });
+    await expectStillPreview(db, second.id);
   });
 });

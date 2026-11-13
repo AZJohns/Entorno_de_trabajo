@@ -10,7 +10,8 @@
  *   lote ya confirmado; decidir o confirmar un lote que no está en vista previa (`IMPORT_NOT_PREVIEW`) o
  *   que caducó (`IMPORT_EXPIRED`); confirmar con errores sin resolver (`IMPORT_HAS_ERRORS`); confirmar un
  *   contenido que ya fue la foto de ese mes y se sustituyó (`CONTENT_ALREADY_IMPORTED`); y, desde
- *   `BudgetService.createMany`, un presupuesto que ya existe (`BUDGET_EXISTS`) o una categoría archivada.
+ *   `BudgetService.applyImport`, un presupuesto creado a mano que choca con la foto nueva
+ *   (`BUDGET_MANUAL_EXISTS`) o una categoría archivada.
  * - 422 (`UNPROCESSABLE`): una decisión incoherente con el lote o con el libro (la clave no está en el lote,
  *   la categoría no existe, no es de gasto o está archivada, o la clave se repite).
  *
@@ -400,7 +401,9 @@ export class ImportsService {
    *   nada. Si ese contenido fue una foto que ya se sustituyó → 409 `CONTENT_ALREADY_IMPORTED`.
    * - En vista previa con errores sin resolver → 409 `IMPORT_HAS_ERRORS`. Caducada, descartada o fallida → 409.
    * - Un contenido distinto para un mes que ya tiene foto la sustituye (la anterior queda `superseded`).
-   * - Un presupuesto de categoría que ya existe ese mes → 409 y no se escribe nada (no se sobrescribe).
+   * - Presupuestos del mes: los que creó la foto anterior se sustituyen por los de la nueva (también se borran
+   *   los de las categorías que ahora suman 0); los creados a mano no se tocan y, si chocan, 409
+   *   `BUDGET_MANUAL_EXISTS` y no se escribe nada (docs/plan.md, pregunta 39).
    */
   async confirm(id: string): Promise<ConfirmResult> {
     const known = await this.#repo.find(id);
@@ -458,12 +461,14 @@ export class ImportsService {
         plan: effective,
       });
       const { budgets, omitted } = budgetsByCategory(effective);
-      await this.#deps.budgets.withDb(trx).createMany(month, budgets);
+      const applied = await this.#deps.budgets
+        .withDb(trx)
+        .applyImport({ month, snapshotId, items: budgets });
       await plan.saveCategoryMappings(batch.decisions.categoryMappings);
       await repo.markConfirmed(id, this.#deps.clock.now());
       return {
         created: true,
-        response: { snapshotId, budgets: { created: budgets.length, omitted } },
+        response: { snapshotId, budgets: { ...applied, omitted } },
       };
     });
   }

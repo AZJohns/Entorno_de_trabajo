@@ -17,6 +17,12 @@ export interface BudgetRecord {
   readonly amountCents: number;
 }
 
+/** Un presupuesto del mes con su origen, para que la importación decida qué sustituye. */
+export interface BudgetOriginRecord extends BudgetRecord {
+  /** Foto del plan que lo creó, o `null` si se creó a mano. */
+  readonly sourceSnapshotId: string | null;
+}
+
 /** Valores de un presupuesto nuevo. */
 export interface NewBudget {
   readonly month: LocalDate;
@@ -54,6 +60,17 @@ export class BudgetRepository {
     return rows.map(toBudget);
   }
 
+  /** Presupuestos de un mes con su origen (`source_snapshot_id`). Orden fijo por `id`. */
+  async listOriginByMonth(month: LocalDate): Promise<BudgetOriginRecord[]> {
+    const rows = await this.#db
+      .selectFrom('category_budgets')
+      .selectAll()
+      .where('month', '=', month)
+      .orderBy('id')
+      .execute();
+    return rows.map((row) => ({ ...toBudget(row), sourceSnapshotId: row.source_snapshot_id }));
+  }
+
   /** Todos los presupuestos de todos los meses, para la exportación. Orden fijo: mes, id. */
   async listAll(): Promise<BudgetRecord[]> {
     const rows = await this.#db
@@ -87,8 +104,11 @@ export class BudgetRepository {
     return toBudget(row);
   }
 
-  /** Inserta varios presupuestos en una sentencia; falla si alguno ya existe (`UNIQUE (month, category_id)`). */
-  async insertMany(values: readonly NewBudget[]): Promise<void> {
+  /**
+   * Inserta varios presupuestos importados en una sentencia, con la foto que los crea como origen; falla
+   * si alguno ya existe (`UNIQUE (month, category_id)`).
+   */
+  async insertImported(values: readonly NewBudget[], snapshotId: string): Promise<void> {
     if (values.length === 0) return;
     await this.#db
       .insertInto('category_budgets')
@@ -97,9 +117,30 @@ export class BudgetRepository {
           month: value.month,
           category_id: value.categoryId,
           amount_cents: value.amountCents,
+          source_snapshot_id: snapshotId,
         })),
       )
       .execute();
+  }
+
+  /** Reasigna un presupuesto importado a la foto nueva, con su importe (el mismo si no cambia). */
+  async updateImported(
+    id: string,
+    amountCents: number,
+    snapshotId: string,
+    now: Date,
+  ): Promise<void> {
+    await this.#db
+      .updateTable('category_budgets')
+      .set({ amount_cents: amountCents, source_snapshot_id: snapshotId, updated_at: now })
+      .where('id', '=', id)
+      .execute();
+  }
+
+  /** Borra presupuestos por identificador. */
+  async deleteMany(ids: readonly string[]): Promise<void> {
+    if (ids.length === 0) return;
+    await this.#db.deleteFrom('category_budgets').where('id', 'in', ids).execute();
   }
 
   /**
@@ -132,7 +173,8 @@ export class BudgetRepository {
   ): Promise<BudgetRecord | undefined> {
     const row = await this.#db
       .updateTable('category_budgets')
-      .set({ amount_cents: amountCents, updated_at: now })
+      // Editar el importe a mano lo convierte en un presupuesto manual: ya no lo sustituye la importación.
+      .set({ amount_cents: amountCents, source_snapshot_id: null, updated_at: now })
       .where('id', '=', id)
       .returningAll()
       .executeTakeFirst();
