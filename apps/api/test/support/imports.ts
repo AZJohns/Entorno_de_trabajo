@@ -15,8 +15,9 @@ export const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsh
 
 /** Borra los lotes y el libro (las categorías). La autenticación la limpia `useAuthTestContext`. */
 export async function resetImports(db: Kysely<Database>): Promise<void> {
-  await db.deleteFrom('import_batches').execute();
+  // Las fotos del plan referencian sus lotes (RESTRICT): `resetLedger` las borra antes que las categorías.
   await resetLedger(db);
+  await db.deleteFrom('import_batches').execute();
 }
 
 /** Crea las categorías de gasto de la fixture para que ninguna línea quede sin correspondencia. */
