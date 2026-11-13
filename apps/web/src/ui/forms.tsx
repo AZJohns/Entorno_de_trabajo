@@ -87,6 +87,8 @@ interface ButtonProps {
   onClick?: () => void;
   disabled?: boolean;
   variant?: 'primary' | 'secondary' | 'danger';
+  /** Id del texto que explica el botón (p. ej. por qué está desactivado). */
+  describedBy?: string;
 }
 
 const VARIANTS = {
@@ -95,12 +97,20 @@ const VARIANTS = {
   danger: 'border border-red-300 text-red-700 hover:bg-red-50',
 } as const;
 
-export function Button({ children, type = 'submit', onClick, disabled, variant }: ButtonProps) {
+export function Button({
+  children,
+  type = 'submit',
+  onClick,
+  disabled,
+  variant,
+  describedBy,
+}: ButtonProps) {
   return (
     <button
       type={type}
       onClick={onClick}
       disabled={disabled}
+      aria-describedby={describedBy}
       className={`rounded-md px-4 py-2 text-sm font-medium disabled:opacity-50 ${VARIANTS[variant ?? 'primary']}`}
     >
       {children}

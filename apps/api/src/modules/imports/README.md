@@ -2,7 +2,7 @@
 
 Lee el Excel del plan financiero (plantilla v2), lo valida y guarda una vista previa. Contrato de la plantilla: `docs/plantilla-excel.md`. Diseño: `docs/plan.md` §2.5, §2.10, §3 y, para lo decidido en esta parte, §3.9.
 
-**Estado (fase 3b.1, PR 2 de 3):** lector, validación de los 4 niveles y vista previa (PR 1), más las decisiones sobre categorías y la confirmación en una sola transacción: foto del plan, `category_budgets`, correspondencias persistentes, idempotencia contra la foto vigente y caducidad (PR 2). La pantalla web es el PR 3.
+**Estado (fase 3b.1, PR 3 de 3, terminada):** lector, validación de los 4 niveles y vista previa (PR 1), más las decisiones sobre categorías y la confirmación en una sola transacción: foto del plan, `category_budgets`, correspondencias persistentes, idempotencia contra la foto vigente y caducidad (PR 2), y la pantalla web (PR 3; ver «Pantalla web»).
 
 ## Responsabilidad
 
@@ -42,7 +42,7 @@ Los catálogos (unidades, naturalezas, estados, tipos de registro…) y `include
 | GET | `/imports?month=` | S | 200 `{ items }` (hasta 50, más recientes primero, sin las entradas) |
 | GET | `/imports/:id` | S | 200 vista previa completa (`extracted` es `null` si ya no hay entradas) |
 | PATCH | `/imports/:id/decisions` | S | `{ categoryMappings: [{ categoryKey, categoryId \| null }] }` → 200 con la vista previa (`ImportDetailResponse`, ya con las decisiones aplicadas) |
-| POST | `/imports/:id/confirm` | S | 201 `{ snapshotId, budgets: { created, omitted } }`; **200** `{ snapshotId, budgets: null }` si ya estaba confirmada (o si el contenido ya es la foto vigente) |
+| POST | `/imports/:id/confirm` | S | 201 `{ snapshotId, budgets: { created, updated, deleted, omitted } }`; **200** `{ snapshotId, budgets: null }` si ya estaba confirmada (el lote es `confirmed`) o si el contenido ya es la foto vigente (el lote sigue en `preview`) |
 | DELETE | `/imports/:id` | S | 204; idempotente |
 
 El cuerpo es **el archivo en binario** (`application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, `application/vnd.ms-excel.sheet.macroenabled.12` u `application/octet-stream`), nunca multipart ni JSON. `fileName` solo sirve para comprobar la extensión y mostrar el nombre (se sanea: sin ruta ni caracteres de control, ≤ 255).
@@ -72,6 +72,16 @@ POST /imports/plan-excel ─▶ failed
                 ├─▶ discarded    (DELETE)
                 └─▶ expired      (24 h; lo marca el trabajo caducidad-de-importaciones)
 ```
+
+## Pantalla web (PR 3)
+
+Código en `apps/web/src/imports/` (README propio con la estructura y los tests). Rutas `/importar` (mes y archivo) y `/importar/:id` (vista previa y resultado). Lo que importa del contrato de esta API:
+
+- **Subida**: cuerpo binario con el tipo fijado por la extensión y el token CSRF; antes de enviar avisa de otra extensión o de más de 5 MB (solo una ayuda: el límite lo pone la API). 201 abre la vista previa; **200** (el contenido ya es el plan vigente) se dice en la misma pantalla.
+- **Vista previa**: problemas agrupados por severidad y hoja, una fila por categoría del Excel con un `select` de las categorías de gasto no archivadas (cada cambio es un `PATCH decisions` y la respuesta sustituye a la vista previa de la caché) y las líneas de Presupuesto con su importe. «Confirmar» está desactivado mientras `summary.canConfirm` sea falso.
+- **Confirmar**: 201 enseña `created`, `updated`, `deleted` y `omitted`. El **200** se resuelve releyendo el lote: `confirmed` → «ya estaba confirmada»; `preview` → «no había cambios; no se ha creado nada», sin volver a ofrecer confirmar (descartar o volver).
+- **Un mensaje por cada 409** según `errors[].path` (`IMPORT_NOT_PREVIEW`, `IMPORT_EXPIRED`, `IMPORT_HAS_ERRORS`, `CONTENT_ALREADY_IMPORTED`, `BUDGET_MANUAL_EXISTS`) y para 400, 403, 404, 413, 415 y 422. Si la API cambia una razón o su texto, hay que tocar `apps/web/src/imports/messages.ts`.
+- **Salida segura**: todo lo que viene del Excel se pinta como texto de React (test con `<img onerror>`).
 
 ## Tablas
 
