@@ -98,6 +98,8 @@ export function createApp(deps: AppDependencies): Express {
       db: deps.db,
       clock: deps.clock,
       categories: finance.ledger,
+      budgets: finance.budgets,
+      plan: finance.plan,
       requireReauth: auth.guard('active_reauth'),
     }).router,
   );

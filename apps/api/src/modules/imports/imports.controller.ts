@@ -4,7 +4,11 @@
  */
 import type { RequestHandler } from 'express';
 import { z } from 'zod';
-import { listImportsQuerySchema, uploadPlanExcelQuerySchema } from '@backoffice/shared';
+import {
+  listImportsQuerySchema,
+  updateImportDecisionsRequestSchema,
+  uploadPlanExcelQuerySchema,
+} from '@backoffice/shared';
 import { AppError } from '../../http/errors.ts';
 import type { ImportsService } from './imports.service.ts';
 
@@ -21,13 +25,13 @@ export function createImportsController(service: ImportsService) {
         'El cuerpo debe ser el archivo .xlsx (application/vnd.openxmlformats-officedocument.spreadsheetml.sheet)',
       );
     }
-    res.status(201).json(
-      await service.uploadPlanExcel({
-        bytes: req.body,
-        fileName: query.fileName,
-        month: query.month,
-      }),
-    );
+    const { created, response } = await service.uploadPlanExcel({
+      bytes: req.body,
+      fileName: query.fileName,
+      month: query.month,
+    });
+    // 200 si ese contenido ya es la foto vigente del mes (no se crea nada); 201 si se crea el lote.
+    res.status(created ? 201 : 200).json(response);
   };
   const list: RequestHandler = async (req, res) => {
     res.json(await service.list(listImportsQuerySchema.parse(req.query).month));
@@ -39,5 +43,14 @@ export function createImportsController(service: ImportsService) {
     await service.discard(idParam(req.params['id']));
     res.status(204).end();
   };
-  return { upload, list, get, discard };
+  const decide: RequestHandler = async (req, res) => {
+    const id = idParam(req.params['id']);
+    res.json(await service.updateDecisions(id, updateImportDecisionsRequestSchema.parse(req.body)));
+  };
+  const confirm: RequestHandler = async (req, res) => {
+    // 201 al confirmar; 200 con el mismo `snapshotId` si ya estaba confirmada.
+    const { created, response } = await service.confirm(idParam(req.params['id']));
+    res.status(created ? 201 : 200).json(response);
+  };
+  return { upload, list, get, discard, decide, confirm };
 }

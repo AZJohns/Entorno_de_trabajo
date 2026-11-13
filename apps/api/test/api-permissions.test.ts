@@ -86,6 +86,8 @@ const ROUTES: readonly (readonly [method: 'get' | 'post' | 'patch' | 'delete', p
   ['get', '/imports'],
   ['get', `/imports/${ID}`],
   ['delete', `/imports/${ID}`],
+  ['patch', `/imports/${ID}/decisions`],
+  ['post', `/imports/${ID}/confirm`],
 ];
 
 /** Rutas S+: además de la sesión, exigen reautenticación completa en los últimos 10 minutos. */
@@ -122,6 +124,8 @@ describe('rutas de negocio', () => {
       db,
       clock: systemClock,
       categories: financeModule.ledger,
+      budgets: financeModule.budgets,
+      plan: financeModule.plan,
       requireReauth: (_req, _res, next) => {
         next();
       },

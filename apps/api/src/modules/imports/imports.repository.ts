@@ -7,8 +7,10 @@
 import type { Kysely } from 'kysely';
 import {
   extractedPlanSchema,
+  importDecisionsSchema,
   importIssueSchema,
   type ExtractedPlan,
+  type ImportDecisions,
   type ImportIssue,
   type ImportStatus,
 } from '@backoffice/shared';
@@ -28,6 +30,8 @@ export interface BatchRecord {
   /** `null` si ya no hay entradas (confirmado, descartado, caducado o fallido). */
   readonly extracted: ExtractedPlan | null;
   readonly issues: readonly ImportIssue[];
+  /** Lo elegido en la vista previa (correspondencias de categorías). */
+  readonly decisions: ImportDecisions;
   readonly createdAt: Date;
   readonly expiresAt: Date;
   readonly confirmedAt: Date | null;
@@ -60,6 +64,7 @@ const COLUMNS = [
   'status',
   'extracted',
   'issues',
+  'decisions',
   'created_at',
   'expires_at',
   'confirmed_at',
@@ -76,6 +81,7 @@ type Row = {
   status: ImportStatus;
   extracted: unknown;
   issues: unknown;
+  decisions: unknown;
   created_at: Date;
   expires_at: Date;
   confirmed_at: Date | null;
@@ -93,6 +99,7 @@ function toRecord(row: Row): BatchRecord {
     status: row.status,
     extracted: row.extracted === null ? null : extractedPlanSchema.parse(row.extracted),
     issues: issuesSchema.parse(row.issues),
+    decisions: importDecisionsSchema.parse(row.decisions),
     createdAt: row.created_at,
     expiresAt: row.expires_at,
     confirmedAt: row.confirmed_at,
@@ -135,6 +142,56 @@ export class ImportsRepository {
       .where('id', '=', id)
       .executeTakeFirst();
     return row === undefined ? undefined : toRecord(row);
+  }
+
+  /**
+   * Lee el lote **bloqueando su fila** (`SELECT … FOR UPDATE`) hasta el final de la transacción: quien la
+   * pide después espera y, al leer, ya ve el estado que dejó la primera. Solo tiene sentido dentro de una
+   * transacción. Así dos confirmaciones del mismo lote no pueden avanzar a la vez.
+   */
+  async findForUpdate(id: string): Promise<BatchRecord | undefined> {
+    const row = await this.#db
+      .selectFrom('import_batches')
+      .select(COLUMNS)
+      .where('id', '=', id)
+      .forUpdate()
+      .executeTakeFirst();
+    return row === undefined ? undefined : toRecord(row);
+  }
+
+  async updateDecisions(id: string, decisions: ImportDecisions): Promise<void> {
+    await this.#db
+      .updateTable('import_batches')
+      .set({ decisions: JSON.stringify(decisions) })
+      .where('id', '=', id)
+      .execute();
+  }
+
+  /** Pasa el lote a `confirmed` y vacía sus entradas (ya están en las tablas del plan). */
+  async markConfirmed(id: string, now: Date): Promise<void> {
+    const result = await this.#db
+      .updateTable('import_batches')
+      .set({ status: 'confirmed', confirmed_at: now, extracted: null })
+      .where('id', '=', id)
+      .where('status', '=', 'preview')
+      .executeTakeFirst();
+    // El lote está bloqueado por la transacción y se acaba de leer como `preview`: no debería fallar.
+    if (result.numUpdatedRows !== 1n)
+      throw new Error('El lote no estaba en vista previa al confirmarlo');
+  }
+
+  /**
+   * Marca como `expired` las vistas previas cuya caducidad ya pasó y vacía sus entradas. Idempotente.
+   * @returns cuántas ha caducado.
+   */
+  async expirePreviews(now: Date): Promise<number> {
+    const result = await this.#db
+      .updateTable('import_batches')
+      .set({ status: 'expired', extracted: null })
+      .where('status', '=', 'preview')
+      .where('expires_at', '<=', now)
+      .executeTakeFirst();
+    return Number(result.numUpdatedRows);
   }
 
   /** Lotes más recientes primero, sin leer las entradas extraídas (pueden ser grandes). */
