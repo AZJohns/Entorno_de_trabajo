@@ -1,6 +1,6 @@
 # Módulo `finance` — libro real (`ledger`) y presupuesto (`budget`)
 
-Cuentas, categorías, movimientos, transferencias y conciliación mensual (`ledger/`), y el presupuesto por categoría y mes (`budget/`). Diseño: `docs/plan.md` §2.3. La capa de plan (`plan/`, fase 3b) vive en este mismo módulo, pero todavía no existe.
+Cuentas, categorías, movimientos, transferencias y conciliación mensual (`ledger/`), y el presupuesto por categoría y mes (`budget/`). Diseño: `docs/plan.md` §2.3. La capa de plan (`plan/`, fase 3b) vive en este mismo módulo: de momento solo guarda la foto del plan que crea la confirmación de la importación (ver «Capa del plan»); sus cálculos son de la 3b.2.
 
 **Estado del presupuesto (fase 3a, PR 1 de 2):** tabla, lógica pura, servicio y API de `/budgets`. Las pantallas llegan en el PR 2. Detalle en la sección «Presupuesto por categoría y mes», más abajo.
 
@@ -27,7 +27,8 @@ Cuentas, categorías, movimientos, transferencias y conciliación mensual (`ledg
 | `budget/budget.repository.ts` | Consultas de Kysely sobre `category_budgets` | Base de datos |
 | `budget/budget.service.ts` | Reglas del presupuesto (categoría de gasto y no archivada, duplicados) y la copia del mes anterior | — |
 | `budget/budget.controller.ts`, `budget/budget.routes.ts` | HTTP de `/budgets`; las rutas se añaden al router del libro | — |
-| `index.ts` | API pública: `createFinanceModule({ db, clock, … })` → `{ ledger, budgets, router }` | — |
+| `plan/plan.repository.ts`, `plan/plan.service.ts` | Foto del plan de un mes y sus filas (`plan_*`), y correspondencias de categorías; sin ruta HTTP propia | Base de datos |
+| `index.ts` | API pública: `createFinanceModule({ db, clock, … })` → `{ ledger, budgets, plan, router }` | — |
 
 ## Endpoints (`/api/v1`, sesión activa; sin reautenticación)
 
@@ -94,7 +95,7 @@ Cuánto se quiere gastar como máximo cada mes en una categoría de gasto («Com
 - **Categoría archivada**: su presupuesto y su gasto siguen saliendo en la lista (con `categoryArchived`), no se pueden crear presupuestos nuevos ni cambiar el importe (409) y sí borrar. La copia las omite.
 - **Copiar del mes anterior** es una acción explícita, nunca automática. Solo rellena huecos: lo que el mes ya tiene no se toca y repetirla no duplica nada. Va en una transacción y el alta usa `ON CONFLICT DO NOTHING`, así que dos copias a la vez tampoco duplican. **Siempre 200 con los recuentos**, también si el mes anterior no tiene presupuestos o ya está todo copiado (`copied: 0`): es idempotente y repetirla no es un conflicto. El único error es el 422 si no hay mes anterior (`0001-01`).
 - **Solo categorías de gasto**, comprobado dos veces: el servicio da 422 con un mensaje claro y la FK compuesta `(category_id, kind)` lo impide aunque alguien se salte el servicio.
-- **Fase 3b**: la importación del Excel rellenará esta misma tabla llamando a `createFinanceModule(...).budgets` (otros módulos solo entran por `index.ts`). Le quedan por decidir cómo agrupar varias líneas de una categoría en un importe y qué hacer con un importe 0, que aquí no cabe (`CHECK > 0`). **No está implementado.**
+- **Fase 3b**: la importación del Excel rellena esta misma tabla con `createFinanceModule(...).budgets.withDb(trx).applyImport({ month, snapshotId, items })` (otros módulos solo entran por `index.ts`): aplica al mes los presupuestos de una foto del plan, todo o nada. **Sustituye** los que creó una importación (los actualiza, borra los de categorías que ya no están y crea los nuevos) y **no toca** los creados a mano: si alguno choca, 409 `BUDGET_MANUAL_EXISTS` con la lista completa; 409 si una categoría con importe está archivada; 422 si no es de gasto o el importe no es positivo. Para distinguirlos, `category_budgets.source_snapshot_id` (migración `0010`; NULL = manual). **`PATCH /budgets/:id` lo borra**: un presupuesto importado y editado a mano pasa a manual. Los cambios los calcula la función pura `budget/domain/import-changes.ts` (`planBudgetChanges`). Qué líneas suman y qué hacer con un total 0 lo decide el módulo `imports` (`docs/plan.md` §3.10, pregunta 40, resuelta).
 - **Preguntas abiertas** (`docs/plan.md` §9): 37 (avisos al pasarse del presupuesto) y 38 (gastos recurrentes) siguen pendientes y no están implementadas.
 - **Exportación**: `GET /export` incluye `budgets` (`id`, `month`, `categoryId`, `amountCents`), leídos en la misma transacción que el resto; el formato sube a `version: 2`.
 
@@ -105,3 +106,12 @@ Cuánto se quiere gastar como máximo cada mes en una categoría de gasto («Com
 ## Errores de la base de datos
 
 Borrar una fila referenciada (FK `ON DELETE RESTRICT`) da `23503` en PostgreSQL 17 y anteriores y `23001` en la 18. `isReferencedRowError` (`src/db/errors.ts`) reconoce los dos y es lo que debe usarse para responder 409.
+
+## Capa del plan (`plan/`, fase 3b.1, PR 2)
+
+Las entradas de las cinco hojas del Excel del plan, por foto de un mes: `plan_snapshots`, `plan_items`, `plan_budget_lines`, `plan_events`, `plan_goals`, `plan_scenarios`, `plan_scenario_items` y `plan_category_mappings` (migración `0010_plan_import`; diseño en `docs/plan.md` §2.4 y §3.10). **Solo entradas**: ningún total, proyección ni estado calculado (esos son de la 3b.2 y se calcularán al leer).
+
+- `PlanService` no tiene rutas y no abre transacciones: lo usa el módulo `imports` dentro de la suya con `withDb(trx)`. `createSnapshot` pasa la foto vigente del mes a `superseded` y guarda la nueva con todas sus filas; `lockMonth` toma el bloqueo consultivo del mes; `findByContent` y `findByBatch` sirven a la idempotencia; `saveCategoryMappings` y `listCategoryMappings` llevan las correspondencias de categorías.
+- Las referencias entre filas son claves ajenas compuestas `(snapshot_id, …)`: una línea, un evento o una meta solo pueden apuntar a una fila de Datos de **su** foto. Las categorías de las líneas y de las correspondencias, solo de gasto (FK compuesta con `kind = 'expense'`).
+- Los importes son `bigint` en céntimos y los meses del plan, centésimas enteras; los meses y las fechas son `date`, sin zona horaria.
+- Tests: `apps/api/test/imports/plan-schema.test.ts` (restricciones en la base de datos) y `apps/api/test/imports/api-confirm.test.ts` (de punta a punta).

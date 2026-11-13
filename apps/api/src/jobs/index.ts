@@ -8,6 +8,7 @@ import type { Kysely } from 'kysely';
 import type { Logger } from 'pino';
 import type { Database } from '../db/schema.ts';
 import type { Clock } from '../lib/clock.ts';
+import { createImportsMaintenance } from '../modules/imports/index.ts';
 import { createNotificationsModule } from '../modules/notifications/index.ts';
 import { createTasksModule } from '../modules/tasks/index.ts';
 import type { Job } from './scheduler.ts';
@@ -35,7 +36,16 @@ export function createJobs(deps: JobsDeps): Job[] {
     clock: deps.clock,
     notifications: notifications.service,
   });
+  const importsMaintenance = createImportsMaintenance({ db: deps.db, clock: deps.clock });
   return [
+    {
+      name: 'caducidad-de-importaciones',
+      async run() {
+        // Solo el recuento: sin nombres de archivo ni contenido en los logs.
+        const expired = await importsMaintenance.expireStalePreviews();
+        if (expired > 0) deps.logger.info({ expired }, 'Vistas previas de importación caducadas');
+      },
+    },
     {
       name: 'recordatorios-de-tareas',
       async run() {

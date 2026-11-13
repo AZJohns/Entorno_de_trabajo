@@ -243,6 +243,15 @@ export type ImportListItem = z.infer<typeof importListItemSchema>;
 export const importListResponseSchema = z.object({ items: z.array(importListItemSchema) });
 export type ImportListResponse = z.infer<typeof importListResponseSchema>;
 
+/**
+ * Lo que se guarda en `import_batches.decisions`: nombre de categoría normalizado → categoría elegida en la
+ * vista previa (`PATCH /imports/:id/decisions`).
+ */
+export const importDecisionsSchema = z.object({
+  categoryMappings: z.record(z.string(), z.uuid()).default({}),
+});
+export type ImportDecisions = z.infer<typeof importDecisionsSchema>;
+
 /** Vista previa completa. `extracted` es `null` tras confirmar, descartar o caducar. */
 export const importDetailResponseSchema = importUploadResponseSchema.extend({
   month: z.string(),
@@ -250,8 +259,52 @@ export const importDetailResponseSchema = importUploadResponseSchema.extend({
   fileSizeBytes: z.number().int(),
   templateVersion: z.number().int().nullable(),
   extracted: extractedPlanSchema.nullable(),
+  /** Decisiones tomadas en la vista previa. */
+  decisions: importDecisionsSchema,
   createdAt: z.string(),
   expiresAt: z.string(),
   confirmedAt: z.string().nullable(),
 });
 export type ImportDetailResponse = z.infer<typeof importDetailResponseSchema>;
+
+// --- decisiones y confirmación (fase 3b.1, PR 2) -----------------------------------------------------
+
+/**
+ * Una decisión sobre una categoría de Presupuesto: a qué categoría de gasto de la app corresponde el nombre
+ * (ya normalizado, `categoryKey`) o `null` para retirar la decisión anterior.
+ */
+export const categoryMappingDecisionSchema = z.strictObject({
+  categoryKey: z.string().min(1).max(200),
+  categoryId: z.uuid().nullable(),
+});
+export type CategoryMappingDecision = z.infer<typeof categoryMappingDecisionSchema>;
+
+/** Máximo de decisiones por petición: una por categoría distinta de un archivo (5.000 filas como tope). */
+export const MAX_CATEGORY_DECISIONS = 200;
+
+/** Cuerpo de `PATCH /imports/:id/decisions`. Cada clave aparece una sola vez (si no, 422). */
+export const updateImportDecisionsRequestSchema = z.strictObject({
+  categoryMappings: z.array(categoryMappingDecisionSchema).min(1).max(MAX_CATEGORY_DECISIONS),
+});
+export type UpdateImportDecisionsRequest = z.infer<typeof updateImportDecisionsRequestSchema>;
+
+/**
+ * Respuesta de `POST /imports/:id/confirm`: 201 al confirmar, 200 si ya estaba confirmada (entonces
+ * `budgets` es `null`: no se guarda qué hizo la primera vez, porque sería un dato derivado).
+ */
+export const confirmImportResponseSchema = z.object({
+  snapshotId: z.uuid(),
+  budgets: z
+    .object({
+      /** Presupuestos de categoría nuevos en `category_budgets`. */
+      created: z.number().int().nonnegative(),
+      /** Presupuestos que creó la foto anterior y cuyo importe cambia en la nueva. */
+      updated: z.number().int().nonnegative(),
+      /** Presupuestos de la foto anterior que se borran (la categoría ya no está o suma 0). */
+      deleted: z.number().int().nonnegative(),
+      /** Categorías cuyas líneas suman 0 (o ninguna cuenta en el plan base): no se crea presupuesto. */
+      omitted: z.number().int().nonnegative(),
+    })
+    .nullable(),
+});
+export type ConfirmImportResponse = z.infer<typeof confirmImportResponseSchema>;

@@ -155,6 +155,11 @@ export interface CategoryBudgetsTable {
   /** Constante `'expense'`: solo existe para la clave ajena compuesta con `categories`. */
   kind: Defaulted<'expense'>;
   amount_cents: CentsColumn;
+  /**
+   * Foto del plan (importación del Excel) que creó este presupuesto; NULL si es manual (migración 0010).
+   * Opcional al insertar y al cambiar: un presupuesto creado a mano no lo indica.
+   */
+  source_snapshot_id: ColumnType<string | null, string | null | undefined, string | null>;
   created_at: Defaulted<Date>;
   updated_at: Defaulted<Date>;
 }
@@ -253,6 +258,111 @@ export interface ImportBatchesTable {
   confirmed_at: Date | null;
 }
 
+/** Importe en céntimos opcional (`bigint` NULL): `pg` lo devuelve como cadena. */
+type NullableCentsColumn = ColumnType<string | null, number | null | undefined, number | null>;
+
+/** Fecha opcional de la capa del plan (`date` NULL), como `YYYY-MM-DD`. */
+type PlanNullableDate = ColumnType<string | null, string | null | undefined, string | null>;
+
+/** Foto del plan de un mes (migración 0010). Solo una `active` por mes. */
+export interface PlanSnapshotsTable {
+  id: Generated<string>;
+  month: DateColumn;
+  import_batch_id: string;
+  content_hash: Buffer;
+  template_version: number;
+  status: 'active' | 'superseded';
+  created_at: Defaulted<Date>;
+  superseded_at: Date | null;
+}
+
+/** Fila de «Datos y supuestos» (migración 0010). */
+export interface PlanItemsTable {
+  id: Generated<string>;
+  snapshot_id: string;
+  source_row: number;
+  record_type: string;
+  group_label: string;
+  concept: string;
+  unit: string;
+  amount_cents: NullableCentsColumn;
+  quantity_hundredths: number | null;
+  nature: string;
+  status: string;
+  source_note: string | null;
+  note: string | null;
+}
+
+/** Línea de «Presupuesto»: importe y estado se leen de `plan_items`. */
+export interface PlanBudgetLinesTable {
+  id: Generated<string>;
+  snapshot_id: string;
+  source_row: number;
+  category_id: string;
+  /** Constante `'expense'`: solo existe para la clave ajena compuesta con `categories`. */
+  kind: Defaulted<'expense'>;
+  category_label: string;
+  concept: string;
+  cost_type: string;
+  essential: boolean;
+  plan_item_id: string;
+}
+
+/** Fila de «Eventos y compromisos». */
+export interface PlanEventsTable {
+  id: Generated<string>;
+  snapshot_id: string;
+  source_row: number;
+  concept: string;
+  note: string | null;
+  nature_label: string | null;
+  amount_item_id: string | null;
+  multiplier_item_id: string | null;
+  amount_cents: NullableCentsColumn;
+  status: string;
+  expected_date: PlanNullableDate;
+  include_in_projection: boolean;
+}
+
+/** Fila de «Metas». */
+export interface PlanGoalsTable {
+  id: Generated<string>;
+  snapshot_id: string;
+  source_row: number;
+  name: string;
+  criterion: string | null;
+  goal_kind: string;
+  target_item_id: string | null;
+  target_cents: NullableCentsColumn;
+  current_item_id: string | null;
+  current_cents: NullableCentsColumn;
+  contribution_item_id: string | null;
+  contribution_cents: NullableCentsColumn;
+}
+
+export interface PlanScenariosTable {
+  id: Generated<string>;
+  snapshot_id: string;
+  source_row: number;
+  name: string;
+}
+
+export interface PlanScenarioItemsTable {
+  scenario_id: string;
+  snapshot_id: string;
+  plan_item_id: string;
+  role: 'extra_monthly' | 'one_off';
+}
+
+/** Correspondencia persistente: nombre de categoría de Presupuesto normalizado → categoría de gasto. */
+export interface PlanCategoryMappingsTable {
+  source_name_normalized: string;
+  category_id: string;
+  kind: Defaulted<'expense'>;
+  created_at: Defaulted<Date>;
+  updated_at: Defaulted<Date>;
+}
+
 export interface Database {
   users: UsersTable;
   sessions: SessionsTable;
@@ -273,4 +383,12 @@ export interface Database {
   tags: TagsTable;
   note_tags: NoteTagsTable;
   import_batches: ImportBatchesTable;
+  plan_snapshots: PlanSnapshotsTable;
+  plan_items: PlanItemsTable;
+  plan_budget_lines: PlanBudgetLinesTable;
+  plan_events: PlanEventsTable;
+  plan_goals: PlanGoalsTable;
+  plan_scenarios: PlanScenariosTable;
+  plan_scenario_items: PlanScenarioItemsTable;
+  plan_category_mappings: PlanCategoryMappingsTable;
 }

@@ -1,5 +1,6 @@
 /**
- * Rutas de la importación (`/api/v1/imports`). La subida es S+ (reautenticación reciente); el resto, S. No
+ * Rutas de la importación (`/api/v1/imports`). La subida es S+ (reautenticación reciente); el resto, S
+ * (también `PATCH decisions` y `POST confirm`, como en docs/plan.md §2.10; las dos modifican y llevan CSRF). No
  * declaran guarda de sesión propia: la pone la guarda por defecto de la aplicación (denegar por defecto).
  */
 import express, { Router, type RequestHandler } from 'express';
@@ -53,5 +54,7 @@ export function createImportsRouter(
   router.get('/imports', controller.list);
   router.get('/imports/:id', controller.get);
   router.delete('/imports/:id', controller.discard);
+  router.patch('/imports/:id/decisions', controller.decide);
+  router.post('/imports/:id/confirm', controller.confirm);
   return router;
 }

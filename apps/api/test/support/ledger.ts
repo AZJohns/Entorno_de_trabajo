@@ -12,6 +12,9 @@ import type { TestClient } from './client.ts';
 
 /** Borra los datos del libro (las tablas de autenticación las limpia `useAuthTestContext`). */
 export async function resetLedger(db: Kysely<Database>): Promise<void> {
+  // La capa del plan referencia categorías (RESTRICT): primero ella. Las fotos arrastran sus filas.
+  await db.deleteFrom('plan_category_mappings').execute();
+  await db.deleteFrom('plan_snapshots').execute();
   await db.deleteFrom('category_budgets').execute();
   await db.deleteFrom('movements').execute();
   await db.deleteFrom('transfers').execute();
