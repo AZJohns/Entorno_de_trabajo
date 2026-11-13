@@ -38,22 +38,40 @@ export function isApiError(error: unknown, ...codes: ErrorCode[]): error is ApiE
   return error instanceof ApiError && (codes.length === 0 || codes.some((c) => c === error.code));
 }
 
+/** Cuerpo binario (la subida del Excel): el tipo lo fija el llamador, nunca el archivo. */
+export interface RawBody {
+  readonly data: Blob;
+  readonly contentType: string;
+}
+
 interface RequestOptions<T> {
   method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
   body?: unknown;
+  /** Cuerpo binario en lugar de JSON. No se combina con `body`. */
+  rawBody?: RawBody;
   /** Esquema de la respuesta. Sin él, se espera una respuesta vacía (204). */
   schema?: z.ZodType<T>;
 }
 
+/** Respuesta ya validada junto con su código HTTP (p. ej. 201 «creado» frente a 200 «ya existía»). */
+export interface ApiResult<T> {
+  readonly status: number;
+  readonly data: T;
+}
+
 /**
- * Hace una petición a la API y valida la respuesta con su esquema compartido.
+ * Hace una petición a la API y devuelve la respuesta validada con su código HTTP.
  *
  * @throws {ApiError} si la respuesta es un error, si no hay conexión o si no cumple el esquema.
  */
-export async function api<T = void>(path: string, options: RequestOptions<T> = {}): Promise<T> {
+export async function apiWithStatus<T = void>(
+  path: string,
+  options: RequestOptions<T> = {},
+): Promise<ApiResult<T>> {
   const method = options.method ?? 'GET';
   const headers: Record<string, string> = { Accept: 'application/json' };
-  if (options.body !== undefined) headers['Content-Type'] = 'application/json';
+  if (options.rawBody !== undefined) headers['Content-Type'] = options.rawBody.contentType;
+  else if (options.body !== undefined) headers['Content-Type'] = 'application/json';
   if (method !== 'GET' && csrfToken !== null) headers['X-CSRF-Token'] = csrfToken;
 
   let response: Response;
@@ -61,7 +79,12 @@ export async function api<T = void>(path: string, options: RequestOptions<T> = {
     response = await fetch(`${BASE}${path}`, {
       method,
       headers,
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      body:
+        options.rawBody !== undefined
+          ? options.rawBody.data
+          : options.body === undefined
+            ? undefined
+            : JSON.stringify(options.body),
       credentials: 'same-origin',
       cache: 'no-store',
     });
@@ -74,6 +97,15 @@ export async function api<T = void>(path: string, options: RequestOptions<T> = {
     if (parsed.success) throw new ApiError(response.status, parsed.data.code, parsed.data);
     throw new ApiError(response.status, 'INTERNAL_ERROR', null);
   }
-  if (options.schema === undefined) return undefined as T;
-  return options.schema.parse(await response.json());
+  if (options.schema === undefined) return { status: response.status, data: undefined as T };
+  return { status: response.status, data: options.schema.parse(await response.json()) };
+}
+
+/**
+ * Hace una petición a la API y valida la respuesta con su esquema compartido.
+ *
+ * @throws {ApiError} si la respuesta es un error, si no hay conexión o si no cumple el esquema.
+ */
+export async function api<T = void>(path: string, options: RequestOptions<T> = {}): Promise<T> {
+  return (await apiWithStatus(path, options)).data;
 }

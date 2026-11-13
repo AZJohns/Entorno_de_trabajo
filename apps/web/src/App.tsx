@@ -12,6 +12,8 @@ import { MovementsPage } from './finance/pages/MovementsPage.tsx';
 import { ReportsPage } from './finance/pages/ReportsPage.tsx';
 import { ReconciliationPage } from './finance/pages/ReconciliationPage.tsx';
 import { TransfersPage } from './finance/pages/TransfersPage.tsx';
+import { ImportPreviewPage } from './imports/ImportPreviewPage.tsx';
+import { ImportUploadPage } from './imports/ImportUploadPage.tsx';
 import { NoteEditorPage } from './notes/NoteEditorPage.tsx';
 import { NotesPage } from './notes/NotesPage.tsx';
 import { NotificationsPage } from './notifications/NotificationsPage.tsx';
@@ -72,6 +74,8 @@ const router = createBrowserRouter([
       { path: 'movimientos', element: <MovementsPage /> },
       { path: 'transferencias', element: <TransfersPage /> },
       { path: 'presupuesto', element: <BudgetPage /> },
+      { path: 'importar', element: <ImportUploadPage /> },
+      { path: 'importar/:id', element: <ImportPreviewPage /> },
       { path: 'tareas', element: <TasksPage /> },
       { path: 'notas', element: <NotesPage /> },
       { path: 'notas/nueva', element: <NoteEditorPage /> },
