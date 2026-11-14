@@ -1,6 +1,6 @@
 # Módulo `finance` — libro real (`ledger`) y presupuesto (`budget`)
 
-Cuentas, categorías, movimientos, transferencias y conciliación mensual (`ledger/`), y el presupuesto por categoría y mes (`budget/`). Diseño: `docs/plan.md` §2.3. La capa de plan (`plan/`, fase 3b) vive en este mismo módulo: de momento solo guarda la foto del plan que crea la confirmación de la importación (ver «Capa del plan»); sus cálculos (funciones puras en `plan/domain/`, fase 3b.2 PR 1) todavía no tienen endpoints: llegan en el PR 2.
+Cuentas, categorías, movimientos, transferencias y conciliación mensual (`ledger/`), y el presupuesto por categoría y mes (`budget/`). Diseño: `docs/plan.md` §2.3. La capa de plan (`plan/`, fase 3b) vive en este mismo módulo: de momento solo guarda la foto del plan que crea la confirmación de la importación (ver «Capa del plan»); sus cálculos (funciones puras en `plan/domain/`, fase 3b.2 PR 1) se exponen con los `GET /plan/*` de solo lectura (fase 3b.2 PR 2; ver `plan/README.md`).
 
 **Estado del presupuesto (fase 3a, PR 1 de 2):** tabla, lógica pura, servicio y API de `/budgets`. Las pantallas llegan en el PR 2. Detalle en la sección «Presupuesto por categoría y mes», más abajo.
 
@@ -17,7 +17,7 @@ Cuentas, categorías, movimientos, transferencias y conciliación mensual (`ledg
 |---|---|---|
 | `ledger/domain/dates.ts` | Fechas contables `YYYY-MM-DD` como texto, sin `Date` ni zona horaria | No |
 | `ledger/domain/balances.ts` | `balanceAsOf` (saldo de una cuenta hasta una fecha) y `monthlyTotals` (ingresos, gastos y ajustes de un mes) | No |
-| `ledger/domain/reports.ts` | Informes sobre `balanceAsOf` y `monthlyTotals`: `monthlyReport`, `categoryBreakdown`, `pendingTotals`, `adjustmentsAsOf`, `accountBalanceLine`, `sumCents` | No |
+| `ledger/domain/reports.ts` | Informes sobre `balanceAsOf` y `monthlyTotals`: `monthlyReport`, `categoryBreakdown`, `pendingTotals`, `adjustmentsAsOf`, `accountBalanceLine`, `realFlowByMonth` (flujo real de los meses con confirmados, para la proyección del plan), `sumCents` | No |
 | `ledger/domain/reconciliation.ts` | `reconcile` (diferencia y ajuste) y `reconciliationDiscrepancy` (aviso si el libro deja de cuadrar con el banco) | No |
 | `ledger/ledger.repository.ts` | Consultas de Kysely sobre las cinco tablas; importes ya en céntimos y fechas como texto | Base de datos |
 | `ledger/ledger.service.ts` | Reglas que dependen de otras filas, transacciones y conciliación | — |
@@ -27,11 +27,14 @@ Cuentas, categorías, movimientos, transferencias y conciliación mensual (`ledg
 | `budget/budget.repository.ts` | Consultas de Kysely sobre `category_budgets` | Base de datos |
 | `budget/budget.service.ts` | Reglas del presupuesto (categoría de gasto y no archivada, duplicados) y la copia del mes anterior | — |
 | `budget/budget.controller.ts`, `budget/budget.routes.ts` | HTTP de `/budgets`; las rutas se añaden al router del libro | — |
-| `plan/plan.repository.ts`, `plan/plan.service.ts` | Foto del plan de un mes y sus filas (`plan_*`), y correspondencias de categorías; sin ruta HTTP propia | Base de datos |
+| `plan/plan.repository.ts`, `plan/plan.service.ts` | Foto del plan de un mes y sus filas (`plan_*`), y correspondencias de categorías (escritura, para la importación) y lectura de la foto | Base de datos |
+| `plan/plan-query.service.ts`, `plan/plan.controller.ts`, `plan/plan.routes.ts` | `GET /plan/*`: lee una foto, calcula con `plan/domain/` y responde; el flujo real de los meses pasados lo pide al libro (`ReportsService.realFlow`) | — |
 | `plan/domain/` | Cálculos del plan (§9 de la plantilla): presupuesto, proyección, metas, escenarios y comprobaciones, como funciones puras sobre la foto ya leída. Ver `plan/README.md` | No |
 | `index.ts` | API pública: `createFinanceModule({ db, clock, … })` → `{ ledger, budgets, plan, router }` | — |
 
 ## Endpoints (`/api/v1`, sesión activa; sin reautenticación)
+
+Plan (solo lectura): `GET /plan/snapshots?from&to`, `/plan/snapshots/:id` y `/plan/months/:month` (+ `/budget`, `/projection`, `/goals`, `/scenarios`, `/checks`, `/dashboard`); ver `plan/README.md`.
 
 `/accounts` (+ `/:id`, `/:id/archive`, `/:id/reconciliations`), `/reconciliations/:id`, `/categories` (+ `/:id`, `/:id/archive`), `/movements` (+ `/pending/count`, `/:id`, `/:id/confirm`) y `/transfers` (+ `/:id`), más los informes `GET /reports/monthly?from&to`, `/reports/monthly/:month/categories`, `/reports/balances?at` y `/reports/balance-history?from&to`, y `GET /export` (S+: exige reautenticación completa en los últimos 10 minutos). Detalle en `docs/plan.md` §2.10; esquemas en `packages/shared/src/finance/schemas.ts`.
 

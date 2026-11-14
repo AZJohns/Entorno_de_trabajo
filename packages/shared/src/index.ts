@@ -8,4 +8,5 @@ export * from './notifications/schemas.ts';
 export * from './notes/schemas.ts';
 export * from './qr/qr.ts';
 export * from './plan/catalogs.ts';
+export * from './plan/schemas.ts';
 export * from './imports/schemas.ts';

@@ -56,6 +56,15 @@ const ROUTES: readonly (readonly [method: 'get' | 'post' | 'patch' | 'delete', p
   ['post', '/budgets/copy-previous'],
   ['patch', `/budgets/${ID}`],
   ['delete', `/budgets/${ID}`],
+  ['get', '/plan/snapshots'],
+  ['get', `/plan/snapshots/${ID}`],
+  ['get', '/plan/months/2026-11'],
+  ['get', '/plan/months/2026-11/budget'],
+  ['get', '/plan/months/2026-11/projection'],
+  ['get', '/plan/months/2026-11/goals'],
+  ['get', '/plan/months/2026-11/scenarios'],
+  ['get', '/plan/months/2026-11/checks'],
+  ['get', '/plan/months/2026-11/dashboard'],
   ['get', '/export'],
   ['get', '/tasks'],
   ['post', '/tasks'],
@@ -99,7 +108,7 @@ const MUTATING = ROUTES.filter(([method]) => method !== 'get');
 
 /** Pasa a la forma «MÉTODO /ruta/:id» de las rutas registradas. */
 const asPattern = (method: string, path: string): string =>
-  `${method.toUpperCase()} ${path.replace(`/reminders/${ID}`, '/reminders/:reminderId').replaceAll(ID, ':id').replace('/monthly/2026-10/', '/monthly/:month/')}`;
+  `${method.toUpperCase()} ${path.replace(`/reminders/${ID}`, '/reminders/:reminderId').replaceAll(ID, ':id').replace('/monthly/2026-10/', '/monthly/:month/').replace('/months/2026-11', '/months/:month')}`;
 
 describe('rutas de negocio', () => {
   it('la lista de este test coincide con las rutas registradas en los routers', () => {

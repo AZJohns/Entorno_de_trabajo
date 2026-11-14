@@ -16,6 +16,9 @@ import { addBudgetRoutes } from './budget/budget.routes.ts';
 import { BudgetService } from './budget/budget.service.ts';
 import { createLedgerRouter } from './ledger/ledger.routes.ts';
 import { LedgerService } from './ledger/ledger.service.ts';
+import { createPlanController } from './plan/plan.controller.ts';
+import { PlanQueryService } from './plan/plan-query.service.ts';
+import { addPlanRoutes } from './plan/plan.routes.ts';
 import { PlanService } from './plan/plan.service.ts';
 import { ReportsService } from './ledger/reports.service.ts';
 
@@ -42,12 +45,20 @@ export function createFinanceModule(deps: FinanceModuleDeps) {
   const ledger = new LedgerService(deps);
   const budgets = new BudgetService(deps);
   const plan = new PlanService(deps);
+  const reports = new ReportsService(deps.db);
   const router = createLedgerRouter(
     createLedgerController(ledger),
-    createReportsController(new ReportsService(deps.db)),
+    createReportsController(reports),
     createExportController(ledger, deps.recordExport),
     deps.requireReauth,
   );
   addBudgetRoutes(router, createBudgetController(budgets));
+  // La lectura del plan pide al libro el flujo real de los meses pasados, sin tocar sus tablas.
+  const planQueries = new PlanQueryService({
+    db: deps.db,
+    clock: deps.clock,
+    realFlow: (from, to) => reports.realFlow(from, to),
+  });
+  addPlanRoutes(router, createPlanController(planQueries));
   return { ledger, budgets, plan, router };
 }
