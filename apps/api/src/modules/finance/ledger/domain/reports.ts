@@ -181,3 +181,33 @@ export function accountBalanceLine(
     adjustmentsCents: adjustmentsAsOf(ledger, asOf),
   };
 }
+
+/**
+ * Flujo real (ingresos − gastos confirmados) de los meses de `from` a `to` que tienen movimientos
+ * confirmados; es lo que sustituye al plan en la proyección de los meses pasados (docs/plan.md §3.13).
+ *
+ * - Cuenta lo mismo que {@link monthlyTotals}: solo movimientos **confirmados** y **sin** los ajustes de
+ *   conciliación. Las transferencias no son movimientos, así que no entran; los pendientes tampoco.
+ * - Un mes sin ningún ingreso ni gasto confirmado **no entra** en el mapa («no hay datos», que no es lo
+ *   mismo que «el flujo fue 0»). Un mes cuyos confirmados suman 0 sí entra, con 0. Un mes que solo tiene un
+ *   ajuste de conciliación tampoco entra: el ajuste no es un ingreso ni un gasto real.
+ *
+ * @throws {RangeError} si algún mes no es válido o un importe no es un entero seguro.
+ */
+export function realFlowByMonth(
+  movements: readonly LedgerMovement[],
+  from: YearMonth,
+  to: YearMonth,
+): Map<YearMonth, Cents> {
+  const withData = new Set<YearMonth>();
+  for (const movement of movements) {
+    if (movement.status === 'confirmed' && movement.source !== 'reconciliation') {
+      withData.add(movement.bookedOn.slice(0, 7));
+    }
+  }
+  const flow = new Map<YearMonth, Cents>();
+  for (const month of monthsBetween(from, to)) {
+    if (withData.has(month)) flow.set(month, monthlyTotals(movements, `${month}-01`).netCents);
+  }
+  return flow;
+}

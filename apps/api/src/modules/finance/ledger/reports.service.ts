@@ -10,6 +10,7 @@ import {
   type BalanceHistoryResponse,
   type BalancesReportResponse,
   type CategoryReportResponse,
+  type Cents,
   type MonthlyReportResponse,
 } from '@backoffice/shared';
 import type { Database } from '../../../db/schema.ts';
@@ -19,6 +20,7 @@ import {
   accountBalanceLine,
   categoryBreakdown,
   monthlyReport,
+  realFlowByMonth,
   sumCents,
 } from './domain/reports.ts';
 import { LedgerRepository } from './ledger.repository.ts';
@@ -44,6 +46,17 @@ export class ReportsService {
     assertRangeSize(from, to);
     const movements = await this.#repo.listMovementsBetween(`${from}-01`, lastDayOfMonth(to));
     return { items: monthlyReport(movements, from, to) };
+  }
+
+  /**
+   * Flujo real (ingresos − gastos confirmados, sin transferencias ni ajustes) de cada mes de `from` a `to`
+   * que tiene movimientos confirmados; los demás no aparecen. Lo usa la proyección del plan. Sin tope de
+   * meses: quien llama lo acota (el plan, a sus 12 meses).
+   */
+  async realFlow(from: YearMonth, to: YearMonth): Promise<Map<YearMonth, Cents>> {
+    if (from > to) return new Map();
+    const movements = await this.#repo.listMovementsBetween(`${from}-01`, lastDayOfMonth(to));
+    return realFlowByMonth(movements, from, to);
   }
 
   /** Desglose por categoría de un mes (sin ajustes de conciliación). */
