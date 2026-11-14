@@ -265,7 +265,7 @@ Lista cerrada (validación de datos en Excel):
 
 **Detección de la versión**: es v2 si `Datos!I5 = «Tipo de registro»`, `Eventos!G5 = «Nota»` y `Metas!I5 = «Tipo de meta»`. Si falta alguna de las tres → `TEMPLATE_VERSION_UNSUPPORTED`, con un mensaje que indica qué cambio de §14 falta.
 
-**Comprobaciones cruzadas** (son avisos; no reclasifican la fila):
+**Comprobaciones cruzadas** (son avisos, salvo la excepción de la unidad que indica la tabla; no reclasifican la fila):
 
 | Señal | Tipo esperado |
 |---|---|
@@ -275,7 +275,7 @@ Lista cerrada (validación de datos en Excel):
 | La referencia Metas | `goal`, `savings_balance` o `assumption` |
 | La referencia Escenarios · Extra mensual (C) | `scenario`, `expense` o `income` |
 | La referencia Escenarios · Pago puntual (D) | `scenario`, `expense`, `income` o `one_off_payment` |
-| La unidad no coincide con la esperada para su tipo | — |
+| La unidad no coincide con la esperada para su tipo | — (**error** en `savings_balance` y `emergency_fund_months`, ver §11) |
 | Fila `expense` incluida que ninguna línea de Presupuesto referencia | aviso `EXPENSE_NOT_BUDGETED` |
 
 ---
@@ -419,7 +419,7 @@ Formato de cada problema: `{ code, severity: "error" | "warning" | "info", sheet
 | `EMERGENCY_FUND_MONTHS_MISSING` | error | Hay una meta de fondo de emergencia sin una fila de meses |
 | `EMERGENCY_FUND_MONTHS_DUPLICATED` | error | Hay más de una fila de meses de fondo de emergencia |
 | `CATEGORY_UNMAPPED` | error (bloquea la confirmación) | La categoría no tiene correspondencia |
-| `TYPE_SIGNAL_MISMATCH` | warning | El tipo de registro no encaja con el uso de la fila |
+| `TYPE_SIGNAL_MISMATCH` | warning · **error** si la unidad de una fila `savings_balance` o `emergency_fund_months` no es la de su tipo (€ y meses) | El tipo de registro no encaja con el uso de la fila |
 | `EXPENSE_NOT_BUDGETED` | warning | Hay un gasto de Datos sin línea de Presupuesto |
 | `CACHED_VALUE_DIFF` | info | El valor que guarda Excel difiere del recálculo |
 | `EVENT_INCLUDED_BUT_CLOSED` | warning | Un evento incluido en la proyección tiene el estado `Pagado`, `Finalizado` o `No activo` (§6.3) |
@@ -429,6 +429,8 @@ Formato de cada problema: `{ code, severity: "error" | "warning" | "info", sheet
 Los tres últimos códigos se añadieron en la fase 3b.1: §6.3 pedía esos avisos pero la revisión 3 del catálogo no les daba código.
 
 **Decisiones de la 3b.1 donde este documento no fijaba el código o la severidad:** una extensión distinta de `.xlsx`/`.xlsm` es `FILE_NOT_OOXML`; los meses con más de 2 decimales, `AMOUNT_PRECISION`, y negativos, `AMOUNT_NEGATIVE`; una segunda meta de fondo de emergencia, `VALUE_NOT_IN_LIST`; en Metas, una referencia a una fila con otra unidad es `REF_UNIT_MISMATCH` **error**; el aviso «solo coinciden tras quitar los acentos» (§3) no se emite por no tener código. Detalle en `docs/plan.md` §3.9.
+
+**Cambio de severidad (3b.2, PR 1):** `TYPE_SIGNAL_MISMATCH` pasa a **error** (bloquea la confirmación) cuando la unidad de una fila de Datos está fuera de las admitidas por su tipo (§7) y el tipo es `savings_balance` (solo €) o `emergency_fund_months` (solo meses). Motivo: los cálculos leen el saldo de ahorro como importe y los meses del fondo como meses (§9.3 y §9.4); con otra unidad la fila no tiene el valor que se lee y la foto no se podría calcular. Para el resto de tipos sigue siendo un aviso (un ingreso en € no impide calcular, solo se ignora en `I`). Esto cierra el hueco 1 de `plan.md` §3.12 (`S0` sin filtrar por unidad), que ahora lo garantiza el importador.
 
 Eliminados respecto a la revisión 1: `MONTH_MISMATCH` (no existe esa celda) y `EVENT_CONTRADICTION` (se elimina «Impacto base»).
 

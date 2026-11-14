@@ -1,6 +1,6 @@
 # Módulo `finance` — libro real (`ledger`) y presupuesto (`budget`)
 
-Cuentas, categorías, movimientos, transferencias y conciliación mensual (`ledger/`), y el presupuesto por categoría y mes (`budget/`). Diseño: `docs/plan.md` §2.3. La capa de plan (`plan/`, fase 3b) vive en este mismo módulo: de momento solo guarda la foto del plan que crea la confirmación de la importación (ver «Capa del plan»); sus cálculos son de la 3b.2.
+Cuentas, categorías, movimientos, transferencias y conciliación mensual (`ledger/`), y el presupuesto por categoría y mes (`budget/`). Diseño: `docs/plan.md` §2.3. La capa de plan (`plan/`, fase 3b) vive en este mismo módulo: de momento solo guarda la foto del plan que crea la confirmación de la importación (ver «Capa del plan»); sus cálculos (funciones puras en `plan/domain/`, fase 3b.2 PR 1) todavía no tienen endpoints: llegan en el PR 2.
 
 **Estado del presupuesto (fase 3a, PR 1 de 2):** tabla, lógica pura, servicio y API de `/budgets`. Las pantallas llegan en el PR 2. Detalle en la sección «Presupuesto por categoría y mes», más abajo.
 
@@ -28,6 +28,7 @@ Cuentas, categorías, movimientos, transferencias y conciliación mensual (`ledg
 | `budget/budget.service.ts` | Reglas del presupuesto (categoría de gasto y no archivada, duplicados) y la copia del mes anterior | — |
 | `budget/budget.controller.ts`, `budget/budget.routes.ts` | HTTP de `/budgets`; las rutas se añaden al router del libro | — |
 | `plan/plan.repository.ts`, `plan/plan.service.ts` | Foto del plan de un mes y sus filas (`plan_*`), y correspondencias de categorías; sin ruta HTTP propia | Base de datos |
+| `plan/domain/` | Cálculos del plan (§9 de la plantilla): presupuesto, proyección, metas, escenarios y comprobaciones, como funciones puras sobre la foto ya leída. Ver `plan/README.md` | No |
 | `index.ts` | API pública: `createFinanceModule({ db, clock, … })` → `{ ledger, budgets, plan, router }` | — |
 
 ## Endpoints (`/api/v1`, sesión activa; sin reautenticación)
