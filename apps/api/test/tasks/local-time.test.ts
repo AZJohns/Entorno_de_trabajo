@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { REMINDER_TIME_ZONE, isLocalDateTime } from '@backoffice/shared';
-import { resolveLocalDateTime, zoneOffsetMs } from '../../src/modules/tasks/domain/local-time.ts';
+import { localYearMonth, resolveLocalDateTime, zoneOffsetMs } from '../../src/lib/local-time.ts';
 
 const MADRID = REMINDER_TIME_ZONE;
 const HOUR = 3_600_000;
@@ -102,5 +102,49 @@ describe('isLocalDateTime', () => {
     '',
   ])('«%s» no es válida', (value) => {
     expect(isLocalDateTime(value)).toBe(false);
+  });
+});
+
+describe('mes natural en la zona (localYearMonth)', () => {
+  it.each([
+    // Invierno (UTC+1): el mes cambia a las 23:00 UTC.
+    ['2026-01-31T22:59:59Z', MADRID, '2026-01'],
+    ['2026-01-31T23:00:00Z', MADRID, '2026-02'],
+    // Verano (UTC+2): el mes cambia a las 22:00 UTC.
+    ['2026-07-31T21:59:59Z', MADRID, '2026-07'],
+    ['2026-07-31T22:00:00Z', MADRID, '2026-08'],
+    // Un mes de 30 días, un 28 de febrero y el fin de año (el año también cambia).
+    ['2026-06-30T22:00:00Z', MADRID, '2026-07'],
+    ['2026-02-28T23:00:00Z', MADRID, '2026-03'],
+    ['2026-12-31T22:59:59Z', MADRID, '2026-12'],
+    ['2026-12-31T23:00:00Z', MADRID, '2027-01'],
+    // Febrero de un año bisiesto.
+    ['2028-02-28T23:30:00Z', MADRID, '2028-02'],
+    ['2028-02-29T23:00:00Z', MADRID, '2028-03'],
+    // Alrededor de los cambios de horario: marzo (31 → abril, ya en verano) y octubre (31 → noviembre, ya en invierno).
+    ['2026-03-31T21:59:59Z', MADRID, '2026-03'],
+    ['2026-03-31T22:00:00Z', MADRID, '2026-04'],
+    ['2026-10-31T22:59:59Z', MADRID, '2026-10'],
+    ['2026-10-31T23:00:00Z', MADRID, '2026-11'],
+    // Una zona sin horario de verano y otra con desplazamiento negativo.
+    ['2026-07-31T23:30:00Z', 'UTC', '2026-07'],
+    ['2026-08-01T03:59:59Z', 'America/New_York', '2026-07'],
+    ['2026-08-01T04:00:00Z', 'America/New_York', '2026-08'],
+  ])('%s en %s es %s', (instant, zone, expected) => {
+    expect(localYearMonth(zone, new Date(instant))).toBe(expected);
+  });
+
+  it('no depende de la zona del servidor ni lee el reloj', () => {
+    // Mismo instante, dos zonas: el resultado lo decide solo el argumento.
+    const instant = new Date('2026-11-30T23:30:00Z');
+    expect(localYearMonth('UTC', instant)).toBe('2026-11');
+    expect(localYearMonth(MADRID, instant)).toBe('2026-12');
+  });
+
+  it('rechaza un instante o una zona no válidos', () => {
+    expect(() => localYearMonth(MADRID, new Date('no es una fecha'))).toThrow(RangeError);
+    expect(() => localYearMonth('Marte/Olimpo', new Date('2026-01-01T00:00:00Z'))).toThrow(
+      RangeError,
+    );
   });
 });

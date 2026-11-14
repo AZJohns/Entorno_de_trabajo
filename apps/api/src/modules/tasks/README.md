@@ -20,7 +20,6 @@ Tablero de cuatro columnas (Por hacer, En curso, En prueba, Terminado) con fecha
 | `time-entries.repository.ts` | Consultas sobre `task_time_entries`, con el tiempo agregado por tarea | Base de datos |
 | `tasks.service.ts` | Alta, edición, borrado, tablero y movimiento; transacciones y bloqueo | — |
 | `time-entries.service.ts` | Cronómetro y anotación manual; traduce los conflictos de la base de datos | — |
-| `domain/local-time.ts` | `resolveLocalDateTime`: hora local de una zona → instante, con huecos y horas repetidas | No |
 | `reminders.repository.ts` | Consultas sobre `task_reminders`; `claimDue` (reclamación con `SKIP LOCKED`) y `recordFailure` | Base de datos |
 | `reminders.service.ts` | Alta, lista y borrado de recordatorios; `deliverDue`, la entrega transaccional | — |
 | `tasks.controller.ts`, `tasks.routes.ts` | HTTP: validación con los esquemas de `@backoffice/shared` (`packages/shared/src/tasks/schemas.ts`) y respuestas | — |
@@ -93,7 +92,7 @@ Para un solo usuario y decenas de tareas por columna, el coste extra de renumera
 
 ### Recordatorios: la hora local se convierte en la API
 
-El usuario elige una fecha y hora **de Madrid**; la base de datos guarda un instante (`timestamptz`). La web envía `remindAtLocal` (`YYYY-MM-DDTHH:mm`, sin zona) y `domain/local-time.ts` la convierte con `Intl` de Node (datos de zonas horarias completos), **sin dependencia**. Se hace aquí y no en el navegador para que la regla de los cambios de horario exista en un solo sitio, con tests, y no dependa de la zona ni de la versión del navegador de quien escribe el aviso.
+El usuario elige una fecha y hora **de Madrid**; la base de datos guarda un instante (`timestamptz`). La web envía `remindAtLocal` (`YYYY-MM-DDTHH:mm`, sin zona) y `apps/api/src/lib/local-time.ts` (compartido con `finance`) la convierte con `Intl` de Node (datos de zonas horarias completos), **sin dependencia**. Se hace aquí y no en el navegador para que la regla de los cambios de horario exista en un solo sitio, con tests, y no dependa de la zona ni de la versión del navegador de quien escribe el aviso.
 
 | Caso (Madrid) | Qué pasa |
 |---|---|

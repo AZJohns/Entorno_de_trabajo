@@ -23,7 +23,7 @@ import type { Database } from '../../db/schema.ts';
 import { AppError } from '../../http/errors.ts';
 import type { Clock } from '../../lib/clock.ts';
 import type { NotificationRecord, NotificationsService } from '../notifications/index.ts';
-import { resolveLocalDateTime } from './domain/local-time.ts';
+import { resolveLocalDateTime } from '../../lib/local-time.ts';
 import { ReminderRepository, type ReminderRecord } from './reminders.repository.ts';
 import { TaskRepository } from './tasks.repository.ts';
 import { notFound } from './tasks.service.ts';
@@ -64,7 +64,7 @@ export class RemindersService {
   /**
    * Crea un recordatorio a partir de la fecha y hora locales. 422 si esa hora no existe (hueco de
    * marzo) o si el instante no es posterior a ahora; 409 si ya hay uno igual. Las horas repetidas de
-   * octubre se resuelven a la primera ocurrencia (`domain/local-time.ts`).
+   * octubre se resuelven a la primera ocurrencia (`lib/local-time.ts`).
    */
   async create(taskId: string, input: CreateReminderRequest): Promise<ReminderRecord> {
     await this.#assertTask(taskId);

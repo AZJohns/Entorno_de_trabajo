@@ -109,3 +109,17 @@ export function resolveLocalDateTime(local: string, timeZone: string): LocalReso
     ambiguous: candidates.length > 1,
   };
 }
+
+/**
+ * Mes natural (`YYYY-MM`) que marca el reloj de `timeZone` en el instante dado. Se obtiene sumando al
+ * instante el desplazamiento vigente de la zona y leyendo el año y el mes en UTC, así que no depende de la
+ * zona del servidor: el 31 de enero a las 23:30 UTC ya es 1 de febrero en Madrid.
+ *
+ * @throws {RangeError} si el instante no es válido o la zona no existe.
+ */
+export function localYearMonth(timeZone: string, instant: Date): string {
+  const instantMs = instant.getTime();
+  if (Number.isNaN(instantMs)) throw new RangeError('Instante no válido');
+  const wall = new Date(instantMs + zoneOffsetMs(timeZone, instantMs));
+  return `${String(wall.getUTCFullYear()).padStart(4, '0')}-${String(wall.getUTCMonth() + 1).padStart(2, '0')}`;
+}
