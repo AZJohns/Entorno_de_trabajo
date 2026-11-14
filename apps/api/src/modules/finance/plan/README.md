@@ -30,7 +30,7 @@ El punto de entrada es `calculatePlan(snapshot, { currentMonth, realFlowByMonth?
 - **Importes en céntimos enteros** y meses en centésimas. Ni `float`, ni `parseFloat`, ni `Math.round` sobre importes. El único redondeo es half-up y solo en los productos con meses (evento cuota × plazo y objetivo del fondo de emergencia).
 - **Porcentajes como fracción** `{ numerator, denominator }`, `null` si no hay ingresos. Los umbrales se comparan con `comparePercent`, sin dividir.
 - **`includedInBase` es el único predicado del plan base** (`packages/shared`). Excepción: los escenarios no filtran por estado (§9.5).
-- **Una foto incoherente lanza `RangeError`** (referencia que no existe, importe que falta, evento incluido sin fecha): no se sigue con un 0.
+- **Una foto incoherente lanza `RangeError`** (referencia que no existe, importe que falta, evento incluido sin fecha): no se sigue con un 0. Una foto que el importador deja confirmar no debe llegar a este caso: el importador bloquea las unidades de `savings_balance` y `emergency_fund_months` que los cálculos no pueden leer, y `plan-importer-contract.test.ts` lo comprueba.
 - Las filas «Invariante» de §9.6 no son comprobaciones: son tests (`apps/api/test/finance/plan-invariants.test.ts`).
 
 ## Entrada y resultados

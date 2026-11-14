@@ -20,7 +20,8 @@ export type IssueSeverity = (typeof ISSUE_SEVERITIES)[number];
 
 /**
  * Códigos de problema y su severidad por defecto. Los marcados «según el caso» la indican al crearse
- * (`REF_TARGET_EMPTY` y `REF_UNIT_MISMATCH`). Los tres últimos no estaban en la revisión 3 del catálogo
+ * (`REF_TARGET_EMPTY`, `REF_UNIT_MISMATCH` y `TYPE_SIGNAL_MISMATCH`, que es error si la unidad de una fila
+ * `savings_balance` o `emergency_fund_months` no es la de su tipo). Los tres últimos no estaban en la revisión 3 del catálogo
  * (§11), aunque §6.3 exigía los avisos: se añadieron en la fase 3b.1 y el catálogo se actualizó.
  */
 export const ISSUE_CODES = {
@@ -57,7 +58,7 @@ export const ISSUE_CODES = {
   EMERGENCY_FUND_MONTHS_MISSING: 'error',
   EMERGENCY_FUND_MONTHS_DUPLICATED: 'error',
   CATEGORY_UNMAPPED: 'error',
-  TYPE_SIGNAL_MISMATCH: 'warning',
+  TYPE_SIGNAL_MISMATCH: 'warning', // error en la unidad de savings_balance y emergency_fund_months
   EXPENSE_NOT_BUDGETED: 'warning',
   CACHED_VALUE_DIFF: 'info',
   // Añadidos en la 3b.1 (avisos de §6.3 que no tenían código):

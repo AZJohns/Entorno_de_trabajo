@@ -5,6 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { ExtractedPlan } from '@backoffice/shared';
+import { summarize } from '../../src/modules/imports/domain/summary.ts';
 import {
   buildValidWorkbook,
   CHECKS,
@@ -482,6 +483,37 @@ describe('fórmulas (§5): se leen como texto y nunca se ejecutan', () => {
     const { scenarios } = extractedOf();
     expect(scenarios[1]?.extraMonthlyRows).toEqual([22]);
     expect(extractedOf().items.find((item) => item.sourceRow === 22)?.status).toBe('potential');
+  });
+
+  // §11: para estos dos tipos la unidad la leen los cálculos del plan sin más comprobación (saldo en €,
+  // meses del fondo en meses), así que una unidad fuera de RECORD_TYPE_UNITS bloquea la confirmación.
+  it.each([
+    ['Saldo de ahorro en «meses»', 'D16', 'meses', 'C16', 6, 'I16'],
+    ['Saldo de ahorro en «€/mes»', 'D17', '€/mes', 'C17', 1_500, 'I17'],
+    ['Meses de fondo de emergencia en «€»', 'D18', '€', 'C18', 6, 'I18'],
+    ['Meses de fondo de emergencia en «€/mes»', 'D18', '€/mes', 'C18', 6, 'I18'],
+  ] as const)(
+    '§11: %s es un error de TYPE_SIGNAL_MISMATCH y no se puede confirmar',
+    (_name, unitCell, unit, valueCell, value, typeCell) => {
+      const book = buildValidWorkbook();
+      book.sheet(DATOS).set(unitCell, unit);
+      book.sheet(DATOS).set(valueCell, value);
+      const outcome = previewOf(parseBook(book));
+      expectIssue(outcome, 'TYPE_SIGNAL_MISMATCH', {
+        sheet: DATOS,
+        cell: typeCell,
+        severity: 'error',
+      });
+      expect(summarize(outcome.extracted, outcome.issues).canConfirm).toBe(false);
+    },
+  );
+
+  it('§11: en el resto de tipos una unidad inesperada sigue siendo solo un aviso', () => {
+    const book = buildValidWorkbook();
+    book.sheet(DATOS).set('D6', '€'); // un ingreso en € en vez de €/mes
+    const outcome = previewOf(parseBook(book));
+    expectIssue(outcome, 'TYPE_SIGNAL_MISMATCH', { sheet: DATOS, cell: 'I6', severity: 'warning' });
+    expect(summarize(outcome.extracted, outcome.issues).canConfirm).toBe(true);
   });
 
   it('Metas: el objetivo del fondo de emergencia que menciona otra fila de Datos avisa', () => {

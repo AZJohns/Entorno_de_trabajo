@@ -166,6 +166,15 @@ function typeSignal(
 
 const unitLabel = (unit: Unit): string => UNITS.find((entry) => entry.code === unit)?.label ?? unit;
 
+/**
+ * Tipos de registro cuya unidad la leen los cálculos del plan sin más comprobación: una unidad fuera de
+ * `RECORD_TYPE_UNITS` es un error (no un aviso) porque dejaría una foto que no se puede calcular.
+ */
+const UNIT_BLOCKING_RECORD_TYPES: ReadonlySet<RecordType> = new Set<RecordType>([
+  'savings_balance',
+  'emergency_fund_months',
+]);
+
 /** Comprueba la unidad de la fila referenciada; `severity` depende de la hoja (§11). */
 function checkUnit(
   reader: CellReader,
@@ -238,7 +247,12 @@ function extractItems(input: ExtractInput, sheet: Sheet, scan: TableScan): Extra
         row,
         c.recordType,
         `La unidad «${unitLabel(unit.value)}» no es la esperada para el tipo de registro «${typeLabel}»`,
-        { expected: RECORD_TYPE_UNITS[recordType.value].map(unitLabel).join(', ') },
+        {
+          // Los cálculos del plan leen el saldo de ahorro en € y los meses del fondo de emergencia en meses
+          // (§9.3 y §9.4): con otra unidad no hay importe (o meses) que leer, así que bloquea la confirmación.
+          severity: UNIT_BLOCKING_RECORD_TYPES.has(recordType.value) ? 'error' : 'warning',
+          expected: RECORD_TYPE_UNITS[recordType.value].map(unitLabel).join(', '),
+        },
       );
     }
 
